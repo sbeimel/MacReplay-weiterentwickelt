@@ -853,6 +853,18 @@ def portals():
                          genre_modal_portal_id=genre_modal_portal_id,
                          genre_modal_portal_name=genre_modal_portal_name)
 
+####
+@app.route("/api/portals", methods=["GET"])
+@authorise
+def api_portals():
+    portals = getPortals()
+    data = [
+        {"id": pid, "name": pdata.get("name", pid)}
+        for pid, pdata in portals.items()
+    ]
+    return flask.jsonify(data)
+
+####
 
 @app.route("/api/portals/data", methods=["GET"])
 @authorise
