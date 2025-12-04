@@ -3,188 +3,109 @@
 {% block title %}Dashboard - MacReplay{% endblock %}
 
 {% block content %}
-<div class="page-header d-print-none">
-    <div class="container-xl">
-        <div class="row g-2 align-items-center">
-            <div class="col">
-                <div class="page-pretitle">
-                    Overview
-                </div>
-                <h2 class="page-title">
-                    <i class="ti ti-chart-line me-2"></i>
-                    Dashboard
-                </h2>
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-chart-line"></i> Dashboard</h2>
+        <p class="text-muted">Monitor active streams and system status</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-stream"></i> Active Streams</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshStreams()">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
             </div>
-            <div class="col-auto ms-auto d-print-none">
-                <div class="btn-list">
-                    <button class="btn btn-primary" onclick="refreshStreams()">
-                        <i class="ti ti-refresh"></i>
-                        Refresh
-                    </button>
+            <div class="card-body">
+                <div id="streamsContainer">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading stream data...</p>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="page-body">
-    <div class="container-xl">
-        <!-- Active Streams -->
-        <div class="row row-cards">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title"><i class="ti ti-player-play me-2"></i>Active Streams</h3>
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-download"></i> Quick Downloads</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/playlist.m3u" target="_blank" class="btn btn-outline-primary">
+                        <i class="fas fa-list"></i> Download M3U Playlist
+                    </a>
+                    <a href="/xmltv" target="_blank" class="btn btn-outline-secondary">
+                        <i class="fas fa-tv"></i> Download XMLTV Guide
+                    </a>
+                </div>
+                
+                <hr>
+                
+                <h6>Plex Setup URLs:</h6>
+                <div class="mb-2">
+                    <label class="form-label small">XMLTV Guide URL:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-sm" id="xmltvUrl" readonly>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('xmltvUrl')">
+                            <i class="fas fa-copy"></i>
+                        </button>
                     </div>
-                    <div class="card-body">
-                        <div id="streamsContainer">
-                            <div class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <p class="mt-3 text-muted">Loading stream data...</p>
-                            </div>
-                        </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">M3U Playlist URL:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-sm" id="playlistUrl" readonly>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('playlistUrl')">
+                            <i class="fas fa-copy"></i>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="row row-cards mt-3">
-            <!-- Quick Downloads -->
-            <div class="col-lg-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title"><i class="ti ti-download me-2"></i>Quick Downloads</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="list-group list-group-flush">
-                            <a href="/playlist.m3u" target="_blank" class="list-group-item list-group-item-action">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <span class="avatar bg-primary-lt">
-                                            <i class="ti ti-list"></i>
-                                        </span>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">M3U Playlist</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small">Download channel playlist</div>
-                                    </div>
-                                    <div class="col-auto">
-                                        <i class="ti ti-chevron-right"></i>
-                                    </div>
-                                </div>
-                            </a>
-                            <a href="/xmltv" target="_blank" class="list-group-item list-group-item-action">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <span class="avatar bg-success-lt">
-                                            <i class="ti ti-device-tv"></i>
-                                        </span>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">XMLTV Guide</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small">Download EPG data</div>
-                                    </div>
-                                    <div class="col-auto">
-                                        <i class="ti ti-chevron-right"></i>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-                        
-                        <hr>
-                        
-                        <h4 class="card-subtitle">Plex Setup URLs</h4>
-                        <div class="mb-3 mt-3">
-                            <label class="form-label">XMLTV Guide URL</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="xmltvUrl" readonly>
-                                <button class="btn btn-icon" onclick="copyToClipboard('xmltvUrl')" title="Copy to clipboard">
-                                    <i class="ti ti-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">M3U Playlist URL</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="playlistUrl" readonly>
-                                <button class="btn btn-icon" onclick="copyToClipboard('playlistUrl')" title="Copy to clipboard">
-                                    <i class="ti ti-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> System Information</h5>
             </div>
-            
-            <!-- System Information -->
-            <div class="col-lg-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title"><i class="ti ti-info-circle me-2"></i>System Information</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="list-group list-group-flush">
-                            <div class="list-group-item">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <span class="status-dot status-dot-animated bg-success"></span>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">Server Status</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small">Running</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="list-group-item">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <i class="ti ti-link text-muted"></i>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">Server URL</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small"><code id="serverUrl"></code></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="list-group-item">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <i class="ti ti-package text-muted"></i>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">Version</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small">MacReplay Docker</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="list-group-item">
-                                <div class="row align-items-center">
-                                    <div class="col-auto">
-                                        <i class="ti ti-clock text-muted"></i>
-                                    </div>
-                                    <div class="col">
-                                        <div class="text-reset d-block">Last Updated</div>
-                                        <div class="d-block text-muted text-truncate mt-n1 small" id="lastUpdated">Loading...</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-3">
-                            <div class="btn-list">
-                                <button class="btn btn-primary" onclick="refreshLineup()">
-                                    <i class="ti ti-refresh me-2"></i>
-                                    Refresh Lineup
-                                </button>
-                                <button class="btn btn-secondary" onclick="updatePlaylist()">
-                                    <i class="ti ti-list me-2"></i>
-                                    Update Playlist
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td>Server Status:</td>
+                        <td><span class="badge bg-success">Running</span></td>
+                    </tr>
+                    <tr>
+                        <td>Server URL:</td>
+                        <td><code id="serverUrl"></code></td>
+                    </tr>
+                    <tr>
+                        <td>Version:</td>
+                        <td>MacReplay Docker</td>
+                    </tr>
+                    <tr>
+                        <td>Last Updated:</td>
+                        <td id="lastUpdated">Loading...</td>
+                    </tr>
+                </table>
+                
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshLineup()">
+                        <i class="fas fa-sync"></i> Refresh Lineup
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="updatePlaylist()">
+                        <i class="fas fa-list"></i> Update Playlist
+                    </button>
                 </div>
             </div>
         </div>
@@ -205,7 +126,7 @@ function refreshStreams() {
         .catch(error => {
             console.error('Error fetching streams:', error);
             document.getElementById('streamsContainer').innerHTML = 
-                '<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading stream data</div>';
+                '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error loading stream data</div>';
         });
 }
 
@@ -213,11 +134,11 @@ function displayStreams(streams) {
     const container = document.getElementById('streamsContainer');
     
     if (!streams || Object.keys(streams).length === 0) {
-        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-player-play"></i></div><p class="empty-title">No active streams</p><p class="empty-subtitle text-muted">Streams will appear here when clients are watching</p></div>';
+        container.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> No active streams</div>';
         return;
     }
     
-    let html = '<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Portal</th><th>Channel</th><th>MAC</th><th>Client IP</th><th>Start Time</th><th>Duration</th></tr></thead><tbody>';
+    let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Portal</th><th>Channel</th><th>MAC</th><th>Client IP</th><th>Start Time</th><th>Duration</th></tr></thead><tbody>';
     
     Object.keys(streams).forEach(portalId => {
         streams[portalId].forEach(stream => {
@@ -227,12 +148,12 @@ function displayStreams(streams) {
             
             html += `
                 <tr>
-                    <td><span class="badge bg-primary">${stream['portal name']}</span></td>
+                    <td>${stream['portal name']}</td>
                     <td>${stream['channel name']}</td>
                     <td><code>${stream.mac}</code></td>
                     <td>${stream.client}</td>
-                    <td><span class="text-muted">${startTime.toLocaleString()}</span></td>
-                    <td><span class="badge bg-success">${durationStr}</span></td>
+                    <td>${startTime.toLocaleString()}</td>
+                    <td>${durationStr}</td>
                 </tr>
             `;
         });
@@ -289,12 +210,14 @@ function copyToClipboard(elementId) {
     // Visual feedback
     const button = element.nextElementSibling;
     const originalHtml = button.innerHTML;
-    button.innerHTML = '<i class="ti ti-check"></i>';
+    button.innerHTML = '<i class="fas fa-check"></i>';
     button.classList.add('btn-success');
+    button.classList.remove('btn-outline-secondary');
     
     setTimeout(() => {
         button.innerHTML = originalHtml;
         button.classList.remove('btn-success');
+        button.classList.add('btn-outline-secondary');
     }, 2000);
 }
 
@@ -320,4 +243,4 @@ window.addEventListener('beforeunload', function() {
     }
 });
 </script>
-{% endblock %}
+{% endblock %} 
