@@ -244,7 +244,76 @@ def home():
 @app.route("/portals", methods=["GET"])
 @authorise
 def portals():
-    return render_template("portals.html", portals=getPortals())
+    # Check if we should show genre modal
+    show_genre_modal = flask.session.pop('show_genre_modal', False)
+    genre_modal_portal_id = flask.session.pop('genre_modal_portal_id', None)
+    genre_modal_portal_name = flask.session.pop('genre_modal_portal_name', None)
+    
+    return render_template("portals.html", 
+                         portals=getPortals(),
+                         show_genre_modal=show_genre_modal,
+                         genre_modal_portal_id=genre_modal_portal_id,
+                         genre_modal_portal_name=genre_modal_portal_name)
+
+@app.route("/portal/test-macs", methods=["POST"])
+@authorise
+def portal_test_macs():
+    """Test MAC addresses for a portal."""
+    try:
+        data = request.json
+        url = data.get('url')
+        macs = data.get('macs', [])
+        proxy = data.get('proxy', '')
+        
+        if not url:
+            return flask.jsonify({"error": "No URL provided"}), 400
+        
+        if not macs:
+            return flask.jsonify({"error": "No MAC addresses provided"}), 400
+        
+        # Ensure URL ends with .php
+        if not url.endswith(".php"):
+            url = stb.getUrl(url, proxy)
+            if not url:
+                return flask.jsonify({"error": "Invalid portal URL"}), 400
+        
+        results = []
+        
+        for mac in macs:
+            mac = mac.strip()
+            if not mac:
+                continue
+            
+            result = {
+                "mac": mac,
+                "valid": False,
+                "expiry": None
+            }
+            
+            try:
+                logger.info(f"Testing MAC: {mac}")
+                token = stb.getToken(url, mac, proxy)
+                if token:
+                    stb.getProfile(url, mac, token, proxy)
+                    expiry = stb.getExpires(url, mac, token, proxy)
+                    if expiry:
+                        result["valid"] = True
+                        result["expiry"] = expiry
+                        logger.info(f"MAC {mac} is valid, expires: {expiry}")
+                    else:
+                        logger.warning(f"MAC {mac} got token but no expiry")
+                else:
+                    logger.warning(f"MAC {mac} failed to get token")
+            except Exception as e:
+                logger.error(f"Error testing MAC {mac}: {e}")
+            
+            results.append(result)
+        
+        return flask.jsonify({"results": results})
+    except Exception as e:
+        logger.error(f"Error in portal_test_macs: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
 
 @app.route("/portal/add", methods=["POST"])
 @authorise
@@ -255,7 +324,10 @@ def portalsAdd():
     enabled = "true"
     name = request.form["name"]
     url = request.form["url"]
-    macs = list(set(request.form["macs"].split(",")))
+    # Support newline-separated MACs
+    macs_text = request.form["macs"]
+    macs = [m.strip() for m in macs_text.split('\n') if m.strip()]
+    macs = list(set(macs))  # Remove duplicates
     streamsPerMac = request.form["streams per mac"]
     epgOffset = request.form["epg offset"]
     proxy = request.form["proxy"]
@@ -307,6 +379,12 @@ def portalsAdd():
         portals[id] = portal
         savePortals(portals)
         logger.info("Portal({}) added!".format(portal["name"]))
+        
+        # Store portal ID in session for genre selection modal
+        flask.session['show_genre_modal'] = True
+        flask.session['genre_modal_portal_id'] = id
+        flask.session['genre_modal_portal_name'] = name
+        return redirect("/portals", code=302)
 
     else:
         logger.error(
@@ -326,7 +404,10 @@ def portalUpdate():
     enabled = request.form.get("enabled", "false")
     name = request.form["name"]
     url = request.form["url"]
-    newmacs = list(set(request.form["macs"].split(",")))
+    # Support newline-separated MACs
+    macs_text = request.form["macs"]
+    newmacs = [m.strip() for m in macs_text.split('\n') if m.strip()]
+    newmacs = list(set(newmacs))  # Remove duplicates
     streamsPerMac = request.form["streams per mac"]
     epgOffset = request.form["epg offset"]
     proxy = request.form["proxy"]
@@ -391,6 +472,194 @@ def portalUpdate():
 
     return redirect("/portals", code=302)
 
+@app.route("/portal/genre-selection", methods=["GET"])
+@authorise
+def portal_genre_selection():
+    """Show genre selection page after adding a portal."""
+    # Check for query parameters first (for direct links from portal page)
+    portal_id = request.args.get('portal_id')
+    portal_name = request.args.get('portal_name')
+    
+    # If not in query params, check session (for new portal flow)
+    if not portal_id:
+        portal_id = flask.session.get('new_portal_id')
+        portal_name = flask.session.get('new_portal_name')
+    else:
+        # Store in session for subsequent API calls
+        flask.session['new_portal_id'] = portal_id
+        flask.session['new_portal_name'] = portal_name
+    
+    if not portal_id:
+        return redirect("/portals", code=302)
+    
+    return render_template("genre_selection.html", portal_id=portal_id, portal_name=portal_name)
+
+
+@app.route("/portal/load-genres", methods=["POST"])
+@authorise
+def portal_load_genres():
+    """Load genres for a specific portal."""
+    try:
+        portal_id = request.json.get('portal_id')
+        if not portal_id:
+            return flask.jsonify({"error": "No portal ID provided"}), 400
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        if not portal:
+            return flask.jsonify({"error": "Portal not found"}), 404
+        
+        # Fetch channels from portal
+        url = portal["url"]
+        macs = list(portal["macs"].keys())
+        proxy = portal["proxy"]
+        
+        all_channels = None
+        genres_dict = None
+        
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if token:
+                    stb.getProfile(url, mac, token, proxy)
+                    all_channels = stb.getAllChannels(url, mac, token, proxy)
+                    genres_dict = stb.getGenreNames(url, mac, token, proxy)
+                    if all_channels and genres_dict:
+                        break
+            except Exception as e:
+                logger.error(f"Error fetching from MAC {mac}: {e}")
+        
+        if not all_channels or not genres_dict:
+            return flask.jsonify({"error": "Failed to fetch channels"}), 500
+        
+        # Count channels per genre
+        genre_counts = {}
+        genre_to_channels = {}  # Map genre to channel IDs
+        
+        for channel in all_channels:
+            channel_id = str(channel["id"])
+            genre_id = str(channel.get("tv_genre_id", ""))
+            genre_name = genres_dict.get(genre_id, "Unknown")
+            
+            if genre_name not in genre_counts:
+                genre_counts[genre_name] = 0
+                genre_to_channels[genre_name] = []
+            
+            genre_counts[genre_name] += 1
+            genre_to_channels[genre_name].append(channel_id)
+        
+        # Get previously selected genres from portal config
+        enabled_genres = portal.get("selected genres", [])
+        
+        logger.info(f"Loading genres for portal {portal_id}, found {len(enabled_genres)} previously selected genres")
+        
+        # Sort genres by name
+        genres = sorted([{"name": name, "count": count} for name, count in genre_counts.items()], key=lambda x: x['name'])
+        
+        return flask.jsonify({
+            "genres": genres, 
+            "total_channels": len(all_channels),
+            "enabled_genres": enabled_genres
+        })
+    except Exception as e:
+        logger.error(f"Error loading genres: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/portal/save-genre-selection", methods=["POST"])
+@authorise
+def portal_save_genre_selection():
+    """Save genre selection and enable channels."""
+    try:
+        portal_id = request.json.get('portal_id')
+        selected_genres = request.json.get('selected_genres', [])
+        auto_sync = request.json.get('auto_sync', False)
+        
+        if not portal_id:
+            return flask.jsonify({"error": "No portal ID provided"}), 400
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        if not portal:
+            return flask.jsonify({"error": "Portal not found"}), 404
+        
+        # Fetch channels from portal
+        url = portal["url"]
+        macs = list(portal["macs"].keys())
+        proxy = portal["proxy"]
+        portal_name = portal["name"]
+        
+        all_channels = None
+        genres_dict = None
+        
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if token:
+                    stb.getProfile(url, mac, token, proxy)
+                    all_channels = stb.getAllChannels(url, mac, token, proxy)
+                    genres_dict = stb.getGenreNames(url, mac, token, proxy)
+                    if all_channels and genres_dict:
+                        break
+            except Exception as e:
+                logger.error(f"Error fetching from MAC {mac}: {e}")
+        
+        if not all_channels or not genres_dict:
+            return flask.jsonify({"error": "Failed to fetch channels"}), 500
+        
+        # Save enabled channels to portal configuration
+        enabled_channels = []
+        enabled_count = 0
+        total_count = 0
+        
+        logger.info(f"Selected genres: {selected_genres}")
+        
+        for channel in all_channels:
+            channel_id = str(channel["id"])
+            genre_id = str(channel.get("tv_genre_id", ""))
+            genre = genres_dict.get(genre_id, "")
+            
+            # Enable channel if its genre is selected
+            if genre in selected_genres:
+                enabled_channels.append(channel_id)
+                enabled_count += 1
+            total_count += 1
+        
+        logger.info(f"Enabled {enabled_count} channels out of {total_count}")
+        logger.info(f"First 10 enabled channel IDs: {enabled_channels[:10]}")
+        
+        # Update portal configuration
+        portals = getPortals()
+        if portal_id in portals:
+            portals[portal_id]["enabled channels"] = enabled_channels
+            portals[portal_id]["selected genres"] = selected_genres  # Save selected genres
+            savePortals(portals)
+            logger.info(f"Saved to portal config. Verifying...")
+            
+            # Verify it was saved
+            portals_verify = getPortals()
+            saved_count = len(portals_verify[portal_id].get("enabled channels", []))
+            saved_genres = portals_verify[portal_id].get("selected genres", [])
+            logger.info(f"Verification: {saved_count} channels in 'enabled channels' list")
+            logger.info(f"Verification: {len(saved_genres)} genres in 'selected genres' list")
+        else:
+            logger.error(f"Portal {portal_id} not found in portals!")
+        
+        # Clear session
+        flask.session.pop('new_portal_id', None)
+        flask.session.pop('new_portal_name', None)
+        
+        logger.info(f"Saved {enabled_count}/{total_count} channels for portal {portal_name}")
+        return flask.jsonify({
+            "success": True, 
+            "enabled_count": enabled_count, 
+            "total_count": total_count
+        })
+    except Exception as e:
+        logger.error(f"Error saving genre selection: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
 @app.route("/portal/remove", methods=["POST"])
 @authorise
 def portalRemove():
@@ -421,6 +690,7 @@ def editor_data():
             macs = list(portals[portal]["macs"].keys())
             proxy = portals[portal]["proxy"]
             enabledChannels = portals[portal].get("enabled channels", [])
+            logger.info(f"Portal {portalName} has {len(enabledChannels)} enabled channels")
             customChannelNames = portals[portal].get("custom channel names", {})
             customGenres = portals[portal].get("custom genres", {})
             customChannelNumbers = portals[portal].get("custom channel numbers", {})
@@ -440,15 +710,19 @@ def editor_data():
                     genres = None
 
             if allChannels and genres:
+                # Only show enabled channels in the editor
                 for channel in allChannels:
                     channelId = str(channel["id"])
+                    
+                    # Skip if channel is not in enabled list
+                    if channelId not in enabledChannels:
+                        continue
+                    
                     channelName = str(channel["name"])
                     channelNumber = str(channel["number"])
                     genre = str(genres.get(str(channel["tv_genre_id"])))
-                    if channelId in enabledChannels:
-                        enabled = True
-                    else:
-                        enabled = False
+                    enabled = True  # All channels shown are enabled
+                    
                     customChannelNumber = customChannelNumbers.get(channelId)
                     if customChannelNumber == None:
                         customChannelNumber = ""
@@ -487,6 +761,8 @@ def editor_data():
                             + "?web=true",
                         }
                     )
+                
+                logger.info(f"Added {len([c for c in channels if c['portal'] == portal])} channels from portal {portalName} to editor")
             else:
                 logger.error(
                     "Error getting channel data for {}, skipping".format(portalName)
@@ -499,6 +775,73 @@ def editor_data():
     data = {"data": channels}
 
     return flask.jsonify(data)
+
+@app.route("/editor/portals", methods=["GET"])
+@authorise
+def editor_portals():
+    """Get list of unique portals for filter dropdown."""
+    try:
+        portals = getPortals()
+        portal_names = [portals[p]["name"] for p in portals if portals[p].get("enabled") == "true"]
+        return flask.jsonify({"portals": sorted(set(portal_names))})
+    except Exception as e:
+        logger.error(f"Error in editor_portals: {e}")
+        return flask.jsonify({"portals": [], "error": str(e)}), 500
+
+
+@app.route("/editor/genres", methods=["GET"])
+@authorise
+def editor_genres():
+    """Get list of unique genres for filter dropdown."""
+    try:
+        genres_set = set()
+        portals = getPortals()
+        
+        # Quick approach: collect genres from custom genres in config
+        for portal_id in portals:
+            portal = portals[portal_id]
+            if portal.get("enabled") == "true":
+                custom_genres = portal.get("custom genres", {})
+                for genre in custom_genres.values():
+                    if genre:
+                        genres_set.add(genre)
+        
+        # If no custom genres found, try to fetch from one portal
+        if not genres_set:
+            for portal_id in portals:
+                portal = portals[portal_id]
+                if portal.get("enabled") == "true":
+                    url = portal["url"]
+                    macs = list(portal["macs"].keys())
+                    proxy = portal["proxy"]
+                    
+                    # Try first MAC only
+                    if macs:
+                        try:
+                            token = stb.getToken(url, macs[0], proxy)
+                            if token:
+                                stb.getProfile(url, macs[0], token, proxy)
+                                all_channels = stb.getAllChannels(url, macs[0], token, proxy)
+                                genres_dict = stb.getGenreNames(url, macs[0], token, proxy)
+                                
+                                if all_channels and genres_dict:
+                                    for channel in all_channels:
+                                        genre_id = str(channel.get("tv_genre_id", ""))
+                                        genre = genres_dict.get(genre_id, "")
+                                        if genre:
+                                            genres_set.add(genre)
+                                    break
+                        except Exception as e:
+                            logger.error(f"Error fetching genres: {e}")
+                            continue
+        
+        genres = sorted(list(genres_set))
+        logger.info(f"Returning {len(genres)} genres")
+        return flask.jsonify({"genres": genres})
+    except Exception as e:
+        logger.error(f"Error in editor_genres: {e}")
+        return flask.jsonify({"genres": [], "error": str(e)}), 500
+
 
 @app.route("/editor/save", methods=["POST"])
 @authorise
