@@ -11,7 +11,7 @@ import threading
 from threading import Thread
 import logging
 logger = logging.getLogger("MacReplay")
-logger.setLevel(logging.Info)
+logger.setLevel(logging.INFO)
 logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
 
