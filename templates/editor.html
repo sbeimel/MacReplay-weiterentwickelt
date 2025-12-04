@@ -294,29 +294,45 @@
     function populateFilters() {
         // Populate portals dropdown
         fetch('/editor/portals')
-            .then(res => res.json())
+            .then(res => {
+                console.log('Portals response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Portals data:', data);
                 const select = document.getElementById('portalFilter');
-                data.portals.forEach(portal => {
-                    const option = document.createElement('option');
-                    option.value = portal;
-                    option.textContent = portal;
-                    select.appendChild(option);
-                });
+                if (data.portals && data.portals.length > 0) {
+                    data.portals.forEach(portal => {
+                        const option = document.createElement('option');
+                        option.value = portal;
+                        option.textContent = portal;
+                        select.appendChild(option);
+                    });
+                } else {
+                    console.warn('No portals returned');
+                }
             })
             .catch(err => console.error('Error loading portals:', err));
 
         // Populate genres dropdown
         fetch('/editor/genres')
-            .then(res => res.json())
+            .then(res => {
+                console.log('Genres response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Genres data:', data);
                 const select = document.getElementById('genreFilter');
-                data.genres.forEach(genre => {
-                    const option = document.createElement('option');
-                    option.value = genre;
-                    option.textContent = genre;
-                    select.appendChild(option);
-                });
+                if (data.genres && data.genres.length > 0) {
+                    data.genres.forEach(genre => {
+                        const option = document.createElement('option');
+                        option.value = genre;
+                        option.textContent = genre;
+                        select.appendChild(option);
+                    });
+                } else {
+                    console.warn('No genres returned');
+                }
             })
             .catch(err => console.error('Error loading genres:', err));
     }
@@ -382,7 +398,7 @@
                 ],
             },
             ajax: {
-                "url": "{{ url_for('editor_data') }}",
+                "url": "/editor_data",
                 "dataType": "json",
                 "contentType": "application/json",
                 "data": function(d) {
@@ -567,7 +583,7 @@
         var originalText = btn.html();
         btn.html('<i class="fa fa-spinner fa-spin"></i> Refreshing...').prop('disabled', true);
         
-        fetch('{{ url_for("editorRefresh") }}', {
+        fetch('/editor/refresh', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

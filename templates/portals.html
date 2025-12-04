@@ -45,6 +45,9 @@
                 </p>
             </div>
             <div class="card-footer">
+                <button class="btn btn-sm btn-outline-success" onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
+                    <i class="fas fa-filter"></i> Select Genres
+                </button>
                 <button class="btn btn-sm btn-outline-primary" onclick="editPortal('{{ portal_id }}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
@@ -83,8 +86,8 @@
                     </div>
                     <div class="mb-3">
                         <label for="macs" class="form-label">MAC Addresses</label>
-                        <textarea class="form-control" id="macs" name="macs" rows="3" placeholder="00:1A:79:XX:XX:XX,00:1A:79:YY:YY:YY" required></textarea>
-                        <div class="form-text">Enter MAC addresses separated by commas</div>
+                        <textarea class="form-control" id="macs" name="macs" rows="4" placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY&#10;00:1A:79:ZZ:ZZ:ZZ" required></textarea>
+                        <div class="form-text">Enter MAC addresses (one per line)</div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -139,9 +142,17 @@
                         <input type="url" class="form-control" id="edit_url" name="url" required>
                     </div>
                     <div class="mb-3">
-                        <label for="edit_macs" class="form-label">MAC Addresses</label>
-                        <textarea class="form-control" id="edit_macs" name="macs" rows="3" required></textarea>
-                        <div class="form-text">Enter MAC addresses separated by commas</div>
+                        <label for="edit_macs" class="form-label">Current MAC Addresses</label>
+                        <table class="table table-sm" id="editMacTable">
+                            <tbody id="editMacTableBody">
+                                <!-- MACs will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_macs" class="form-label">Update MAC Addresses</label>
+                        <textarea class="form-control" id="edit_macs" name="macs" rows="4" required></textarea>
+                        <div class="form-text">Enter MAC addresses (one per line)</div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -197,11 +208,85 @@
         </div>
     </div>
 </div>
+
+<!-- Genre Selection Modal -->
+<div class="modal fade" id="genreSelectionModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-filter"></i> Select Genres for <span id="genre_portal_name"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 
+                    Select which genres you want to enable. Only channels from selected genres will be activated.
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="autoEnableNewGroups" checked>
+                    <label class="form-check-label" for="autoEnableNewGroups">
+                        <strong>Automatically enable new genres discovered on future scans</strong>
+                    </label>
+                </div>
+                
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="genreSearchInput" placeholder="Search genres..." onkeyup="filterGenres()">
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <span id="selectedGenreCount">0</span> genres selected
+                        <span class="text-muted ms-2">(<span id="visibleGenreCount">0</span> visible)</span>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="selectAllGenresModal()">
+                            Select All Visible
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="deselectAllGenresModal()">
+                            Deselect All Visible
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="genreLoadingMessage" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Loading genres from portal...</p>
+                </div>
+                
+                <div id="genreListContainer" style="display: none; max-height: 400px; overflow-y: auto;">
+                    <div class="row g-2" id="genreList">
+                        <!-- Genres will be loaded here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveGenreSelectionModal()" id="saveGenresBtn">
+                    <i class="fas fa-save"></i> Save and Enable Channels
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const portalsData = {{ portals | tojson }};
+
+// Auto-open genre modal if portal was just added
+{% if show_genre_modal and genre_modal_portal_id %}
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        selectGenres('{{ genre_modal_portal_id }}', '{{ genre_modal_portal_name }}');
+    }, 500);
+});
+{% endif %}
 
 function editPortal(portalId) {
     const portal = portalsData[portalId];
@@ -211,10 +296,36 @@ function editPortal(portalId) {
     document.getElementById('edit_enabled').checked = portal.enabled === 'true';
     document.getElementById('edit_name').value = portal.name;
     document.getElementById('edit_url').value = portal.url;
-    document.getElementById('edit_macs').value = Object.keys(portal.macs).join(',');
+    document.getElementById('edit_macs').value = Object.keys(portal.macs).join('\n');
     document.getElementById('edit_streams_per_mac').value = portal['streams per mac'];
     document.getElementById('edit_epg_offset').value = portal['epg offset'];
     document.getElementById('edit_proxy').value = portal.proxy || '';
+    
+    // Populate MAC table with expiry dates
+    const macTableBody = document.getElementById('editMacTableBody');
+    macTableBody.innerHTML = '';
+    
+    const now = Date.now();
+    for (const [mac, expiry] of Object.entries(portal.macs)) {
+        const row = document.createElement('tr');
+        const expires = Date.parse(expiry);
+        const diff = expires - now;
+        const daysAway = diff / (1000 * 3600 * 24);
+        
+        // Add color coding
+        if (now > expires) {
+            row.classList.add('table-danger');
+        } else if (daysAway < 30) {
+            row.classList.add('table-warning');
+        }
+        
+        row.innerHTML = `
+            <td><code>${mac.toUpperCase()}</code></td>
+            <td>:</td>
+            <td>${expiry}</td>
+        `;
+        macTableBody.appendChild(row);
+    }
     
     new bootstrap.Modal(document.getElementById('editPortalModal')).show();
 }
@@ -224,6 +335,245 @@ function deletePortal(portalId, portalName) {
     document.getElementById('delete_portal_name').textContent = portalName;
     
     new bootstrap.Modal(document.getElementById('deletePortalModal')).show();
+}
+
+let currentPortalId = null;
+let genresData = [];
+let selectedGenresSet = new Set();
+
+function selectGenres(portalId, portalName) {
+    currentPortalId = portalId;
+    document.getElementById('genre_portal_name').textContent = portalName;
+    
+    // Reset state
+    selectedGenresSet.clear();
+    genresData = [];
+    document.getElementById('genreLoadingMessage').style.display = 'block';
+    document.getElementById('genreListContainer').style.display = 'none';
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('genreSelectionModal'));
+    modal.show();
+    
+    // Load genres
+    fetch('/portal/load-genres', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ portal_id: portalId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error loading genres: ' + data.error);
+            modal.hide();
+            return;
+        }
+        
+        genresData = data.genres;
+        
+        // Pre-select enabled genres
+        selectedGenresSet.clear();
+        if (data.enabled_genres && data.enabled_genres.length > 0) {
+            console.log('Pre-selecting genres:', data.enabled_genres);
+            data.enabled_genres.forEach(genre => selectedGenresSet.add(genre));
+            console.log('Selected genres set size:', selectedGenresSet.size);
+        }
+        
+        renderGenresModal();
+        
+        document.getElementById('genreLoadingMessage').style.display = 'none';
+        document.getElementById('genreListContainer').style.display = 'block';
+    })
+    .catch(err => {
+        console.error('Error loading genres:', err);
+        alert('Error loading genres: ' + err);
+        modal.hide();
+    });
+}
+
+function renderGenresModal() {
+    const container = document.getElementById('genreList');
+    container.innerHTML = '';
+    
+    genresData.forEach(genre => {
+        const col = document.createElement('div');
+        col.className = 'col-md-4 col-lg-3';
+        
+        const card = document.createElement('div');
+        card.className = 'card h-100';
+        card.style.cursor = 'pointer';
+        card.onclick = () => toggleGenreModal(genre.name);
+        
+        // Check if this genre is selected
+        const isSelected = selectedGenresSet.has(genre.name);
+        
+        card.innerHTML = `
+            <div class="card-body p-2">
+                <div class="form-check">
+                    <input class="form-check-input genre-checkbox" type="checkbox" id="genre_${escapeHtml(genre.name)}" data-genre="${escapeHtml(genre.name)}" ${isSelected ? 'checked' : ''}>
+                    <label class="form-check-label w-100" for="genre_${escapeHtml(genre.name)}" style="cursor: pointer;">
+                        <strong>${escapeHtml(genre.name)}</strong>
+                        <br>
+                        <small class="text-muted">${genre.count} channels</small>
+                    </label>
+                </div>
+            </div>
+        `;
+        
+        // Add selected styling
+        if (isSelected) {
+            card.classList.add('border-success', 'bg-light');
+        }
+        
+        col.appendChild(card);
+        container.appendChild(col);
+    });
+    
+    console.log('Rendered', genresData.length, 'genres,', selectedGenresSet.size, 'selected');
+    updateSelectedGenreCount();
+}
+
+function toggleGenreModal(genreName) {
+    if (selectedGenresSet.has(genreName)) {
+        selectedGenresSet.delete(genreName);
+    } else {
+        selectedGenresSet.add(genreName);
+    }
+    
+    updateGenreUIModal();
+}
+
+function selectAllGenresModal() {
+    // Select only visible genres
+    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
+        const card = checkbox.closest('.col-md-4');
+        if (card && card.style.display !== 'none') {
+            const genreName = checkbox.dataset.genre;
+            selectedGenresSet.add(genreName);
+        }
+    });
+    updateGenreUIModal();
+}
+
+function deselectAllGenresModal() {
+    // Deselect only visible genres
+    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
+        const card = checkbox.closest('.col-md-4');
+        if (card && card.style.display !== 'none') {
+            const genreName = checkbox.dataset.genre;
+            selectedGenresSet.delete(genreName);
+        }
+    });
+    updateGenreUIModal();
+}
+
+function filterGenres() {
+    const searchTerm = document.getElementById('genreSearchInput').value.toLowerCase();
+    let visibleCount = 0;
+    
+    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
+        const genreName = checkbox.dataset.genre.toLowerCase();
+        const card = checkbox.closest('.col-md-4');
+        
+        if (genreName.includes(searchTerm)) {
+            card.style.display = '';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    document.getElementById('visibleGenreCount').textContent = visibleCount;
+}
+
+function updateGenreUIModal() {
+    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
+        const genreName = checkbox.dataset.genre;
+        checkbox.checked = selectedGenresSet.has(genreName);
+        
+        // Update card styling
+        const card = checkbox.closest('.card');
+        if (selectedGenresSet.has(genreName)) {
+            card.classList.add('border-success', 'bg-light');
+        } else {
+            card.classList.remove('border-success', 'bg-light');
+        }
+    });
+    
+    updateSelectedGenreCount();
+}
+
+function updateSelectedGenreCount() {
+    document.getElementById('selectedGenreCount').textContent = selectedGenresSet.size;
+    
+    // Count visible genres
+    let visibleCount = 0;
+    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
+        const card = checkbox.closest('.col-md-4');
+        if (card && card.style.display !== 'none') {
+            visibleCount++;
+        }
+    });
+    document.getElementById('visibleGenreCount').textContent = visibleCount;
+}
+
+function saveGenreSelectionModal() {
+    if (selectedGenresSet.size === 0) {
+        if (!confirm('No genres selected. This means no channels will be enabled. Continue?')) {
+            return;
+        }
+    }
+    
+    const saveBtn = document.getElementById('saveGenresBtn');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    
+    const autoSync = document.getElementById('autoEnableNewGroups').checked;
+    
+    fetch('/portal/save-genre-selection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            portal_id: currentPortalId,
+            selected_genres: Array.from(selectedGenresSet),
+            auto_sync: autoSync
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+        
+        if (data.error) {
+            alert('Error saving: ' + data.error);
+            return;
+        }
+        
+        alert(`Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!`);
+        bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
+        
+        // Optionally redirect to editor
+        if (confirm('Channels have been enabled. Go to the editor to view them?')) {
+            window.location.href = '/editor';
+        }
+    })
+    .catch(err => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+        console.error('Error saving:', err);
+        alert('Error saving: ' + err);
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 {% endblock %} 

@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Genre Selection - MacReplay{% endblock %}
+
+{% block head %}
+<style>
+    .genre-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+    }
+    
+    .genre-card {
+        background: #2d3748;
+        border: 2px solid #4a5568;
+        border-radius: 8px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .genre-card:hover {
+        border-color: #63b3ed;
+        transform: translateY(-2px);
+    }
+    
+    .genre-card.selected {
+        background: #2f855a;
+        border-color: #48bb78;
+    }
+    
+    .genre-card .check-icon {
+        font-size: 24px;
+        color: #48bb78;
+        display: none;
+    }
+    
+    .genre-card.selected .check-icon {
+        display: block;
+    }
+    
+    .genre-info {
+        flex: 1;
+    }
+    
+    .genre-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 5px;
+    }
+    
+    .genre-count {
+        font-size: 14px;
+        color: #a0aec0;
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        text-align: center;
+        color: #fff;
+    }
+    
+    .spinner {
+        border: 4px solid #4a5568;
+        border-top: 4px solid #48bb78;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .action-buttons {
+        position: sticky;
+        bottom: 0;
+        background: #1a202c;
+        padding: 20px;
+        border-top: 2px solid #4a5568;
+        margin: 0 -20px -20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid" style="background: #1a202c; min-height: 100vh; padding: 40px 20px;">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="text-light mb-2">
+                <i class="fas fa-filter"></i> M3U Group Filter & Auto Channel Sync
+            </h2>
+            <p class="text-muted mb-4">Portal: <strong class="text-light">{{ portal_name }}</strong></p>
+            
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Auto Channel Sync:</strong> When enabled, channels will be automatically created for all streams in the group during M3U updates, and removed when streams are no longer present.
+            </div>
+            
+            <div class="form-check mb-4">
+                <input class="form-check-input" type="checkbox" id="autoEnableNewGroups" checked>
+                <label class="form-check-label text-light" for="autoEnableNewGroups">
+                    <strong>Automatically enable new groups discovered on future scans</strong>
+                </label>
+                <div class="form-text">When disabled, new groups from the M3U source will be created but disabled by default. You can enable them manually later.</div>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="text-light mb-0">Groups & Auto Sync Settings</h5>
+                <div>
+                    <button class="btn btn-outline-light btn-sm me-2" onclick="selectAllGenres()">
+                        Select Visible
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" onclick="deselectAllGenres()">
+                        Deselect Visible
+                    </button>
+                </div>
+            </div>
+            
+            <div id="loadingMessage" class="text-center text-light py-5">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3">Loading genres from portal...</p>
+            </div>
+            
+            <div id="genreContainer" style="display: none;">
+                <div class="genre-grid" id="genreGrid">
+                    <!-- Genres will be loaded here -->
+                </div>
+                
+                <div class="action-buttons">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="text-light">
+                            <span id="selectedCount">0</span> groups selected
+                        </div>
+                        <div>
+                            <button class="btn btn-secondary me-2" onclick="skipGenreSelection()">
+                                Cancel
+                            </button>
+                            <button class="btn btn-primary" onclick="saveGenreSelection()">
+                                <i class="fas fa-save"></i> Save and Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="savingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <h4>Saving channels...</h4>
+        <p>This may take a moment</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let genres = [];
+let selectedGenres = new Set();
+const portalId = '{{ portal_id }}';
+
+// Load genres on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadGenres();
+});
+
+function loadGenres() {
+    fetch('/portal/load-genres', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ portal_id: portalId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error loading genres: ' + data.error);
+            window.location.href = '/portals';
+            return;
+        }
+        
+        genres = data.genres;
+        renderGenres();
+        
+        document.getElementById('loadingMessage').style.display = 'none';
+        document.getElementById('genreContainer').style.display = 'block';
+    })
+    .catch(err => {
+        console.error('Error loading genres:', err);
+        alert('Error loading genres: ' + err);
+        window.location.href = '/portals';
+    });
+}
+
+function renderGenres() {
+    const grid = document.getElementById('genreGrid');
+    grid.innerHTML = '';
+    
+    genres.forEach(genre => {
+        const card = document.createElement('div');
+        card.className = 'genre-card';
+        card.onclick = () => toggleGenre(genre.name);
+        
+        card.innerHTML = `
+            <div class="genre-info">
+                <div class="genre-name">${escapeHtml(genre.name)}</div>
+                <div class="genre-count">${genre.count} channels</div>
+            </div>
+            <div class="check-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+    
+    updateSelectedCount();
+}
+
+function toggleGenre(genreName) {
+    if (selectedGenres.has(genreName)) {
+        selectedGenres.delete(genreName);
+    } else {
+        selectedGenres.add(genreName);
+    }
+    
+    updateUI();
+}
+
+function selectAllGenres() {
+    genres.forEach(genre => selectedGenres.add(genre.name));
+    updateUI();
+}
+
+function deselectAllGenres() {
+    selectedGenres.clear();
+    updateUI();
+}
+
+function updateUI() {
+    const cards = document.querySelectorAll('.genre-card');
+    cards.forEach((card, index) => {
+        const genreName = genres[index].name;
+        if (selectedGenres.has(genreName)) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+    
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    document.getElementById('selectedCount').textContent = selectedGenres.size;
+}
+
+function saveGenreSelection() {
+    if (selectedGenres.size === 0) {
+        if (!confirm('No genres selected. This means no channels will be enabled. Continue?')) {
+            return;
+        }
+    }
+    
+    document.getElementById('savingOverlay').style.display = 'flex';
+    
+    const autoSync = document.getElementById('autoEnableNewGroups').checked;
+    
+    fetch('/portal/save-genre-selection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            portal_id: portalId,
+            selected_genres: Array.from(selectedGenres),
+            auto_sync: autoSync
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('savingOverlay').style.display = 'none';
+        
+        if (data.error) {
+            alert('Error saving: ' + data.error);
+            return;
+        }
+        
+        alert(`Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!`);
+        window.location.href = '/editor';
+    })
+    .catch(err => {
+        document.getElementById('savingOverlay').style.display = 'none';
+        console.error('Error saving:', err);
+        alert('Error saving: ' + err);
+    });
+}
+
+function skipGenreSelection() {
+    if (confirm('Skip genre selection? You can enable channels manually in the editor.')) {
+        window.location.href = '/portals';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
