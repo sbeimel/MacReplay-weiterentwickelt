@@ -2740,4 +2740,5 @@ if __name__ == "__main__":
     if "TERM_PROGRAM" in os.environ.keys() and os.environ["TERM_PROGRAM"] == "vscode":
         app.run(host="0.0.0.0", port=8001, debug=True)
     else:
-         waitress.serve(app, host="0.0.0.0", port=8001, _quiet=True, threads=24)
+         waitress.serve(app, port=8001, _quiet=True, threads=24)
+
