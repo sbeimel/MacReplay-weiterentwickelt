@@ -3,239 +3,304 @@
 {% block title %}Settings - MacReplay{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <h2><i class="fas fa-cog"></i> Settings</h2>
-        <p class="text-muted">Configure MacReplay application settings</p>
-    </div>
-</div>
-
-<form method="POST" action="/settings/save">
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-video"></i> Streaming Settings</h5>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="stream_method" class="form-label">Stream Method</label>
-                        <select class="form-select" id="stream_method" name="stream method">
-                            <option value="ffmpeg" {{ 'selected' if settings['stream method'] == 'ffmpeg' }}>FFmpeg</option>
-                            <option value="redirect" {{ 'selected' if settings['stream method'] == 'redirect' }}>Direct Redirect</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="output_format" class="form-label">Output Format</label>
-                        <select class="form-select" id="output_format" name="output format">
-                            <option value="mpegts" {{ 'selected' if settings['output format'] == 'mpegts' }}>MPEG-TS (pipe) - Current behavior</option>
-                            <option value="hls" {{ 'selected' if settings['output format'] == 'hls' }}>HLS (segmented) - Instant start on Plex/Apple TV</option>
-                        </select>
-                        <div class="form-text">
-                            HLS is recommended for Plex/Apple TV (faster start, consumes disk space for segments).
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="hls_segment_type" class="form-label">HLS Segment Type</label>
-                        <select class="form-select" id="hls_segment_type" name="hls segment type">
-                            <option value="fmp4" {{ 'selected' if settings['hls segment type'] == 'fmp4' }}>fMP4 - Best for Plex (recommended)</option>
-                            <option value="mpegts" {{ 'selected' if settings['hls segment type'] == 'mpegts' }}>MPEG-TS - Better compatibility</option>
-                        </select>
-                        <div class="form-text">
-                            fMP4 provides better Plex compatibility and faster startup. Only applies when Output Format is HLS.
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="hls_segment_duration" class="form-label">HLS Segment Duration (seconds)</label>
-                                <input type="number" class="form-control" id="hls_segment_duration" name="hls segment duration" 
-                                       value="{{ settings['hls segment duration'] }}" min="2" max="10">
-                                <div class="form-text">
-                                    Lower = faster start, more CPU. Recommended: 4 seconds.
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="hls_playlist_size" class="form-label">HLS Playlist Size (segments)</label>
-                                <input type="number" class="form-control" id="hls_playlist_size" name="hls playlist size" 
-                                       value="{{ settings['hls playlist size'] }}" min="3" max="20">
-                                <div class="form-text">
-                                    Number of segments to keep. Recommended: 6.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="ffmpeg_command" class="form-label">FFmpeg Command (MPEG-TS only)</label>
-                        <textarea class="form-control" id="ffmpeg_command" name="ffmpeg command" rows="3">{{ settings['ffmpeg command'] }}</textarea>
-                        <div class="form-text">
-                            Use placeholders: &lt;url&gt;, &lt;proxy&gt;, &lt;timeout&gt;. Only used when Output Format is MPEG-TS.
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="ffmpeg_timeout" class="form-label">FFmpeg Timeout (seconds)</label>
-                        <input type="number" class="form-control" id="ffmpeg_timeout" name="ffmpeg timeout" 
-                               value="{{ settings['ffmpeg timeout'] }}" min="1" max="60">
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="test_streams" name="test streams" 
-                               value="true" {{ 'checked' if settings['test streams'] == 'true' }}>
-                        <label class="form-check-label" for="test_streams">
-                            Test streams before serving
-                        </label>
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="try_all_macs" name="try all macs" 
-                               value="true" {{ 'checked' if settings['try all macs'] == 'true' }}>
-                        <label class="form-check-label" for="try_all_macs">
-                            Try all MAC addresses on failure
-                        </label>
-                    </div>
-                </div>
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title">
+                    <i class="ti ti-settings me-2"></i>
+                    Settings
+                </h2>
             </div>
-        </div>
-        
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-list"></i> Playlist Settings</h5>
-                </div>
-                <div class="card-body">
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="use_channel_genres" name="use channel genres" 
-                               value="true" {{ 'checked' if settings['use channel genres'] == 'true' }}>
-                        <label class="form-check-label" for="use_channel_genres">
-                            Include channel genres in playlist
-                        </label>
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="use_channel_numbers" name="use channel numbers" 
-                               value="true" {{ 'checked' if settings['use channel numbers'] == 'true' }}>
-                        <label class="form-check-label" for="use_channel_numbers">
-                            Include channel numbers in playlist
-                        </label>
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="sort_by_genre" name="sort playlist by channel genre" 
-                               value="true" {{ 'checked' if settings['sort playlist by channel genre'] == 'true' }}>
-                        <label class="form-check-label" for="sort_by_genre">
-                            Sort playlist by genre
-                        </label>
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="sort_by_number" name="sort playlist by channel number" 
-                               value="true" {{ 'checked' if settings['sort playlist by channel number'] == 'true' }}>
-                        <label class="form-check-label" for="sort_by_number">
-                            Sort playlist by channel number
-                        </label>
-                    </div>
-                    
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="sort_by_name" name="sort playlist by channel name" 
-                               value="true" {{ 'checked' if settings['sort playlist by channel name'] == 'true' }}>
-                        <label class="form-check-label" for="sort_by_name">
-                            Sort playlist by channel name
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-shield-alt"></i> Security Settings</h5>
-                </div>
-                <div class="card-body">
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="enable_security" name="enable security" 
-                               value="true" {{ 'checked' if settings['enable security'] == 'true' }}>
-                        <label class="form-check-label" for="enable_security">
-                            Enable HTTP authentication
-                        </label>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" 
-                               value="{{ settings['username'] }}" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" 
-                               value="{{ settings['password'] }}" required>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-tv"></i> HDHR Settings</h5>
-                </div>
-                <div class="card-body">
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="enable_hdhr" name="enable hdhr" 
-                               value="true" {{ 'checked' if settings['enable hdhr'] == 'true' }}>
-                        <label class="form-check-label" for="enable_hdhr">
-                            Enable HD HomeRun emulation
-                        </label>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="hdhr_name" class="form-label">HDHR Device Name</label>
-                        <input type="text" class="form-control" id="hdhr_name" name="hdhr name" 
-                               value="{{ settings['hdhr name'] }}" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="hdhr_id" class="form-label">HDHR Device ID</label>
-                        <input type="text" class="form-control" id="hdhr_id" name="hdhr id" 
-                               value="{{ settings['hdhr id'] }}" readonly>
-                        <div class="form-text">Device ID is automatically generated</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="hdhr_tuners" class="form-label">Number of Tuners</label>
-                        <input type="number" class="form-control" id="hdhr_tuners" name="hdhr tuners" 
-                               value="{{ settings['hdhr tuners'] }}" min="1" max="20">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between">
-                <div>
+            <div class="col-auto">
+                <div class="btn-list">
                     <a href="/log" target="_blank" class="btn btn-outline-secondary">
-                        <i class="fas fa-file-alt"></i> View Logs
+                        <i class="ti ti-file-text me-2"></i>
+                        View Logs
                     </a>
-                </div>
-                <div>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Save Settings
+                    <button type="submit" form="settingsForm" class="btn btn-primary">
+                        <i class="ti ti-device-floppy me-2"></i>
+                        Save Settings
                     </button>
                 </div>
             </div>
         </div>
     </div>
-</form>
-{% endblock %} 
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <form method="POST" action="/settings/save" id="settingsForm">
+            
+            <!-- 1. STREAMING SETTINGS -->
+            <h3 class="mb-3"><i class="ti ti-video me-2"></i>Streaming Settings</h3>
+            
+            <div class="row row-cards mb-4">
+                <!-- HLS Settings -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-primary-lt">
+                            <h3 class="card-title">HLS Streaming (Recommended for Plex)</h3>
+                            <div class="card-subtitle">Instant channel startup - eliminates 20-40 second black screen</div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-lg-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">Output Format</label>
+                                        <select class="form-select" name="output format">
+                                            <option value="mpegts" {{ 'selected' if settings.get('output format', 'mpegts') == 'mpegts' }}>MPEG-TS (pipe)</option>
+                                            <option value="hls" {{ 'selected' if settings.get('output format', 'mpegts') == 'hls' }}>HLS (segmented)</option>
+                                        </select>
+                                        <small class="form-hint">HLS = instant start on Plex</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-lg-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">Segment Type</label>
+                                        <select class="form-select" name="hls segment type">
+                                            <option value="mpegts" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'mpegts' }}>MPEG-TS</option>
+                                            <option value="fmp4" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'fmp4' }}>fMP4 (recommended)</option>
+                                        </select>
+                                        <small class="form-hint">fMP4 = faster startup</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-lg-2">
+                                    <div class="mb-3">
+                                        <label class="form-label">Segment Duration</label>
+                                        <input type="number" class="form-control" name="hls segment duration" value="{{ settings.get('hls segment duration', '4') }}" min="2" max="10">
+                                        <small class="form-hint">Seconds (default: 4)</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-lg-2">
+                                    <div class="mb-3">
+                                        <label class="form-label">Playlist Size</label>
+                                        <input type="number" class="form-control" name="hls playlist size" value="{{ settings.get('hls playlist size', '6') }}" min="3" max="20">
+                                        <small class="form-hint">Segments (default: 6)</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-lg-2">
+                                    <div class="mb-3">
+                                        <label class="form-label">Max Streams</label>
+                                        <input type="number" class="form-control" name="hls max streams" value="{{ settings.get('hls max streams', '10') }}" min="1" max="50">
+                                        <small class="form-hint">Concurrent (default: 10)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Basic Streaming -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Basic Streaming</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Stream Method</label>
+                                <select class="form-select" name="stream method">
+                                    <option value="ffmpeg" {{ 'selected' if settings['stream method'] == 'ffmpeg' }}>FFmpeg (recommended)</option>
+                                    <option value="redirect" {{ 'selected' if settings['stream method'] == 'redirect' }}>Direct Redirect</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">FFmpeg Timeout</label>
+                                <input type="number" class="form-control" name="ffmpeg timeout" value="{{ settings['ffmpeg timeout'] }}" min="1" max="60">
+                                <small class="form-hint">Seconds (default: 10)</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="test streams" value="true" {{ 'checked' if settings['test streams'] == 'true' }}>
+                                    <span class="form-check-label">Test streams before serving</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="try all macs" value="true" {{ 'checked' if settings['try all macs'] == 'true' }}>
+                                    <span class="form-check-label">Try all MAC addresses on failure</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Playlist -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Playlist Options</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="use channel genres" value="true" {{ 'checked' if settings['use channel genres'] == 'true' }}>
+                                    <span class="form-check-label">Include genres</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="use channel numbers" value="true" {{ 'checked' if settings['use channel numbers'] == 'true' }}>
+                                    <span class="form-check-label">Include channel numbers</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Sort By</label>
+                                <div class="form-selectgroup">
+                                    <label class="form-selectgroup-item">
+                                        <input type="checkbox" name="sort playlist by channel genre" value="true" class="form-selectgroup-input" {{ 'checked' if settings['sort playlist by channel genre'] == 'true' }}>
+                                        <span class="form-selectgroup-label">Genre</span>
+                                    </label>
+                                    <label class="form-selectgroup-item">
+                                        <input type="checkbox" name="sort playlist by channel number" value="true" class="form-selectgroup-input" {{ 'checked' if settings['sort playlist by channel number'] == 'true' }}>
+                                        <span class="form-selectgroup-label">Number</span>
+                                    </label>
+                                    <label class="form-selectgroup-item">
+                                        <input type="checkbox" name="sort playlist by channel name" value="true" class="form-selectgroup-input" {{ 'checked' if settings['sort playlist by channel name'] == 'true' }}>
+                                        <span class="form-selectgroup-label">Name</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 2. SECURITY & ACCESS -->
+            <h3 class="mb-3"><i class="ti ti-shield-lock me-2"></i>Security & Access</h3>
+            
+            <div class="row row-cards mb-4">
+                <!-- Admin Login -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Admin Login</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="enable security" value="true" {{ 'checked' if settings['enable security'] == 'true' }}>
+                                    <span class="form-check-label">Require login for web interface</span>
+                                </label>
+                                <small class="form-hint text-muted">XC API is not affected by this setting</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label required">Username</label>
+                                <input type="text" class="form-control" name="username" value="{{ settings['username'] }}" required>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label required">Password</label>
+                                <input type="password" class="form-control" name="password" value="{{ settings['password'] }}" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- XC API -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Xtream Codes API</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="xc api enabled" value="true" {{ 'checked' if settings.get('xc api enabled') == 'true' }}>
+                                    <span class="form-check-label">Enable XC API</span>
+                                </label>
+                            </div>
+                            
+                            <div class="alert alert-info mb-0">
+                                <div class="d-flex">
+                                    <div><i class="ti ti-info-circle icon alert-icon"></i></div>
+                                    <div>
+                                        <h4 class="alert-title">API Endpoints</h4>
+                                        <div class="text-muted small">
+                                            <strong>Server:</strong> <code>http://your-server:8001</code><br>
+                                            <strong>API:</strong> <code>/player_api.php</code><br>
+                                            <strong>Streams:</strong> <code>/xc/username/password/stream_id</code><br>
+                                            <br>
+                                            <a href="/xc-users" class="alert-link">Manage XC Users →</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 3. INTEGRATIONS -->
+            <h3 class="mb-3"><i class="ti ti-plug me-2"></i>Integrations</h3>
+            
+            <div class="row row-cards mb-4">
+                <!-- HD HomeRun -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">HD HomeRun Emulation</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="enable hdhr" value="true" {{ 'checked' if settings['enable hdhr'] == 'true' }}>
+                                    <span class="form-check-label">Enable HDHR</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Device Name</label>
+                                <input type="text" class="form-control" name="hdhr name" value="{{ settings['hdhr name'] }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Device ID</label>
+                                <input type="text" class="form-control" name="hdhr id" value="{{ settings['hdhr id'] }}" readonly>
+                                <small class="form-hint">Auto-generated</small>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label">Number of Tuners</label>
+                                <input type="number" class="form-control" name="hdhr tuners" value="{{ settings['hdhr tuners'] }}" min="1" max="20">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 4. ADVANCED -->
+            <h3 class="mb-3"><i class="ti ti-code me-2"></i>Advanced</h3>
+            
+            <div class="row row-cards">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Custom FFmpeg Command</h3>
+                            <div class="card-subtitle text-muted">For advanced users only - modify at your own risk</div>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-0">
+                                <label class="form-label">FFmpeg Command</label>
+                                <textarea class="form-control font-monospace" name="ffmpeg command" rows="3">{{ settings['ffmpeg command'] }}</textarea>
+                                <small class="form-hint">Placeholders: &lt;url&gt;, &lt;proxy&gt;, &lt;timeout&gt;</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

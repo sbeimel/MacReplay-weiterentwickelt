@@ -4,17 +4,21 @@
 <!-- DataTables CSS -->
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+<!-- Plyr.io CSS -->
+<link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 <style>
-    .table-warning {
-        background-color: #fff3cd !important;
-        border-color: #ffeaa7 !important;
+    .copy-url-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        opacity: 0.9;
     }
-    .table-dark .table-warning {
-        background-color: #664d03 !important;
-        color: #fff !important;
+    .copy-url-btn:hover {
+        opacity: 1;
     }
     .duplicate-badge {
-        background-color: #dc3545;
+        background-color: #d63939;
         color: white;
         font-size: 0.7em;
         padding: 2px 6px;
@@ -48,61 +52,95 @@
         display: block;
         line-height: 0.7em;
         opacity: 0.25;
-        color: #999;
         transition: all 0.2s ease;
     }
     
     /* Active state for ascending sort */
-    table.dataTable.table-dark thead th.sorting_asc .sort-arrows .arrow-up {
+    table.dataTable thead th.sorting_asc .sort-arrows .arrow-up {
         opacity: 1 !important;
-        color: #ffc107 !important;
+        color: #206bc4 !important;
         font-weight: bold;
     }
     
     /* Active state for descending sort */
-    table.dataTable.table-dark thead th.sorting_desc .sort-arrows .arrow-down {
+    table.dataTable thead th.sorting_desc .sort-arrows .arrow-down {
         opacity: 1 !important;
-        color: #ffc107 !important;
+        color: #206bc4 !important;
         font-weight: bold;
+    }
+    /* Make table in the editor card reach to the card edges */
+    .card-table-fullwidth .card-body {
+        padding: 0 !important;
+    }
+
+    .card-table-fullwidth .table-responsive {
+        border-radius: 0 !important;
+        margin: 0;
+    }
+
+    .card-table-fullwidth .table {
+        margin-bottom: 0;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-
-<div class="container-fluid p-lg-5">
-    <!-- Filter Controls -->
-    <div class="row mb-3">
-        <div class="col-md-3">
-            <label for="portalFilter" class="form-label text-light">Portal</label>
-            <select class="form-select" id="portalFilter">
-                <option value="">All Portals</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label for="genreFilter" class="form-label text-light">Genre</label>
-            <select class="form-select" id="genreFilter">
-                <option value="">All Genres</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label for="duplicateFilter" class="form-label text-light">Duplicates</label>
-            <select class="form-select" id="duplicateFilter">
-                <option value="">All Channels</option>
-                <option value="enabled_only">Enabled Duplicates Only</option>
-                <option value="unique_only">Unique Only</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label text-light">&nbsp;</label>
-            <button class="btn btn-warning w-100" onclick="deactivateDuplicates()" title="Deactivate enabled duplicate channels (keeps first enabled occurrence)">
-                <i class="fa fa-trash"></i> Deactivate Duplicates
-            </button>
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <div class="page-pretitle">
+                    Management
+                </div>
+                <h2 class="page-title">
+                    <i class="ti ti-edit me-2"></i>
+                    Channel Editor
+                </h2>
+            </div>
         </div>
     </div>
+</div>
 
-    <div class="table-responsive">
-    <table id="table" class="table table-striped table-dark nowrap" width="100%">
+<div class="page-body">
+    <div class="container-xl">
+        <!-- Filter Controls -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Portal</label>
+                        <select class="form-select" id="portalFilter">
+                            <option value="">All Portals</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Genre</label>
+                        <select class="form-select" id="genreFilter">
+                            <option value="">All Genres</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Duplicates</label>
+                        <select class="form-select" id="duplicateFilter">
+                            <option value="">All Channels</option>
+                            <option value="enabled_only">Enabled Duplicates Only</option>
+                            <option value="unique_only">Unique Only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-warning w-100" onclick="deactivateDuplicates()" title="Deactivate enabled duplicate channels (keeps first enabled occurrence)">
+                            <i class="ti ti-trash me-2"></i>Deactivate Duplicates
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-table-fullwidth">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table id="table" class="table table-vcenter card-table nowrap table-sm table-compact" width="100%">
         <thead>
             <tr>
                 <th>
@@ -115,49 +153,56 @@
                 <th>Genre</th>
                 <th>Number</th>
                 <th>EPG ID</th>
+                <th title="OpenEPG Mapping Status" style="width: 60px; text-align: center;"><i class="ti ti-world"></i></th>
                 <th>Fallback For</th>
                 <th>Portal</th>
             </tr>
         </thead>
         <tbody>
         </tbody>
-    </table>
-
-    <form action="/editor/save" method="post" id="save edits" hidden>
-        <input type="text" id="enabledEdits" name="enabledEdits" value="">
-        <input type="text" id="numberEdits" name="numberEdits" value="">
-        <input type="text" id="nameEdits" name="nameEdits" value="">
-        <input type="text" id="genreEdits" name="genreEdits" value="">
-        <input type="text" id="epgEdits" name="epgEdits" value="">
-        <input type="text" id="fallbackEdits" name="fallbackEdits" value="">
-    </form>
-
-    <form action="/editor/reset" method="post" id="reset" hidden>
-    </form>
-
-    <!-- Channel Names Datalist for Fallback Suggestions -->
-    <datalist id="channelNamesList">
-        <!-- Options will be populated dynamically -->
-    </datalist>
-
-    <!-- Video Modal -->
-    <div class="modal fade" id="videoModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="channelLabel">Channel</h5>
+                    </table>
                 </div>
-                <div class="modal-body">
-                    <video width="100%" id="player" controls autoplay>
-                        <source src="" type="video/mp4">
-                        Your browser does not support HTML video.
-                    </video>
+            </div>
+        </div>
+
+        <form action="/editor/save" method="post" id="save edits" hidden>
+            <input type="text" id="enabledEdits" name="enabledEdits" value="">
+            <input type="text" id="numberEdits" name="numberEdits" value="">
+            <input type="text" id="nameEdits" name="nameEdits" value="">
+            <input type="text" id="genreEdits" name="genreEdits" value="">
+            <input type="text" id="epgEdits" name="epgEdits" value="">
+            <input type="text" id="fallbackEdits" name="fallbackEdits" value="">
+        </form>
+
+        <form action="/editor/reset" method="post" id="reset" hidden>
+        </form>
+
+        <!-- Channel Names Datalist for Fallback Suggestions -->
+        <datalist id="channelNamesList">
+            <!-- Options will be populated dynamically -->
+        </datalist>
+
+        <!-- Video Modal -->
+        <div class="modal modal-blur fade" id="videoModal" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-centered" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="channelLabel">Channel</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body p-0" style="position: relative;">
+                        <button class="btn btn-primary btn-sm copy-url-btn" onclick="copyStreamUrl()" title="Copy Stream URL">
+                            <i class="ti ti-copy me-1"></i>
+                            Copy URL
+                        </button>
+                        <video id="player" playsinline controls autoplay>
+                            <source src="" type="video/mp4">
+                        </video>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    </div><!-- end table-responsive -->
-
 </div>
 
 {% endblock %}
@@ -169,6 +214,10 @@
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+<!-- Hls.js for better buffering -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<!-- Plyr.io JS -->
+<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 
 <script>
     var enabledEdits = [];
@@ -250,21 +299,153 @@
         document.getElementById("save edits").submit();
     }
 
-    var player = document.getElementById("player")
-    var title = document.getElementById("channelLabel")
-    player.volume = 0.25
+    var videoElement = document.getElementById("player");
+    var plyrPlayer = null;
+    var hls = null;
+    var currentStreamUrl = "";
+    var title = document.getElementById("channelLabel");
+    
     function selectChannel(ele) {
         link = ele.getAttribute('data-link');
-        player.src = link;
+        currentStreamUrl = link;
         channel = ele.getAttribute('data-customChannelName');
         if (channel == "") {
             channel = ele.getAttribute('data-channelName');
         }
-        title.innerHTML = channel
+        title.innerHTML = channel;
+        
+        // Clean up existing instances
+        if (hls) {
+            hls.destroy();
+            hls = null;
+        }
+        
+        // Initialize Plyr if not already initialized
+        if (!plyrPlayer) {
+            plyrPlayer = new Plyr(videoElement, {
+                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
+                settings: ['quality', 'speed'],
+                quality: {
+                    default: 720,
+                    options: [1080, 720, 576, 480, 360]
+                },
+                volume: 0.25
+            });
+        }
+        
+        // Check if HLS is supported and if the URL is an HLS stream
+        if (Hls.isSupported() && (link.includes('.m3u8') || link.includes('hls'))) {
+            // Use Hls.js with aggressive buffering for smooth playback
+            hls = new Hls({
+                // Aggressive buffering settings
+                maxBufferLength: 60,              // Buffer up to 60 seconds ahead
+                maxMaxBufferLength: 120,          // Maximum buffer length
+                maxBufferSize: 120 * 1000 * 1000, // 120MB buffer size
+                maxBufferHole: 0.5,               // Max hole in buffer
+                lowLatencyMode: false,            // Disable low latency for more buffering
+                backBufferLength: 120,            // Keep 120s back buffer
+                
+                // Fragment loading settings
+                manifestLoadingTimeOut: 20000,    // 20s timeout for manifest
+                manifestLoadingMaxRetry: 6,       // Retry manifest loading
+                levelLoadingTimeOut: 20000,       // 20s timeout for level loading
+                levelLoadingMaxRetry: 6,          // Retry level loading
+                fragLoadingTimeOut: 30000,        // 30s timeout for fragment loading
+                fragLoadingMaxRetry: 10,          // Retry fragment loading more
+                
+                // Start loading immediately
+                startPosition: -1,                // Start from live edge
+                autoStartLoad: true,              // Start loading immediately
+                
+                // Progressive loading
+                progressive: true,
+                enableWorker: true,               // Use web worker for better performance
+                
+                // Reduce stalling
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 10,
+                maxFragLookUpTolerance: 0.25,
+                
+                // ABR (Adaptive Bitrate) settings
+                abrEwmaDefaultEstimate: 5000000,  // 5 Mbps default estimate
+                abrBandWidthFactor: 0.95,
+                abrBandWidthUpFactor: 0.7
+            });
+            
+            hls.loadSource(link);
+            hls.attachMedia(videoElement);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                plyrPlayer.play();
+            });
+            
+            hls.on(Hls.Events.ERROR, function(event, data) {
+                if (data.fatal) {
+                    console.error('HLS Error:', data);
+                    switch(data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.log('Network error, trying to recover...');
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.log('Media error, trying to recover...');
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            console.log('Fatal error, destroying HLS instance');
+                            hls.destroy();
+                            break;
+                    }
+                }
+            });
+        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native HLS support (Safari)
+            videoElement.src = link;
+            plyrPlayer.play();
+        } else {
+            // Regular video source
+            plyrPlayer.source = {
+                type: 'video',
+                sources: [{
+                    src: link,
+                    type: 'video/mp4'
+                }]
+            };
+            plyrPlayer.play();
+        }
+    }
+    
+    function copyStreamUrl() {
+        if (currentStreamUrl) {
+            navigator.clipboard.writeText(currentStreamUrl).then(function() {
+                // Show success feedback
+                const btn = document.querySelector('.copy-url-btn');
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-success');
+                
+                setTimeout(function() {
+                    btn.innerHTML = originalHtml;
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-primary');
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Failed to copy URL:', err);
+                alert('Failed to copy URL to clipboard');
+            });
+        }
     }
 
     $('#videoModal').on('hidden.bs.modal', function () {
-        player.src = "";
+        if (plyrPlayer) {
+            plyrPlayer.stop();
+        }
+        if (hls) {
+            hls.destroy();
+            hls = null;
+        }
+        currentStreamUrl = "";
     })
 
     /* Create an array with the values of all the checkboxes in a column */
@@ -294,29 +475,45 @@
     function populateFilters() {
         // Populate portals dropdown
         fetch('/editor/portals')
-            .then(res => res.json())
+            .then(res => {
+                console.log('Portals response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Portals data:', data);
                 const select = document.getElementById('portalFilter');
-                data.portals.forEach(portal => {
-                    const option = document.createElement('option');
-                    option.value = portal;
-                    option.textContent = portal;
-                    select.appendChild(option);
-                });
+                if (data.portals && data.portals.length > 0) {
+                    data.portals.forEach(portal => {
+                        const option = document.createElement('option');
+                        option.value = portal;
+                        option.textContent = portal;
+                        select.appendChild(option);
+                    });
+                } else {
+                    console.warn('No portals returned');
+                }
             })
             .catch(err => console.error('Error loading portals:', err));
 
         // Populate genres dropdown
         fetch('/editor/genres')
-            .then(res => res.json())
+            .then(res => {
+                console.log('Genres response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Genres data:', data);
                 const select = document.getElementById('genreFilter');
-                data.genres.forEach(genre => {
-                    const option = document.createElement('option');
-                    option.value = genre;
-                    option.textContent = genre;
-                    select.appendChild(option);
-                });
+                if (data.genres && data.genres.length > 0) {
+                    data.genres.forEach(genre => {
+                        const option = document.createElement('option');
+                        option.value = genre;
+                        option.textContent = genre;
+                        select.appendChild(option);
+                    });
+                } else {
+                    console.warn('No genres returned');
+                }
             })
             .catch(err => console.error('Error loading genres:', err));
     }
@@ -354,7 +551,7 @@
             buttons: {
                 buttons: [
                     {
-                        text: '<i class="fa fa-save"></i> Save',
+                        text: '<i class="ti ti-device-floppy me-2"></i>Save',
                         titleAttr: 'Save',
                         className: "btn btn-success",
                         action: function () {
@@ -362,7 +559,7 @@
                         }
                     },
                     {
-                        text: '<i class="fa fa-sync"></i> Refresh Channels',
+                        text: '<i class="ti ti-refresh me-2"></i>Refresh Channels',
                         titleAttr: 'Refresh channel list from portal',
                         className: "btn btn-primary",
                         action: function () {
@@ -370,7 +567,7 @@
                         }
                     },
                     {
-                        text: '<i class="fa fa-undo"></i> Reset',
+                        text: '<i class="ti ti-rotate-clockwise me-2"></i>Reset',
                         titleAttr: 'Reset',
                         className: "btn btn-danger",
                         action: function () {
@@ -382,7 +579,7 @@
                 ],
             },
             ajax: {
-                "url": "{{ url_for('editor_data') }}",
+                "url": "/editor_data",
                 "dataType": "json",
                 "contentType": "application/json",
                 "data": function(d) {
@@ -415,7 +612,7 @@
                     data: "link",
                     render: function (data, type, row, meta) {
                         return '<button \
-                            class="btn btn-success btn-block" \
+                            class="btn btn-success btn-sm btn-icon" \
                             title="Play" \
                             data-bs-toggle="modal" \
                             data-bs-target="#videoModal" \
@@ -423,7 +620,7 @@
                             data-channelName="' + row.channelName + '" \
                             data-customChannelName="' + row.customChannelName + '" \
                             data-link="' + row.link + '">\
-                            <i class="fa fa-play"></i>\
+                            <i class="ti ti-player-play"></i>\
                         </button>'
                     }
                 },
@@ -492,6 +689,20 @@
                                 placeholder="' + row.portal + row.channelId + '" \
                                 title="' + row.portal + row.channelId + '" \
                                 value="' + row.customEpgId + '">'
+                    },
+                },
+                {
+                    data: "openepgName",
+                    orderable: false,
+                    className: "text-center",
+                    render: function (data, type, row, meta) {
+                        if (data && data.trim() !== '') {
+                            return '<span class="badge bg-success" title="Mapped to: ' + data + '" style="cursor: help;">' + 
+                                   '<i class="ti ti-check"></i>' +
+                                   '</span>';
+                        } else {
+                            return '<span class="text-muted" title="Not mapped to OpenEPG" style="cursor: help;">-</span>';
+                        }
                     },
                 },
                 {
@@ -565,9 +776,9 @@
         // Show loading indicator
         var btn = $('.btn-primary').first();
         var originalText = btn.html();
-        btn.html('<i class="fa fa-spinner fa-spin"></i> Refreshing...').prop('disabled', true);
+        btn.html('<span class="spinner-border spinner-border-sm me-2"></span>Refreshing...').prop('disabled', true);
         
-        fetch('{{ url_for("editorRefresh") }}', {
+        fetch('/editor/refresh', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
