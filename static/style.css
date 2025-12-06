@@ -6,11 +6,12 @@
 
 .card {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: transform 0.2s;
 }
 
+/* Remove all hover effects globally */
 .card:hover {
-    transform: translateY(-2px);
+    transform: none !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
 .badge {
@@ -26,6 +27,117 @@
 .table-responsive {
     border-radius: 0.375rem;
 }
+
+/* make the table in cards with this class reach the card edges */
+.card-table-fullwidth .card-body {
+    padding: 0 !important;
+}
+
+.card-table-fullwidth .table-responsive {
+    border-radius: 0 !important;
+    margin: 0;
+    overflow: visible !important; /* ensure scaled switches and pseudo-elements aren't clipped */
+}
+
+.card-table-fullwidth .table {
+    margin-bottom: 0;
+}
+
+/* Disable card hover movement for the editor table card */
+.card.card-table-fullwidth:hover {
+    transform: none !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important; /* slightly reduce hover shadow instead of translate */
+}
+
+/* Compact table style for the editor table */
+.table-compact th,
+.table-compact td {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    vertical-align: middle !important;
+    font-size: 0.9rem;
+    overflow: visible !important; /* avoid clipping of scaled switches */
+}
+
+
+.table-compact thead th {
+    font-size: 0.85rem;
+    padding-top: 0.2rem !important;
+    padding-bottom: 0.2rem !important;
+}
+
+.table-compact .form-check {
+    margin: 0;
+    display: inline-flex; /* align and center the switch vertically */
+    align-items: center;
+    justify-content: center;
+    height: auto; /* allow natural height so switch isn't clipped */
+    overflow: visible; /* make sure switch knob isn't hidden */
+}
+
+.table-compact .form-check-input {
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
+    vertical-align: middle;
+    display: inline-block;
+    transform-origin: center center; /* ensure transform scales from center */
+    min-width: 0.9rem;
+    min-height: 0.9rem;
+    box-sizing: content-box;
+}
+
+/* Specific tuning for the switch style (form-switch) used in the editor */
+.table-compact .form-check.form-switch {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.table-compact .form-check.form-switch .form-check-input {
+    transform: scale(0.8); /* shrink the visual size of the switch */
+    margin: 0 0.1rem;
+    margin-left: 0.2rem;
+    z-index: 1; /* ensure the switch is above other elements */
+}
+
+/* Keep the switch at the same scaled size on hover to avoid visual jump/clip */
+.table-compact .form-check.form-switch .form-check-input:hover {
+    transform: scale(0.8) !important;
+}
+
+/* Avoid button hover transforms inside compact table */
+.table-compact .btn:hover { transform: none !important; }
+
+/* Avoid row hover highlight for compact editor table if present in theme */
+.table-compact tbody tr:hover { background-color: inherit !important; }
+
+.table-compact .form-control,
+.table-compact .form-select {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.35rem;
+    height: auto;
+}
+
+.table-compact .btn {
+    padding: 0.25rem 0.35rem;
+    font-size: 0.85rem;
+}
+
+/* Reduce height for table rows that contain icon-only buttons */
+.table-compact td .btn-sm { padding: 0.2rem 0.35rem; }
+
+/* center first column (checkbox column) and constrain width slightly */
+.table-compact th:first-child,
+.table-compact td:first-child {
+    text-align: center;
+    width: 60px; /* allow extra space for the switch */
+    max-width: 60px;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+}
+
 
 .spinner-border-sm {
     width: 1rem;
@@ -64,14 +176,45 @@
     75% { transform: translateX(5px); }
 }
 
-/* Dark theme support */
-@media (prefers-color-scheme: dark) {
-    .card {
-        background-color: #2d3748;
-        border-color: #4a5568;
-    }
-    
-    .table-striped > tbody > tr:nth-of-type(odd) > td {
-        background-color: rgba(255,255,255,0.05);
-    }
+/* Theme-specific styles - use data-bs-theme instead of prefers-color-scheme */
+/* Light theme (default) - no overrides needed, Tabler handles it */
+
+/* Dark theme overrides */
+[data-bs-theme="dark"] .card {
+    background-color: var(--tblr-card-bg, #1e293b);
+    border-color: var(--tblr-border-color, #334155);
+}
+
+[data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+    background-color: rgba(255,255,255,0.05);
+}
+
+[data-bs-theme="dark"] .alert-info {
+    background-color: rgba(32, 107, 196, 0.1);
+    border-color: rgba(32, 107, 196, 0.2);
+    color: var(--tblr-body-color);
+}
+
+[data-bs-theme="dark"] .form-hint {
+    color: var(--tblr-secondary-color, #94a3b8);
+}
+
+/* Light theme - ensure proper colors */
+[data-bs-theme="light"] .card {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+}
+
+[data-bs-theme="light"] .alert-info {
+    background-color: #e7f5ff;
+    border-color: #b3d9ff;
+    color: #1e293b;
+}
+
+[data-bs-theme="light"] .form-hint {
+    color: #64748b;
+}
+
+[data-bs-theme="light"] .card-subtitle {
+    color: #64748b;
 } 
