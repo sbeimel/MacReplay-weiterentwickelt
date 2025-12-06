@@ -1,11 +1,12 @@
-version: '3.8'
-
 services:
   macreplay:
     build: .
     container_name: macreplay
     ports:
       - "8001:8001"
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     volumes:
       # Persist configuration and logs
       - ./data:/app/data
@@ -20,9 +21,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-# Optional: if you want to use an external network
-# networks:
-#   default:
-#     external: true
-#     name: your-network-name 

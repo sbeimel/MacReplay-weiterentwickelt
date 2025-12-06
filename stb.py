@@ -3,13 +3,52 @@ from requests.adapters import HTTPAdapter, Retry
 from urllib.parse import urlparse
 import re
 import logging
+import time
 
 logger = logging.getLogger("MacReplay.stb")
 logger.setLevel(logging.DEBUG)
 
-s = requests.Session()
-retries = Retry(total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
-s.mount("http://", HTTPAdapter(max_retries=retries))
+# Session management with periodic refresh to prevent memory leaks
+_session = None
+_session_created = 0
+_SESSION_MAX_AGE = 300  # Refresh session every 5 minutes
+
+
+def _get_session():
+    """Get or create a requests session with automatic refresh."""
+    global _session, _session_created
+    
+    current_time = time.time()
+    
+    # Create new session if none exists or if too old
+    if _session is None or (current_time - _session_created) > _SESSION_MAX_AGE:
+        if _session is not None:
+            try:
+                _session.close()
+            except:
+                pass
+        
+        _session = requests.Session()
+        retries = Retry(total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+        _session.mount("http://", HTTPAdapter(max_retries=retries))
+        _session.mount("https://", HTTPAdapter(max_retries=retries))
+        _session_created = current_time
+        logger.debug("Created new requests session")
+    
+    return _session
+
+
+def clear_session():
+    """Clear the session to free memory."""
+    global _session, _session_created
+    if _session is not None:
+        try:
+            _session.close()
+        except:
+            pass
+        _session = None
+        _session_created = 0
+        logger.debug("Cleared requests session")
 
 
 def getUrl(url, proxy=None):
@@ -44,9 +83,10 @@ def getUrl(url, proxy=None):
     headers = {"User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)"}
 
     try:
+        session = _get_session()
         for i in urls:
             try:
-                response = s.get(url + i, headers=headers, proxies=proxies, timeout=10)
+                response = session.get(url + i, headers=headers, proxies=proxies, timeout=10)
             except:
                 response = None
             if response:
@@ -56,9 +96,10 @@ def getUrl(url, proxy=None):
 
     # sometimes these pages dont like proxies!
     try:
+        session = _get_session()
         for i in urls:
             try:
-                response = s.get(url + i, headers=headers, timeout=10)
+                response = session.get(url + i, headers=headers, timeout=10)
             except:
                 response = None
             if response:
@@ -73,7 +114,7 @@ def getToken(url, mac, proxy=None):
     headers = {"User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)"}
     try:
         logger.debug(f"Getting token for MAC {mac} from {url}")
-        response = s.get(
+        response = _get_session().get(
             url + "?type=stb&action=handshake&JsHttpRequest=1-xml",
             cookies=cookies,
             headers=headers,
@@ -101,7 +142,7 @@ def getProfile(url, mac, token, proxy=None):
         "Authorization": "Bearer " + token,
     }
     try:
-        response = s.get(
+        response = _get_session().get(
             url + "?type=stb&action=get_profile&JsHttpRequest=1-xml",
             cookies=cookies,
             headers=headers,
@@ -124,7 +165,7 @@ def getExpires(url, mac, token, proxy=None):
     }
     try:
         logger.debug(f"Getting expiry for MAC {mac}")
-        response = s.get(
+        response = _get_session().get(
             url + "?type=account_info&action=get_main_info&JsHttpRequest=1-xml",
             cookies=cookies,
             headers=headers,
@@ -153,7 +194,7 @@ def getAllChannels(url, mac, token, proxy=None):
     }
     try:
         logger.debug(f"Getting all channels for MAC {mac}")
-        response = s.get(
+        response = _get_session().get(
             url
             + "?type=itv&action=get_all_channels&force_ch_link_check=&JsHttpRequest=1-xml",
             cookies=cookies,
@@ -182,7 +223,7 @@ def getGenres(url, mac, token, proxy=None):
         "Authorization": "Bearer " + token,
     }
     try:
-        response = s.get(
+        response = _get_session().get(
             url + "?action=get_genres&type=itv&JsHttpRequest=1-xml",
             cookies=cookies,
             headers=headers,
@@ -218,7 +259,7 @@ def getLink(url, mac, token, cmd, proxy=None):
         "Authorization": "Bearer " + token,
     }
     try:
-        response = s.get(
+        response = _get_session().get(
             url
             + "?type=itv&action=create_link&cmd="
             + cmd
@@ -244,7 +285,7 @@ def getEpg(url, mac, token, period, proxy=None):
         "Authorization": "Bearer " + token,
     }
     try:
-        response = s.get(
+        response = _get_session().get(
             url
             + "?type=itv&action=get_epg_info&period="
             + str(period)
