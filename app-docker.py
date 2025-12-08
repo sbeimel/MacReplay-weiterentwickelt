@@ -13,7 +13,7 @@ import threading
 from threading import Thread
 import logging
 logger = logging.getLogger("MacReplay")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
 # Docker-optimized paths
