@@ -3,51 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - MacReplay</title>
-    <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta17/dist/css/tabler.min.css" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
+    <title>Login - MacReplayXC</title>
+    <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" rel="stylesheet"/>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.setAttribute('data-bs-theme', isDark ? 'dark' : 'light');
+        })();
+    </script>
+    <style>
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        [data-bs-theme="light"] .login-page {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        }
+        
+        [data-bs-theme="dark"] .login-page {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+        }
+        
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 2rem;
+        }
+        
+        .login-brand {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .login-brand i {
+            font-size: 3rem;
+            color: #10b981;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        .login-brand h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        [data-bs-theme="light"] .login-brand h1 {
+            color: #1e293b;
+        }
+        
+        [data-bs-theme="dark"] .login-brand h1 {
+            color: #ffffff;
+        }
+        
+        .login-card {
+            border-radius: 1rem;
+            border: none;
+            overflow: hidden;
+        }
+        
+        [data-bs-theme="light"] .login-card {
+            background: #ffffff;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        [data-bs-theme="dark"] .login-card {
+            background: #2a2a2a;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+        
+        .login-card .card-body {
+            padding: 2rem;
+        }
+        
+        .login-title {
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+        }
+        
+        .theme-toggle .btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        [data-bs-theme="light"] .theme-toggle .btn {
+            background: #ffffff;
+            border-color: #e2e8f0;
+            color: #64748b;
+        }
+        
+        [data-bs-theme="dark"] .theme-toggle .btn {
+            background: #2a2a2a;
+            border-color: #404040;
+            color: #a0a0a0;
+        }
+    </style>
 </head>
-<body class="d-flex flex-column">
-    <div class="page page-center">
-        <div class="container container-tight py-4">
-            <div class="text-center mb-4">
-                <h1 class="navbar-brand navbar-brand-autodark">
-                    <i class="ti ti-device-tv icon" style="font-size: 2rem;"></i>
-                    MacReplay
-                </h1>
+<body>
+    <div class="login-page">
+        <!-- Theme Toggle -->
+        <div class="theme-toggle dropdown">
+            <button class="btn" data-bs-toggle="dropdown" aria-label="Theme">
+                <i class="ti ti-moon theme-icon-active"></i>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end">
+                <a href="#" class="dropdown-item" data-bs-theme-value="light">
+                    <i class="ti ti-sun me-2"></i>Light
+                </a>
+                <a href="#" class="dropdown-item" data-bs-theme-value="dark">
+                    <i class="ti ti-moon me-2"></i>Dark
+                </a>
+                <a href="#" class="dropdown-item" data-bs-theme-value="auto">
+                    <i class="ti ti-device-desktop me-2"></i>Auto
+                </a>
             </div>
-            <div class="card card-md">
+        </div>
+        
+        <div class="login-container">
+            <!-- Brand -->
+            <div class="login-brand">
+                <i class="ti ti-player-play"></i>
+                <h1>MacReplayXC</h1>
+            </div>
+            
+            <!-- Login Card -->
+            <div class="card login-card">
                 <div class="card-body">
-                    <h2 class="h2 text-center mb-4">Login to your account</h2>
+                    <h2 class="login-title">Sign in to your account</h2>
+                    
                     {% if error %}
-                    <div class="alert alert-danger" role="alert">
-                        <div class="d-flex">
-                            <div><i class="ti ti-alert-circle icon alert-icon"></i></div>
-                            <div>{{ error }}</div>
-                        </div>
+                    <div class="alert alert-danger mb-3" role="alert">
+                        <i class="ti ti-alert-circle me-2"></i>
+                        {{ error }}
                     </div>
                     {% endif %}
+                    
                     <form action="/login" method="post" autocomplete="off">
                         <div class="mb-3">
                             <label class="form-label">Username</label>
                             <input type="text" name="username" class="form-control" placeholder="Enter username" autocomplete="username" required autofocus>
                         </div>
-                        <div class="mb-2">
+                        <div class="mb-4">
                             <label class="form-label">Password</label>
                             <input type="password" name="password" class="form-control" placeholder="Enter password" autocomplete="current-password" required>
                         </div>
-                        <div class="form-footer">
-                            <button type="submit" class="btn btn-primary w-100">
-                                <i class="ti ti-login me-2"></i>
-                                Sign in
-                            </button>
-                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="ti ti-login me-2"></i>
+                            Sign in
+                        </button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta17/dist/js/tabler.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+    <script>
+        // Theme switcher
+        const setTheme = function(theme) {
+            const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.setAttribute('data-bs-theme', isDark ? 'dark' : 'light');
+            
+            // Update icon
+            const icon = document.querySelector('.theme-icon-active');
+            if (icon) {
+                icon.className = 'ti theme-icon-active ' + (isDark ? 'ti-moon' : 'ti-sun');
+            }
+        }
+        
+        document.querySelectorAll('[data-bs-theme-value]').forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                const theme = toggle.getAttribute('data-bs-theme-value');
+                localStorage.setItem('theme', theme);
+                setTheme(theme);
+            });
+        });
+        
+        // Set initial icon
+        const storedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(storedTheme);
+    </script>
 </body>
 </html>

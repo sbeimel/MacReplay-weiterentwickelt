@@ -1,0 +1,914 @@
+{% extends "base.html" %}
+
+{% block title %}EPG - MacReplayXC{% endblock %}
+
+{% block head %}
+<style>
+    .portal-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        padding: 20px 0;
+    }
+    
+    .portal-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px;
+        cursor: pointer;
+        transition: border-color 0.2s ease;
+    }
+    
+    [data-bs-theme="light"] .portal-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .portal-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    /* Hover effect - green border */
+    .portal-card:hover {
+        border-color: #10b981;
+    }
+    
+    .portal-card:active,
+    .portal-card:focus {
+        border-color: #10b981;
+        outline: none;
+    }
+    
+    .portal-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+    }
+    
+    .portal-stats {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    
+    .portal-stat-box {
+        flex: 1;
+        text-align: center;
+        padding: 8px 4px;
+        border-radius: 6px;
+    }
+    
+    [data-bs-theme="light"] .portal-stat-box {
+        background: #f1f5f9;
+    }
+    
+    [data-bs-theme="dark"] .portal-stat-box {
+        background: #1f1f1f;
+    }
+    
+    .portal-stat-value {
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+    
+    .portal-stat-label {
+        font-size: 0.7rem;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+    
+    .filter-bar {
+        position: sticky;
+        top: 56px;
+        z-index: 100;
+        padding: 15px 0;
+        margin-bottom: 10px;
+    }
+    
+    [data-bs-theme="light"] .filter-bar {
+        background: #f8fafc;
+    }
+    
+    [data-bs-theme="dark"] .filter-bar {
+        background: #1a1a1a;
+    }
+
+    /* Modal styling */
+    #channelsModal .modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .table {
+        --bs-table-bg: #2a2a2a;
+        --bs-table-striped-bg: #1f1f1f;
+        color: #e0e0e0;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .table thead th {
+        background-color: #1f1f1f;
+        color: #e0e0e0;
+        border-color: #404040;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .table tbody td {
+        border-color: #404040;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .form-control {
+        background-color: #1f1f1f;
+        border-color: #404040;
+        color: #e0e0e0;
+    }
+    
+    /* Sticky search bar - glass effect */
+    #channelsModal .channel-filter-sticky {
+        position: sticky;
+        top: -2rem;
+        z-index: 10;
+        -webkit-backdrop-filter: blur(16px);
+        padding: 2.5rem 1rem 4rem 1rem;
+        margin: -1rem -1rem -2rem -1rem;
+    }
+    
+    [data-bs-theme="light"] #channelsModal .channel-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(255, 255, 255, 0.98) 0%, 
+            rgba(255, 255, 255, 0.95) 40%, 
+            rgba(255, 255, 255, 0.5) 70%,
+            rgba(255, 255, 255, 0) 100%) !important;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .channel-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(42, 42, 42, 0.98) 0%, 
+            rgba(42, 42, 42, 0.95) 40%, 
+            rgba(42, 42, 42, 0.5) 70%,
+            rgba(42, 42, 42, 0) 100%) !important;
+    }
+    
+    /* Sticky table header */
+    [data-bs-theme="light"] #channelsModal .table thead {
+        background-color: #f8fafc;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .table thead {
+        background-color: #1f1f1f;
+    }
+    
+    #channelsModal .table thead th {
+        border-bottom: 2px solid;
+    }
+    
+    [data-bs-theme="light"] #channelsModal .table thead th {
+        border-color: #e2e8f0;
+    }
+    
+    [data-bs-theme="dark"] #channelsModal .table thead th {
+        border-color: #404040;
+    }
+    
+    /* Category grid in modal */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        padding: 20px 0;
+    }
+    
+    .category-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px 15px;
+        cursor: pointer;
+        text-align: center;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: border-color 0.2s ease;
+    }
+    
+    [data-bs-theme="light"] .category-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .category-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .category-card:hover {
+        border-color: #10b981;
+    }
+    
+    .category-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+        word-break: break-word;
+        line-height: 1.3;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+    
+    .category-count {
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title">
+                    <i class="ti ti-calendar me-2"></i>
+                    EPG Manager
+                </h2>
+            </div>
+            <div class="col-auto">
+                <div class="btn-list">
+                    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#epgSettingsModal">
+                        <i class="ti ti-settings me-2"></i>Settings
+                    </button>
+                    <button class="btn btn-primary" onclick="refreshEPG(this)" id="refreshEPGBtn">
+                        <i class="ti ti-refresh me-2"></i>Refresh EPG
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- EPG Refresh Progress -->
+        <div id="epgRefreshProgress" class="alert alert-info mt-3" style="display: none;">
+            <div class="d-flex align-items-center">
+                <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+                <div class="flex-fill">
+                    <strong id="epgProgressTitle">Refreshing EPG...</strong>
+                    <div class="text-muted small" id="epgProgressDetails">Starting...</div>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="epgProgressBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <div class="filter-bar">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Search Portals</label>
+                    <input type="text" class="form-control" id="portalSearch" placeholder="Type to filter..." oninput="filterPortals()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label mb-1">XMLTV URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace" id="xmltvUrl" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyXmltvUrl()">
+                            <i class="ti ti-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="mt-4">
+                        <span class="badge bg-primary-lt me-2">
+                            <i class="ti ti-antenna me-1"></i>
+                            <span id="totalPortals">0</span> Portals
+                        </span>
+                        <span class="badge bg-success-lt">
+                            <i class="ti ti-tv me-1"></i>
+                            <span id="totalChannels">0</span> with EPG
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="portalsContainer">
+            <div class="portal-grid" id="portalGrid"></div>
+        </div>
+
+        <div id="loadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3">Loading portals...</p>
+        </div>
+    </div>
+</div>
+
+
+<!-- EPG Modal - Single modal with dynamic content -->
+<div class="modal modal-blur fade" id="channelsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="modalTitle">Portal EPG</h3>
+                    <div class="text-muted small" id="modalStats"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="container-xl">
+                    <!-- Dynamic Content Container -->
+                    <div id="modalContent"></div>
+                </div>
+            </div>
+            <div class="modal-footer" id="modalFooter">
+                <button type="button" class="btn btn-outline-secondary" onclick="applyFallbackToPortal()">
+                    <i class="ti ti-cloud-download me-2"></i>Apply Fallback to All
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- EPG Settings Modal -->
+<div class="modal modal-blur fade" id="epgSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ti ti-settings me-2"></i>EPG Fallback Settings
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="epgFallbackEnabled">
+                        <span class="form-check-label">Enable EPG Fallback</span>
+                    </label>
+                    <small class="form-hint">Use epgshare01.online as fallback for channels without portal EPG</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Fallback Countries</label>
+                    <input type="text" class="form-control" id="epgFallbackCountries" placeholder="DE, UK, US">
+                    <small class="form-hint">Comma-separated country codes (e.g., DE, UK, US, FR, IT)</small>
+                </div>
+                
+                <div class="alert alert-info mb-0">
+                    <i class="ti ti-info-circle me-2"></i>
+                    <strong>Note:</strong> Fallback EPG will be used for channels that don't have EPG data from the portal. Available countries: DE, UK, US, FR, IT, ES, NL, BE, AT, CH, PL, CZ, RO, GR, PT, SE, NO, DK, FI
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveEPGSettings()">
+                    <i class="ti ti-device-floppy me-2"></i>Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allPortals = [];
+let currentPortalChannels = [];
+let currentPortalId = null;
+
+let epgProgressInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('xmltvUrl').value = window.location.origin + '/xmltv';
+    loadPortals();
+    loadEPGSettings();
+    checkEPGProgress(); // Check if refresh is already running
+});
+
+function loadEPGSettings() {
+    fetch('/epg/settings', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('epgFallbackEnabled').checked = data.epg_fallback_enabled;
+            document.getElementById('epgFallbackCountries').value = data.epg_fallback_countries;
+        })
+        .catch(err => console.error('Error loading EPG settings:', err));
+}
+
+function saveEPGSettings() {
+    const enabled = document.getElementById('epgFallbackEnabled').checked;
+    const countries = document.getElementById('epgFallbackCountries').value;
+    
+    fetch('/epg/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            epg_fallback_enabled: enabled,
+            epg_fallback_countries: countries
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('epgSettingsModal')).hide();
+            showToast('EPG settings saved successfully', 'success');
+        } else {
+            showAlert('Error saving settings: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+        }
+    })
+    .catch(err => {
+        showAlert('Error saving settings: ' + err, 'Error', 'danger');
+    });
+}
+
+function copyXmltvUrl() {
+    const input = document.getElementById('xmltvUrl');
+    navigator.clipboard.writeText(input.value);
+    const btn = event.target.closest('button');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check"></i>';
+    btn.classList.add('btn-success');
+    setTimeout(() => { btn.innerHTML = origHtml; btn.classList.remove('btn-success'); }, 1500);
+}
+
+function loadPortals() {
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('portalGrid').innerHTML = '';
+    
+    fetch('/epg/portal-status', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            allPortals = data || [];
+            renderPortals();
+            updateStats();
+            document.getElementById('loadingIndicator').style.display = 'none';
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('portalGrid').innerHTML = '<div class="alert alert-danger">Error loading portals</div>';
+        });
+}
+
+function renderPortals() {
+    const grid = document.getElementById('portalGrid');
+    const container = document.getElementById('portalsContainer');
+    grid.innerHTML = '';
+    
+    if (!allPortals || allPortals.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-antenna icon"></i></div><p class="empty-title">No portals configured</p><p class="empty-subtitle text-muted">Add a portal to get started</p></div>';
+        return;
+    }
+    
+    allPortals.forEach(portal => {
+        const hasEPG = portal.has_epg && portal.epg_channel_count > 0;
+        const epgPercent = portal.channel_count > 0 ? Math.round((portal.epg_channel_count / portal.channel_count) * 100) : 0;
+        
+        const card = document.createElement('div');
+        card.className = 'portal-card';
+        card.onclick = () => openPortalModal(portal);
+        
+        card.innerHTML = `
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="portal-name">${escapeHtml(portal.name)}</div>
+                <span class="badge bg-${hasEPG ? 'success' : 'warning'}-lt">${hasEPG ? 'EPG OK' : 'No EPG'}</span>
+            </div>
+            <div class="portal-stats">
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${portal.channel_count}</div>
+                    <div class="portal-stat-label">Channels</div>
+                </div>
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${portal.epg_channel_count}</div>
+                    <div class="portal-stat-label">With EPG</div>
+                </div>
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${epgPercent}%</div>
+                    <div class="portal-stat-label">Coverage</div>
+                </div>
+            </div>
+            <div class="progress" style="height: 4px;">
+                <div class="progress-bar bg-success" style="width: ${epgPercent}%"></div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function filterPortals() {
+    const search = document.getElementById('portalSearch').value.toLowerCase();
+    document.querySelectorAll('.portal-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
+    });
+}
+
+function updateStats() {
+    document.getElementById('totalPortals').textContent = allPortals.length;
+    document.getElementById('totalChannels').textContent = allPortals.reduce((sum, p) => sum + (p.epg_channel_count || 0), 0);
+}
+
+let currentView = 'categories'; // 'categories' or 'channels'
+let currentPortalName = '';
+let categoriesData = {};
+
+function openPortalModal(portal) {
+    currentPortalId = portal.id || portal.name;
+    currentPortalName = portal.name;
+    currentView = 'categories';
+    
+    const modal = new bootstrap.Modal(document.getElementById('channelsModal'));
+    modal.show();
+    
+    // Fetch channels and group by category
+    fetch('/epg/channels?portal=' + encodeURIComponent(currentPortalId), {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            currentPortalChannels = data.channels || [];
+            // Group by category
+            categoriesData = {};
+            currentPortalChannels.forEach(ch => {
+                const genre = ch.channel_genre || 'Uncategorized';
+                if (!categoriesData[genre]) categoriesData[genre] = [];
+                categoriesData[genre].push(ch);
+            });
+            showCategoriesView();
+        })
+        .catch(err => {
+            document.getElementById('modalContent').innerHTML = '<div class="text-center py-4 text-danger">Error loading channels</div>';
+        });
+}
+
+let currentCategoryChannels = [];
+let currentCategoryName = '';
+
+function showCategoriesView() {
+    currentView = 'categories';
+    
+    // Update header
+    document.getElementById('modalTitle').textContent = `${currentPortalName} - EPG Management`;
+    const withEPG = currentPortalChannels.filter(ch => ch.has_portal_epg || (ch.epg_id && ch.epg_id.trim() !== '')).length;
+    document.getElementById('modalStats').textContent = `${currentPortalChannels.length} channels • ${withEPG} with EPG`;
+    
+    // Update footer
+    document.getElementById('modalFooter').innerHTML = `
+        <button type="button" class="btn btn-outline-secondary" onclick="applyFallbackToPortal()">
+            <i class="ti ti-cloud-download me-2"></i>Apply Fallback to All
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    `;
+    
+    // Build content
+    const sortedGenres = Object.keys(categoriesData).sort();
+    let html = `
+        <div class="channel-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="epgCategorySearch" placeholder="Search categories..." oninput="filterEPGCategories()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt me-2"><i class="ti ti-folder me-1"></i>${sortedGenres.length} Categories</span>
+                    <span class="badge bg-success-lt me-2"><i class="ti ti-tv me-1"></i>${currentPortalChannels.length} Channels</span>
+                    <span class="badge bg-info-lt"><i class="ti ti-check me-1"></i>${withEPG} with EPG</span>
+                </div>
+            </div>
+        </div>
+        <div class="category-grid" id="epgCategoryGrid">
+    `;
+    
+    sortedGenres.forEach(genre => {
+        const genreChannels = categoriesData[genre];
+        const totalCount = genreChannels.length;
+        html += `
+            <div class="category-card" onclick="showChannelsView('${escapeHtml(genre).replace(/'/g, "\\'")}')">
+                <div class="category-name" title="${escapeHtml(genre)}">${escapeHtml(genre)}</div>
+                <div class="category-count">${totalCount}/${totalCount}</div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    document.getElementById('modalContent').innerHTML = html;
+}
+
+function showChannelsView(genre) {
+    currentView = 'channels';
+    currentCategoryName = genre;
+    currentCategoryChannels = categoriesData[genre] || [];
+    
+    // Update header
+    document.getElementById('modalTitle').textContent = `${genre} - EPG Management`;
+    const withEPG = currentCategoryChannels.filter(ch => ch.has_portal_epg || (ch.epg_id && ch.epg_id.trim() !== '')).length;
+    document.getElementById('modalStats').textContent = `${currentCategoryChannels.length} channels • ${withEPG} with EPG`;
+    
+    // Update footer
+    document.getElementById('modalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="showCategoriesView()">
+            <i class="ti ti-arrow-left me-2"></i>Back to Categories
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    `;
+    
+    // Build content
+    let html = `
+        <div class="channel-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="epgChannelSearch" placeholder="Search channels..." oninput="filterEPGChannels()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt me-2"><i class="ti ti-tv me-1"></i>${currentCategoryChannels.length} Channels</span>
+                    <span class="badge bg-success-lt"><i class="ti ti-check me-1"></i>${withEPG} with EPG</span>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-vcenter table-hover card-table">
+                    <thead>
+                        <tr>
+                            <th>Channel</th>
+                            <th style="width: 15%;">Genre</th>
+                            <th style="width: 12%;">Portal EPG</th>
+                            <th style="width: 25%;">Custom EPG ID</th>
+                            <th style="width: 12%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="channelsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('modalContent').innerHTML = html;
+    renderChannelsTable(currentCategoryChannels);
+}
+
+function filterEPGCategories() {
+    const search = document.getElementById('epgCategorySearch').value.toLowerCase();
+    document.querySelectorAll('.category-card').forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.style.display = text.includes(search) ? 'flex' : 'none';
+    });
+}
+
+function filterEPGChannels() {
+    const search = document.getElementById('epgChannelSearch').value.toLowerCase();
+    document.querySelectorAll('#channelsTableBody tr').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(search) ? '' : 'none';
+    });
+}
+
+function renderChannelsTable(channels) {
+    const tbody = document.getElementById('channelsTableBody');
+    tbody.innerHTML = '';
+    
+    if (!channels || channels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No channels found</td></tr>';
+        return;
+    }
+    
+    channels.forEach(ch => {
+        const tr = document.createElement('tr');
+        tr.dataset.portal = ch.portal_id;
+        tr.dataset.channel = ch.channel_id;
+        tr.dataset.name = ch.channel_name;
+        
+        tr.innerHTML = `
+            <td>
+                <div class="d-flex align-items-center">
+                    ${ch.logo ? `<img src="${ch.logo}" class="avatar avatar-sm me-2" onerror="this.style.display='none'">` : '<span class="avatar avatar-sm me-2 bg-secondary-lt"><i class="ti ti-tv"></i></span>'}
+                    <div>
+                        <div class="fw-medium">${escapeHtml(ch.channel_name)}</div>
+                        <div class="text-muted small">#${ch.channel_number}</div>
+                    </div>
+                </div>
+            </td>
+            <td><span class="text-muted">${escapeHtml(ch.channel_genre || 'N/A')}</span></td>
+            <td>
+                <span class="badge bg-${ch.has_portal_epg ? 'success' : 'warning'}-lt">
+                    <i class="ti ti-${ch.has_portal_epg ? 'check' : 'x'} me-1"></i>${ch.has_portal_epg ? 'Yes' : 'No'}
+                </span>
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm epg-id-input" 
+                       value="${ch.epg_id || ''}" placeholder="Enter EPG ID..."
+                       data-portal="${ch.portal_id}" data-channel="${ch.channel_id}">
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-success save-btn" title="Save"><i class="ti ti-device-floppy"></i></button>
+                    <button class="btn btn-outline-secondary fallback-btn" title="Find Fallback"><i class="ti ti-cloud-download"></i></button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    
+    // Attach event listeners
+    document.querySelectorAll('#channelsTableBody .save-btn').forEach(btn => {
+        btn.addEventListener('click', function() { saveEPGMapping(this.closest('tr'), this); });
+    });
+    document.querySelectorAll('#channelsTableBody .fallback-btn').forEach(btn => {
+        btn.addEventListener('click', function() { applyFallback(this.closest('tr'), this); });
+    });
+}
+
+
+
+
+
+
+function saveEPGMapping(row, btn) {
+    const input = row.querySelector('.epg-id-input');
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch('/epg/save-mapping', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({portal_id: row.dataset.portal, channel_id: row.dataset.channel, epg_id: input.value})
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.innerHTML = '<i class="ti ti-check"></i>';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        setTimeout(() => { btn.classList.remove('btn-success'); btn.classList.add('btn-primary'); btn.innerHTML = origHtml; }, 1500);
+    })
+    .catch(err => {
+        btn.innerHTML = '<i class="ti ti-x"></i>';
+        btn.classList.add('btn-danger');
+        setTimeout(() => { btn.classList.remove('btn-danger'); btn.innerHTML = origHtml; }, 2000);
+    })
+    .finally(() => btn.disabled = false);
+}
+
+function applyFallback(row, btn) {
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch('/epg/apply-fallback', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({portal_id: row.dataset.portal, channel_id: row.dataset.channel, channel_name: row.dataset.name})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            row.querySelector('.epg-id-input').value = data.epg_id;
+            btn.innerHTML = '<i class="ti ti-check"></i>';
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-success');
+            setTimeout(() => { btn.classList.remove('btn-success'); btn.classList.add('btn-outline-secondary'); btn.innerHTML = origHtml; }, 1500);
+        } else {
+            throw new Error(data.error || 'No match');
+        }
+    })
+    .catch(err => {
+        showAlert('No fallback EPG found for: ' + row.dataset.name, 'Not Found', 'warning');
+        btn.innerHTML = origHtml;
+    })
+    .finally(() => btn.disabled = false);
+}
+
+function applyFallbackToPortal() {
+    const channelsWithoutEpg = currentPortalChannels.filter(ch => !ch.has_portal_epg);
+    if (channelsWithoutEpg.length === 0) { 
+        showAlert('All channels already have EPG!', 'Info', 'info'); 
+        return; 
+    }
+    
+    showConfirm(`Apply fallback EPG to ${channelsWithoutEpg.length} channels?`, 'Apply Fallback', function() {
+        performApplyFallback(channelsWithoutEpg);
+    });
+}
+
+function performApplyFallback(channelsWithoutEpg) {
+    
+    const btn = document.querySelector('[onclick*="applyFallbackToPortal"]');
+    if (btn) {
+        btn.disabled = true;
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Processing...';
+        
+        fetch('/epg/apply-fallback-all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
+            body: JSON.stringify({channels: channelsWithoutEpg.map(ch => ({portal_id: ch.portal_id, channel_id: ch.channel_id, channel_name: ch.channel_name}))})
+        })
+        .then(res => res.json())
+        .then(data => {
+            showAlert(`Applied fallback to ${data.matched} of ${data.total} channels`, 'Success', 'success');
+            loadPortals();
+        })
+        .catch(err => showAlert('Error: ' + err.message, 'Error', 'danger'))
+        .finally(() => { btn.disabled = false; btn.innerHTML = origHtml; });
+    }
+}
+
+function refreshEPG(btn) {
+    btn.disabled = true;
+    
+    fetch('/epg/refresh', {method: 'POST', credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                startEPGProgressPolling();
+            } else {
+                showAlert(data.error || 'Failed to start EPG refresh', 'Error', 'danger');
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            showAlert('Error starting EPG refresh: ' + err, 'Error', 'danger');
+            btn.disabled = false;
+        });
+}
+
+function checkEPGProgress() {
+    fetch('/epg/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.running) {
+                startEPGProgressPolling();
+            }
+        })
+        .catch(err => console.error('Error checking EPG progress:', err));
+}
+
+function startEPGProgressPolling() {
+    document.getElementById('epgRefreshProgress').style.display = 'block';
+    document.getElementById('refreshEPGBtn').disabled = true;
+    
+    if (epgProgressInterval) clearInterval(epgProgressInterval);
+    
+    epgProgressInterval = setInterval(pollEPGProgress, 1000);
+    pollEPGProgress(); // Call immediately
+}
+
+function pollEPGProgress() {
+    fetch('/epg/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (!data.running) {
+                // Refresh completed
+                clearInterval(epgProgressInterval);
+                epgProgressInterval = null;
+                
+                document.getElementById('epgProgressTitle').textContent = 'EPG Refresh Complete!';
+                document.getElementById('epgProgressDetails').textContent = 'Reloading portals...';
+                document.getElementById('epgProgressBar').style.width = '100%';
+                document.getElementById('epgProgressBar').classList.remove('progress-bar-animated');
+                
+                setTimeout(() => {
+                    document.getElementById('epgRefreshProgress').style.display = 'none';
+                    document.getElementById('refreshEPGBtn').disabled = false;
+                    document.getElementById('epgProgressBar').classList.add('progress-bar-animated');
+                    loadPortals();
+                }, 2000);
+            } else {
+                // Update progress
+                const percent = data.portals_total > 0 ? Math.round((data.portals_done / data.portals_total) * 100) : 0;
+                document.getElementById('epgProgressTitle').textContent = `Refreshing EPG... (${data.portals_done}/${data.portals_total})`;
+                document.getElementById('epgProgressDetails').textContent = data.current_step || 'Processing...';
+                document.getElementById('epgProgressBar').style.width = percent + '%';
+            }
+        })
+        .catch(err => {
+            console.error('Error polling EPG progress:', err);
+            clearInterval(epgProgressInterval);
+            epgProgressInterval = null;
+            document.getElementById('epgRefreshProgress').style.display = 'none';
+            document.getElementById('refreshEPGBtn').disabled = false;
+        });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

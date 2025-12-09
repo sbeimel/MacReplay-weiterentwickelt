@@ -1,62 +1,86 @@
 {% extends "base.html" %}
 
-{% block title %}Genre Selection - MacReplay{% endblock %}
+{% block title %}Genre Selection - MacReplayXC{% endblock %}
 
 {% block head %}
 <style>
     .genre-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 15px;
-        margin-top: 20px;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        padding: 20px 0;
     }
     
     .genre-card {
-        background: #2d3748;
-        border: 2px solid #4a5568;
-        border-radius: 8px;
-        padding: 15px;
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px;
         cursor: pointer;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+        transition: border-color 0.2s ease;
     }
     
+    [data-bs-theme="light"] .genre-card {
+        background: #ffffff;
+        border-color: #e2e8f0;
+    }
+    
+    [data-bs-theme="dark"] .genre-card {
+        background: #2a2a2a;
+        border-color: #404040;
+    }
+    
+    /* Hover effect - green border */
     .genre-card:hover {
-        border-color: #63b3ed;
-        transform: translateY(-2px);
+        border-color: #10b981 !important;
     }
     
-    .genre-card.selected {
-        background: #2f855a;
-        border-color: #48bb78;
+    /* Selected state */
+    [data-bs-theme="light"] .genre-card.selected {
+        background: #d1fae5;
+        border-color: #10b981;
     }
     
-    .genre-card .check-icon {
-        font-size: 24px;
-        color: #48bb78;
-        display: none;
+    [data-bs-theme="dark"] .genre-card.selected {
+        background: rgba(16, 185, 129, 0.15);
+        border-color: #10b981;
     }
     
-    .genre-card.selected .check-icon {
-        display: block;
-    }
-    
-    .genre-info {
-        flex: 1;
+    .genre-header {
+        display: flex;
+        align-items-center;
+        justify-content: space-between;
+        margin-bottom: 12px;
     }
     
     .genre-name {
-        font-size: 16px;
+        font-size: 1.1rem;
         font-weight: 600;
-        color: #fff;
-        margin-bottom: 5px;
     }
     
-    .genre-count {
-        font-size: 14px;
-        color: #a0aec0;
+    .genre-check {
+        font-size: 1.5rem;
+        color: #10b981;
+        display: none;
+    }
+    
+    .genre-card.selected .genre-check {
+        display: block;
+    }
+    
+    .genre-stats {
+        text-align: center;
+    }
+    
+    .genre-stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    .genre-stat-label {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-top: 4px;
     }
     
     .loading-overlay {
@@ -65,21 +89,26 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.8);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 9999;
     }
     
+    [data-bs-theme="light"] .loading-overlay {
+        background: rgba(255, 255, 255, 0.9);
+    }
+    
+    [data-bs-theme="dark"] .loading-overlay {
+        background: rgba(0, 0, 0, 0.8);
+    }
+    
     .loading-content {
         text-align: center;
-        color: #fff;
     }
     
     .spinner {
-        border: 4px solid #4a5568;
-        border-top: 4px solid #48bb78;
+        border: 4px solid;
         border-radius: 50%;
         width: 50px;
         height: 50px;
@@ -87,83 +116,104 @@
         margin: 0 auto 20px;
     }
     
+    [data-bs-theme="light"] .spinner {
+        border-color: #e2e8f0;
+        border-top-color: #10b981;
+    }
+    
+    [data-bs-theme="dark"] .spinner {
+        border-color: #404040;
+        border-top-color: #10b981;
+    }
+    
     @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
-    }
-    
-    .action-buttons {
-        position: sticky;
-        bottom: 0;
-        background: #1a202c;
-        padding: 20px;
-        border-top: 2px solid #4a5568;
-        margin: 0 -20px -20px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid" style="background: #1a202c; min-height: 100vh; padding: 40px 20px;">
-    <div class="row">
-        <div class="col-12">
-            <h2 class="text-light mb-2">
-                <i class="fas fa-filter"></i> M3U Group Filter & Auto Channel Sync
-            </h2>
-            <p class="text-muted mb-4">Portal: <strong class="text-light">{{ portal_name }}</strong></p>
-            
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i> 
-                <strong>Auto Channel Sync:</strong> When enabled, channels will be automatically created for all streams in the group during M3U updates, and removed when streams are no longer present.
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title">
+                    <i class="ti ti-filter me-2"></i>
+                    Genre Selection
+                </h2>
+                <div class="text-muted mt-1">Portal: <strong>{{ portal_name }}</strong></div>
             </div>
-            
-            <div class="form-check mb-4">
-                <input class="form-check-input" type="checkbox" id="autoEnableNewGroups" checked>
-                <label class="form-check-label text-light" for="autoEnableNewGroups">
-                    <strong>Automatically enable new groups discovered on future scans</strong>
-                </label>
-                <div class="form-text">When disabled, new groups from the M3U source will be created but disabled by default. You can enable them manually later.</div>
+            <div class="col-auto">
+                <button class="btn btn-secondary me-2" onclick="skipGenreSelection()">
+                    <i class="ti ti-x me-1"></i>Cancel
+                </button>
+                <button class="btn btn-primary" onclick="saveGenreSelection()">
+                    <i class="ti ti-device-floppy me-1"></i>Save and Refresh
+                </button>
             </div>
-            
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="text-light mb-0">Groups & Auto Sync Settings</h5>
-                <div>
-                    <button class="btn btn-outline-light btn-sm me-2" onclick="selectAllGenres()">
-                        Select Visible
-                    </button>
-                    <button class="btn btn-outline-light btn-sm" onclick="deselectAllGenres()">
-                        Deselect Visible
-                    </button>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <div class="alert alert-info mb-3">
+            <i class="ti ti-info-circle me-2"></i>
+            <strong>Auto Channel Sync:</strong> When enabled, channels will be automatically created for all streams in the group during M3U updates, and removed when streams are no longer present.
+        </div>
+        
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="autoEnableNewGroups" checked>
+                    <label class="form-check-label" for="autoEnableNewGroups">
+                        <strong>Automatically enable new groups discovered on future scans</strong>
+                    </label>
+                    <div class="form-text">When disabled, new groups from the M3U source will be created but disabled by default. You can enable them manually later.</div>
                 </div>
             </div>
-            
-            <div id="loadingMessage" class="text-center text-light py-5">
-                <div class="spinner-border" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-3">Loading genres from portal...</p>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <span class="badge bg-primary-lt me-2">
+                    <i class="ti ti-check me-1"></i>
+                    <span id="selectedCount">0</span> selected
+                </span>
+                <span class="badge bg-secondary-lt" id="cacheStatus" style="display: none;">
+                    <i class="ti ti-database me-1"></i>From cache
+                </span>
             </div>
-            
-            <div id="genreContainer" style="display: none;">
-                <div class="genre-grid" id="genreGrid">
-                    <!-- Genres will be loaded here -->
+            <div>
+                <button class="btn btn-sm btn-outline-info me-2" onclick="refreshFromPortal()" id="refreshBtn">
+                    <i class="ti ti-refresh me-1"></i>Refresh from Portal
+                </button>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="selectAllGenres()">
+                    <i class="ti ti-check me-1"></i>Select All
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="deselectAllGenres()">
+                    <i class="ti ti-x me-1"></i>Deselect All
+                </button>
+            </div>
+        </div>
+        
+        <div id="loadingMessage" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h4 class="mt-3" id="loadingStatus">Connecting to portal...</h4>
+            <p class="text-muted" id="loadingDetails">Initializing...</p>
+            <div class="mt-3">
+                <div class="progress" style="max-width: 400px; margin: 0 auto;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="loadingProgress"></div>
                 </div>
-                
-                <div class="action-buttons">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="text-light">
-                            <span id="selectedCount">0</span> groups selected
-                        </div>
-                        <div>
-                            <button class="btn btn-secondary me-2" onclick="skipGenreSelection()">
-                                Cancel
-                            </button>
-                            <button class="btn btn-primary" onclick="saveGenreSelection()">
-                                <i class="fas fa-save"></i> Save and Refresh
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            </div>
+        </div>
+        
+        <div id="genreContainer" style="display: none;">
+            <div class="genre-grid" id="genreGrid">
+                <!-- Genres will be loaded here -->
             </div>
         </div>
     </div>
@@ -189,32 +239,110 @@ document.addEventListener('DOMContentLoaded', function() {
     loadGenres();
 });
 
-function loadGenres() {
+function loadGenres(forceRefresh = false) {
+    // Show loading
+    document.getElementById('loadingMessage').style.display = 'block';
+    document.getElementById('genreContainer').style.display = 'none';
+    
+    // Simulate progress with realistic status messages (only if not from cache)
+    const statusMessages = forceRefresh ? [
+        { progress: 10, status: 'Connecting to portal...', detail: 'Establishing connection' },
+        { progress: 25, status: 'Authenticating MACs...', detail: 'Testing MAC addresses' },
+        { progress: 40, status: 'Fetching channel list...', detail: 'Downloading channels from portal' },
+        { progress: 60, status: 'Loading genres...', detail: 'Processing genre information' },
+        { progress: 80, status: 'Merging data...', detail: 'Combining channels from all MACs' },
+        { progress: 95, status: 'Finalizing...', detail: 'Preparing genre list' }
+    ] : [
+        { progress: 50, status: 'Loading from cache...', detail: 'Reading from database' },
+        { progress: 90, status: 'Preparing data...', detail: 'Processing genres' }
+    ];
+    
+    let currentStep = 0;
+    const progressInterval = setInterval(() => {
+        if (currentStep < statusMessages.length) {
+            const msg = statusMessages[currentStep];
+            document.getElementById('loadingStatus').textContent = msg.status;
+            document.getElementById('loadingDetails').textContent = msg.detail;
+            document.getElementById('loadingProgress').style.width = msg.progress + '%';
+            currentStep++;
+        }
+    }, forceRefresh ? 800 : 300);
+    
     fetch('/portal/load-genres', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ portal_id: portalId })
+        body: JSON.stringify({ 
+            portal_id: portalId,
+            force_refresh: forceRefresh
+        })
     })
     .then(res => res.json())
     .then(data => {
+        clearInterval(progressInterval);
+        
         if (data.error) {
-            alert('Error loading genres: ' + data.error);
-            window.location.href = '/portals';
+            showAlert('Error loading genres: ' + data.error, 'Error', 'danger');
+            setTimeout(() => window.location.href = '/portals', 2000);
             return;
         }
         
-        genres = data.genres;
-        renderGenres();
+        // Show completion
+        document.getElementById('loadingStatus').textContent = 'Complete!';
+        document.getElementById('loadingDetails').textContent = `Loaded ${data.genres.length} genres`;
+        document.getElementById('loadingProgress').style.width = '100%';
         
-        document.getElementById('loadingMessage').style.display = 'none';
-        document.getElementById('genreContainer').style.display = 'block';
+        genres = data.genres;
+        
+        // Show cache status
+        if (data.from_cache) {
+            document.getElementById('cacheStatus').style.display = 'inline-block';
+        } else {
+            document.getElementById('cacheStatus').style.display = 'none';
+        }
+        
+        // Pre-select enabled genres from server
+        if (data.enabled_genres && Array.isArray(data.enabled_genres)) {
+            selectedGenres.clear(); // Clear first
+            data.enabled_genres.forEach(genreName => {
+                selectedGenres.add(genreName);
+            });
+            console.log(`Pre-selected ${data.enabled_genres.length} genres`);
+        }
+        
+        // Small delay to show completion
+        setTimeout(() => {
+            renderGenres();
+            document.getElementById('loadingMessage').style.display = 'none';
+            document.getElementById('genreContainer').style.display = 'block';
+        }, 500);
     })
     .catch(err => {
+        clearInterval(progressInterval);
         console.error('Error loading genres:', err);
-        alert('Error loading genres: ' + err);
-        window.location.href = '/portals';
+        document.getElementById('loadingStatus').textContent = 'Error!';
+        document.getElementById('loadingDetails').textContent = err.toString();
+        document.getElementById('loadingProgress').classList.remove('progress-bar-animated');
+        document.getElementById('loadingProgress').classList.add('bg-danger');
+        showAlert('Error loading genres: ' + err, 'Error', 'danger');
+        setTimeout(() => {
+            window.location.href = '/portals';
+        }, 2000);
+    });
+}
+
+function refreshFromPortal() {
+    showConfirm('Refresh genres from portal? This will fetch the latest channel list from all MACs.', 'Refresh Genres', function() {
+        const btn = document.getElementById('refreshBtn');
+        btn.disabled = true;
+        
+        loadGenres(true);
+        
+        // Re-enable button after loading
+        setTimeout(() => {
+            btn.disabled = false;
+        }, 3000);
     });
 }
 
@@ -228,12 +356,15 @@ function renderGenres() {
         card.onclick = () => toggleGenre(genre.name);
         
         card.innerHTML = `
-            <div class="genre-info">
+            <div class="genre-header">
                 <div class="genre-name">${escapeHtml(genre.name)}</div>
-                <div class="genre-count">${genre.count} channels</div>
+                <div class="genre-check">
+                    <i class="ti ti-check"></i>
+                </div>
             </div>
-            <div class="check-icon">
-                <i class="fas fa-check-circle"></i>
+            <div class="genre-stats">
+                <div class="genre-stat-value">${genre.count}</div>
+                <div class="genre-stat-label">Channels</div>
             </div>
         `;
         
@@ -283,11 +414,16 @@ function updateSelectedCount() {
 
 function saveGenreSelection() {
     if (selectedGenres.size === 0) {
-        if (!confirm('No genres selected. This means no channels will be enabled. Continue?')) {
-            return;
-        }
+        showConfirm('No genres selected. This means no channels will be enabled. Continue?', 'Warning', function() {
+            performSaveGenres();
+        }, null, 'warning');
+        return;
     }
     
+    performSaveGenres();
+}
+
+function performSaveGenres() {
     document.getElementById('savingOverlay').style.display = 'flex';
     
     const autoSync = document.getElementById('autoEnableNewGroups').checked;
@@ -308,24 +444,24 @@ function saveGenreSelection() {
         document.getElementById('savingOverlay').style.display = 'none';
         
         if (data.error) {
-            alert('Error saving: ' + data.error);
+            showAlert('Error saving: ' + data.error, 'Error', 'danger');
             return;
         }
         
-        alert(`Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!`);
-        window.location.href = '/editor';
+        showAlert(`Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!`, 'Success', 'success');
+        setTimeout(() => window.location.href = '/editor', 1500);
     })
     .catch(err => {
         document.getElementById('savingOverlay').style.display = 'none';
         console.error('Error saving:', err);
-        alert('Error saving: ' + err);
+        showAlert('Error saving: ' + err, 'Error', 'danger');
     });
 }
 
 function skipGenreSelection() {
-    if (confirm('Skip genre selection? You can enable channels manually in the editor.')) {
+    showConfirm('Skip genre selection? You can enable channels manually in the editor.', 'Skip Selection', function() {
         window.location.href = '/portals';
-    }
+    }, null, 'info');
 }
 
 function escapeHtml(text) {

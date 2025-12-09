@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - MacReplay{% endblock %}
+{% block title %}Settings - MacReplayXC{% endblock %}
 
 {% block content %}
 <div class="page-header d-print-none">
@@ -33,87 +33,91 @@
         <form method="POST" action="/settings/save" id="settingsForm">
             
             <!-- 1. STREAMING SETTINGS -->
-            <h3 class="mb-3"><i class="ti ti-video me-2"></i>Streaming Settings</h3>
+            <div class="mb-3">
+                <h3><i class="ti ti-video me-2"></i>Streaming Settings</h3>
+                <div class="text-muted">Configure streaming behavior and HLS options</div>
+            </div>
             
             <div class="row row-cards mb-4">
-                <!-- HLS Settings -->
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header bg-primary-lt">
-                            <h3 class="card-title">HLS Streaming (Recommended for Plex)</h3>
-                            <div class="card-subtitle">Instant channel startup - eliminates 20-40 second black screen</div>
+                <!-- Output Format -->
+                <div class="col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Output Format</h3>
                         </div>
                         <div class="card-body">
-                            <div class="row">
-                                <div class="col-lg-3">
-                                    <div class="mb-3">
-                                        <label class="form-label">Output Format</label>
-                                        <select class="form-select" name="output format">
-                                            <option value="mpegts" {{ 'selected' if settings.get('output format', 'mpegts') == 'mpegts' }}>MPEG-TS (pipe)</option>
-                                            <option value="hls" {{ 'selected' if settings.get('output format', 'mpegts') == 'hls' }}>HLS (segmented)</option>
-                                        </select>
-                                        <small class="form-hint">HLS = instant start on Plex</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-lg-3">
-                                    <div class="mb-3">
-                                        <label class="form-label">Segment Type</label>
-                                        <select class="form-select" name="hls segment type">
-                                            <option value="mpegts" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'mpegts' }}>MPEG-TS</option>
-                                            <option value="fmp4" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'fmp4' }}>fMP4 (recommended)</option>
-                                        </select>
-                                        <small class="form-hint">fMP4 = faster startup</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-lg-2">
-                                    <div class="mb-3">
-                                        <label class="form-label">Segment Duration</label>
-                                        <input type="number" class="form-control" name="hls segment duration" value="{{ settings.get('hls segment duration', '4') }}" min="2" max="10">
-                                        <small class="form-hint">Seconds (default: 4)</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-lg-2">
-                                    <div class="mb-3">
-                                        <label class="form-label">Playlist Size</label>
-                                        <input type="number" class="form-control" name="hls playlist size" value="{{ settings.get('hls playlist size', '6') }}" min="3" max="20">
-                                        <small class="form-hint">Segments (default: 6)</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-lg-2">
-                                    <div class="mb-3">
-                                        <label class="form-label">Max Streams</label>
-                                        <input type="number" class="form-control" name="hls max streams" value="{{ settings.get('hls max streams', '10') }}" min="1" max="50">
-                                        <small class="form-hint">Concurrent (default: 10)</small>
-                                    </div>
-                                </div>
+                            <div class="mb-3">
+                                <label class="form-label">Format</label>
+                                <select class="form-select" name="output format">
+                                    <option value="mpegts" {{ 'selected' if settings.get('output format', 'mpegts') == 'mpegts' }}>MPEG-TS (pipe)</option>
+                                    <option value="hls" {{ 'selected' if settings.get('output format', 'mpegts') == 'hls' }}>HLS (segmented)</option>
+                                </select>
+                                <small class="form-hint">HLS recommended for Plex - instant channel startup</small>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label">Stream Method</label>
+                                <select class="form-select" name="stream method">
+                                    <option value="ffmpeg" {{ 'selected' if settings['stream method'] == 'ffmpeg' }}>FFmpeg</option>
+                                    <option value="redirect" {{ 'selected' if settings['stream method'] == 'redirect' }}>Direct Redirect</option>
+                                </select>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Basic Streaming -->
-                <div class="col-lg-6">
-                    <div class="card">
+                <!-- HLS Settings -->
+                <div class="col-lg-4">
+                    <div class="card h-100">
                         <div class="card-header">
-                            <h3 class="card-title">Basic Streaming</h3>
+                            <h3 class="card-title">HLS Options</h3>
                         </div>
                         <div class="card-body">
                             <div class="mb-3">
-                                <label class="form-label">Stream Method</label>
-                                <select class="form-select" name="stream method">
-                                    <option value="ffmpeg" {{ 'selected' if settings['stream method'] == 'ffmpeg' }}>FFmpeg (recommended)</option>
-                                    <option value="redirect" {{ 'selected' if settings['stream method'] == 'redirect' }}>Direct Redirect</option>
+                                <label class="form-label">Segment Type</label>
+                                <select class="form-select" name="hls segment type">
+                                    <option value="mpegts" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'mpegts' }}>MPEG-TS</option>
+                                    <option value="fmp4" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'fmp4' }}>fMP4</option>
                                 </select>
+                                <small class="form-hint">fMP4 = faster startup</small>
                             </div>
                             
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Duration</label>
+                                        <input type="number" class="form-control" name="hls segment duration" value="{{ settings.get('hls segment duration', '4') }}" min="2" max="10">
+                                        <small class="form-hint">Seconds</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Playlist Size</label>
+                                        <input type="number" class="form-control" name="hls playlist size" value="{{ settings.get('hls playlist size', '6') }}" min="3" max="20">
+                                        <small class="form-hint">Segments</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label">Max Concurrent Streams</label>
+                                <input type="number" class="form-control" name="hls max streams" value="{{ settings.get('hls max streams', '10') }}" min="1" max="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stream Options -->
+                <div class="col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Stream Options</h3>
+                        </div>
+                        <div class="card-body">
                             <div class="mb-3">
                                 <label class="form-label">FFmpeg Timeout</label>
                                 <input type="number" class="form-control" name="ffmpeg timeout" value="{{ settings['ffmpeg timeout'] }}" min="1" max="60">
-                                <small class="form-hint">Seconds (default: 10)</small>
+                                <small class="form-hint">Seconds</small>
                             </div>
                             
                             <div class="mb-3">
@@ -132,10 +136,12 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Playlist -->
+            </div>
+            
+            <div class="row row-cards mb-4">
+                <!-- Playlist Options -->
                 <div class="col-lg-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">Playlist Options</h3>
                         </div>
@@ -154,7 +160,7 @@
                                 </label>
                             </div>
                             
-                            <div class="mb-3">
+                            <div class="mb-0">
                                 <label class="form-label">Sort By</label>
                                 <div class="form-selectgroup">
                                     <label class="form-selectgroup-item">
@@ -174,15 +180,42 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- EPG Options -->
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">EPG Fallback</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="epg fallback enabled" value="true" {{ 'checked' if settings.get('epg fallback enabled') == 'true' }}>
+                                    <span class="form-check-label">Enable EPG Fallback</span>
+                                </label>
+                                <small class="form-hint">Use epgshare01.online for channels without portal EPG</small>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label">Fallback Countries</label>
+                                <input type="text" class="form-control" name="epg fallback countries" value="{{ settings.get('epg fallback countries', '') }}" placeholder="DE, UK, US">
+                                <small class="form-hint">Comma-separated country codes</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <!-- 2. SECURITY & ACCESS -->
-            <h3 class="mb-3"><i class="ti ti-shield-lock me-2"></i>Security & Access</h3>
+            <div class="mb-3">
+                <h3><i class="ti ti-shield-lock me-2"></i>Security & Access</h3>
+                <div class="text-muted">Manage authentication and API access</div>
+            </div>
             
             <div class="row row-cards mb-4">
                 <!-- Admin Login -->
                 <div class="col-lg-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">Admin Login</h3>
                         </div>
@@ -210,7 +243,7 @@
                 
                 <!-- XC API -->
                 <div class="col-lg-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">Xtream Codes API</h3>
                         </div>
@@ -242,13 +275,16 @@
                 </div>
             </div>
             
-            <!-- 3. INTEGRATIONS -->
-            <h3 class="mb-3"><i class="ti ti-plug me-2"></i>Integrations</h3>
+            <!-- 3. INTEGRATIONS & ADVANCED -->
+            <div class="mb-3">
+                <h3><i class="ti ti-plug me-2"></i>Integrations & Advanced</h3>
+                <div class="text-muted">HD HomeRun emulation and advanced options</div>
+            </div>
             
             <div class="row row-cards mb-4">
                 <!-- HD HomeRun -->
                 <div class="col-lg-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">HD HomeRun Emulation</h3>
                         </div>
@@ -278,22 +314,17 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- 4. ADVANCED -->
-            <h3 class="mb-3"><i class="ti ti-code me-2"></i>Advanced</h3>
-            
-            <div class="row row-cards">
-                <div class="col-12">
-                    <div class="card">
+                
+                <!-- Custom FFmpeg -->
+                <div class="col-lg-6">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">Custom FFmpeg Command</h3>
-                            <div class="card-subtitle text-muted">For advanced users only - modify at your own risk</div>
                         </div>
                         <div class="card-body">
                             <div class="mb-0">
                                 <label class="form-label">FFmpeg Command</label>
-                                <textarea class="form-control font-monospace" name="ffmpeg command" rows="3">{{ settings['ffmpeg command'] }}</textarea>
+                                <textarea class="form-control font-monospace" name="ffmpeg command" rows="8">{{ settings['ffmpeg command'] }}</textarea>
                                 <small class="form-hint">Placeholders: &lt;url&gt;, &lt;proxy&gt;, &lt;timeout&gt;</small>
                             </div>
                         </div>

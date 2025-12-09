@@ -1,85 +1,232 @@
 {% extends "base.html" %}
 
 {% block head %}
-<!-- DataTables CSS -->
-<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
-<!-- Plyr.io CSS -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 <style>
-    .copy-url-btn {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        opacity: 0.9;
-    }
-    .copy-url-btn:hover {
-        opacity: 1;
-    }
-    .duplicate-badge {
-        background-color: #d63939;
-        color: white;
-        font-size: 0.7em;
-        padding: 2px 6px;
-        border-radius: 10px;
-        margin-left: 5px;
+    .portal-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        padding: 20px 0;
     }
     
-    /* Custom Sorting Indicators */
-    table.dataTable thead th {
+    .portal-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px;
         cursor: pointer;
-        user-select: none;
+        transition: border-color 0.2s ease;
     }
     
-    table.dataTable thead th.sorting,
-    table.dataTable thead th.sorting_asc,
-    table.dataTable thead th.sorting_desc {
-        background-image: none !important;
-        padding-right: 30px !important;
+    [data-bs-theme="light"] .portal-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
     }
     
-    /* Add custom sorting arrows */
-    .sort-arrows {
-        display: inline-block;
-        margin-left: 5px;
-        font-size: 0.85em;
+    [data-bs-theme="dark"] .portal-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .portal-card:hover {
+        border-color: #10b981;
+    }
+    
+    .portal-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+    }
+    
+    .portal-stats {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    
+    .portal-stat-box {
+        flex: 1;
+        text-align: center;
+        padding: 8px 4px;
+        border-radius: 6px;
+    }
+    
+    [data-bs-theme="light"] .portal-stat-box {
+        background: #f1f5f9;
+    }
+    
+    [data-bs-theme="dark"] .portal-stat-box {
+        background: #1f1f1f;
+    }
+    
+    .portal-stat-value {
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+    
+    .portal-stat-label {
+        font-size: 0.7rem;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+    
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+        padding: 10px 0;
+    }
+    
+    .category-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 15px 10px;
+        cursor: pointer;
+        text-align: center;
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: border-color 0.2s ease;
+    }
+    
+    [data-bs-theme="light"] .category-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .category-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .category-card:hover {
+        border-color: #10b981;
+    }
+    
+    /* Active category (has enabled channels) - green border */
+    .category-card-active {
+        border-color: #10b981 !important;
+    }
+    
+    .category-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        word-break: break-word;
+        line-height: 1.2;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+    
+    .category-count {
+        font-size: 0.75rem;
+        opacity: 0.7;
+    }
+    
+    .filter-bar {
+        position: sticky;
+        top: 56px;
+        z-index: 100;
+        padding: 15px 0;
+        margin-bottom: 10px;
+    }
+    
+    [data-bs-theme="light"] .filter-bar {
+        background: #f8fafc;
+    }
+    
+    [data-bs-theme="dark"] .filter-bar {
+        background: #1a1a1a;
+    }
+    
+    /* Modal styling */
+    #editorModal .modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    /* Table styling */
+    [data-bs-theme="dark"] #editorModal .table {
+        --bs-table-bg: #2a2a2a;
+        --bs-table-striped-bg: #1f1f1f;
+        color: #e0e0e0;
+    }
+    
+    [data-bs-theme="dark"] #editorModal .table thead th {
+        background-color: #1f1f1f;
+        color: #e0e0e0;
+        border-color: #404040;
+    }
+    
+    [data-bs-theme="dark"] #editorModal .table tbody td {
+        border-color: #404040;
+    }
+    
+    [data-bs-theme="dark"] #editorModal .form-control {
+        background-color: #1f1f1f;
+        border-color: #404040;
+        color: #e0e0e0;
+    }
+    
+    /* Table cell vertical alignment */
+    #editorModal .table td {
         vertical-align: middle;
+        padding: 0.5rem 0.5rem;
     }
     
-    .sort-arrows .arrow-up,
-    .sort-arrows .arrow-down {
-        display: block;
-        line-height: 0.7em;
-        opacity: 0.25;
-        transition: all 0.2s ease;
-    }
-    
-    /* Active state for ascending sort */
-    table.dataTable thead th.sorting_asc .sort-arrows .arrow-up {
-        opacity: 1 !important;
-        color: #206bc4 !important;
-        font-weight: bold;
-    }
-    
-    /* Active state for descending sort */
-    table.dataTable thead th.sorting_desc .sort-arrows .arrow-down {
-        opacity: 1 !important;
-        color: #206bc4 !important;
-        font-weight: bold;
-    }
-    /* Make table in the editor card reach to the card edges */
-    .card-table-fullwidth .card-body {
-        padding: 0 !important;
-    }
-
-    .card-table-fullwidth .table-responsive {
-        border-radius: 0 !important;
+    /* Switch styling - same height as play button, aligned left */
+    #editorModal .form-check {
+        display: flex;
+        align-items: center;
         margin: 0;
+        min-height: auto;
+        padding-left: 0;
     }
-
-    .card-table-fullwidth .table {
-        margin-bottom: 0;
+    
+    #editorModal .form-check-input {
+        margin: 0;
+        width: 2.25rem;
+        height: 1.125rem;
+        float: none;
+    }
+    
+    /* Switch off state - neutral gray instead of blue */
+    [data-bs-theme="dark"] #editorModal .form-check-input:not(:checked) {
+        background-color: #404040;
+        border-color: #404040;
+    }
+    
+    /* Sticky search bar - glass effect */
+    #editorModal .channel-filter-sticky {
+        position: sticky;
+        top: -2rem;
+        z-index: 10;
+    }
+    
+    [data-bs-theme="light"] #editorModal .channel-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(255, 255, 255, 0.98) 0%, 
+            rgba(255, 255, 255, 0.95) 40%, 
+            rgba(255, 255, 255, 0.5) 70%,
+            rgba(255, 255, 255, 0) 100%) !important;
+    }
+    
+    [data-bs-theme="dark"] #editorModal .channel-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(42, 42, 42, 0.98) 0%, 
+            rgba(42, 42, 42, 0.95) 40%, 
+            rgba(42, 42, 42, 0.5) 70%,
+            rgba(42, 42, 42, 0) 100%) !important;
     }
 </style>
 {% endblock %}
@@ -89,13 +236,17 @@
     <div class="container-xl">
         <div class="row g-2 align-items-center">
             <div class="col">
-                <div class="page-pretitle">
-                    Management
-                </div>
                 <h2 class="page-title">
                     <i class="ti ti-edit me-2"></i>
                     Channel Editor
                 </h2>
+            </div>
+            <div class="col-auto">
+                <div class="btn-list">
+                    <button class="btn btn-primary" onclick="refreshChannels()" id="refreshBtn">
+                        <i class="ti ti-refresh me-2"></i>Refresh
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -103,703 +254,551 @@
 
 <div class="page-body">
     <div class="container-xl">
-        <!-- Filter Controls -->
-        <div class="card mb-3">
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <label class="form-label">Portal</label>
-                        <select class="form-select" id="portalFilter">
-                            <option value="">All Portals</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Genre</label>
-                        <select class="form-select" id="genreFilter">
-                            <option value="">All Genres</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Duplicates</label>
-                        <select class="form-select" id="duplicateFilter">
-                            <option value="">All Channels</option>
-                            <option value="enabled_only">Enabled Duplicates Only</option>
-                            <option value="unique_only">Unique Only</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">&nbsp;</label>
-                        <button class="btn btn-warning w-100" onclick="deactivateDuplicates()" title="Deactivate enabled duplicate channels (keeps first enabled occurrence)">
-                            <i class="ti ti-trash me-2"></i>Deactivate Duplicates
-                        </button>
+        <div class="filter-bar">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Search Portals</label>
+                    <input type="text" class="form-control" id="portalSearch" placeholder="Type to filter..." oninput="filterPortals()">
+                </div>
+                <div class="col-md-8 text-end">
+                    <div class="mt-4">
+                        <span class="badge bg-primary-lt me-2">
+                            <i class="ti ti-antenna me-1"></i>
+                            <span id="totalPortals">0</span> Portals
+                        </span>
+                        <span class="badge bg-success-lt">
+                            <i class="ti ti-tv me-1"></i>
+                            <span id="totalChannels">0</span> Channels
+                        </span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="card card-table-fullwidth">
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table id="table" class="table table-vcenter card-table nowrap table-sm table-compact" width="100%">
-        <thead>
-            <tr>
-                <th>
-                    <div class="form-check form-switch">
-                        <input type="checkbox" class="checkbox form-check-input" onchange="editAll(this)">
-                    </div>
-                </th>
-                <th>Play</th>
-                <th>Name</th>
-                <th>Genre</th>
-                <th>Number</th>
-                <th>EPG ID</th>
-                <th title="OpenEPG Mapping Status" style="width: 60px; text-align: center;"><i class="ti ti-world"></i></th>
-                <th>Fallback For</th>
-                <th>Portal</th>
-            </tr>
-        </thead>
-        <tbody>
-        </tbody>
-                    </table>
-                </div>
-            </div>
+        <div id="portalsContainer">
+            <div class="portal-grid" id="portalGrid"></div>
         </div>
 
-        <form action="/editor/save" method="post" id="save edits" hidden>
-            <input type="text" id="enabledEdits" name="enabledEdits" value="">
-            <input type="text" id="numberEdits" name="numberEdits" value="">
-            <input type="text" id="nameEdits" name="nameEdits" value="">
-            <input type="text" id="genreEdits" name="genreEdits" value="">
-            <input type="text" id="epgEdits" name="epgEdits" value="">
-            <input type="text" id="fallbackEdits" name="fallbackEdits" value="">
-        </form>
+        <div id="loadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3">Loading portals...</p>
+        </div>
+    </div>
+</div>
 
-        <form action="/editor/reset" method="post" id="reset" hidden>
-        </form>
-
-        <!-- Channel Names Datalist for Fallback Suggestions -->
-        <datalist id="channelNamesList">
-            <!-- Options will be populated dynamically -->
-        </datalist>
-
-        <!-- Video Modal -->
-        <div class="modal modal-blur fade" id="videoModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="channelLabel">Channel</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body p-0" style="position: relative;">
-                        <button class="btn btn-primary btn-sm copy-url-btn" onclick="copyStreamUrl()" title="Copy Stream URL">
-                            <i class="ti ti-copy me-1"></i>
-                            Copy URL
-                        </button>
-                        <video id="player" playsinline controls autoplay>
-                            <source src="" type="video/mp4">
-                        </video>
-                    </div>
+<!-- Editor Modal - Single modal with dynamic content -->
+<div class="modal modal-blur fade" id="editorModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="modalTitle">Editor</h3>
+                    <div class="text-muted small" id="modalStats"></div>
                 </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="container-fluid">
+                    <div id="modalContent"></div>
+                </div>
+            </div>
+            <div class="modal-footer" id="modalFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Video Modal -->
+<div class="modal modal-blur fade" id="videoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="channelLabel">Channel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" style="position: relative;">
+                <button class="btn btn-primary btn-sm" onclick="copyStreamUrl()" 
+                        style="position: absolute; top: 10px; right: 10px; z-index: 1000;">
+                    <i class="ti ti-copy me-1"></i>Copy URL
+                </button>
+                <video id="player" playsinline controls autoplay></video>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Load jQuery and DataTables -->
-<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
-<!-- Hls.js for better buffering -->
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<!-- Plyr.io JS -->
-<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+<script>
+let allPortals = [];
+let allChannels = [];
+let currentPortalId = null;
+let currentPortalName = '';
+let currentView = 'categories'; // 'categories' or 'channels'
+let categoriesData = {};
+let currentCategoryChannels = [];
+let currentCategoryName = '';
+let showAllCategories = false; // Toggle for showing all vs active only
+let edits = { enabled: [], name: [], number: [], epgId: [] };
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadPortals();
+});
+
+function loadPortals() {
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('portalGrid').innerHTML = '';
+    
+    fetch('/editor/portal-stats', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            allPortals = data.portals || [];
+            renderPortals();
+            updateStats();
+            document.getElementById('loadingIndicator').style.display = 'none';
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('portalGrid').innerHTML = '<div class="alert alert-danger">Error loading portals</div>';
+        });
+}
+</script>
 
 <script>
-    var enabledEdits = [];
-    var numberEdits = [];
-    var nameEdits = [];
-    var genreEdits = [];
-    var epgEdits = [];
-    var fallbackEdits = [];
-    var dataTable;
-    var allChannelNamesCount = {}; // Track all channel name frequencies for autocomplete
-    var enabledChannelNamesCount = {}; // Track enabled channel name frequencies for duplicate detection
-
-    function editAll(ele) {
-        var checkboxes = document.getElementsByClassName('checkbox');
-        var enable = ele.checked;
-        for (var i = 0, n = checkboxes.length; i < n; i++) {
-            if (i != 0) {
-                checkboxes[i].checked = enable;
-                checkboxes[i].onchange();
-            }
-        }
-    }
-
-    function editEnabled(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.checked;
-        var j = { "portal": p, "channel id": i, "enabled": c };
-        enabledEdits.push(j);
-    }
-
-    function editCustomNumber(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.value;
-        var j = { "portal": p, "channel id": i, "custom number": c };
-        numberEdits.push(j);
-    }
-
-    function editCustomName(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.value;
-        var j = { "portal": p, "channel id": i, "custom name": c };
-        nameEdits.push(j);
-    }
-
-    function editCustomGenre(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.value;
-        var j = { "portal": p, "channel id": i, "custom genre": c };
-        genreEdits.push(j);
-    }
-
-    function editCustomEpgId(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.value;
-        var j = { "portal": p, "channel id": i, "custom epg id": c };
-        epgEdits.push(j);
-    }
-
-    function editFallback(ele) {
-        var p = ele.getAttribute('data-portal');
-        var i = ele.getAttribute('data-channelId');
-        var c = ele.value;
-        var j = { "portal": p, "channel id": i, "channel name": c };
-        fallbackEdits.push(j);
-    }
-
-    function save() {
-        document.getElementById("enabledEdits").value = JSON.stringify(enabledEdits);
-        document.getElementById("numberEdits").value = JSON.stringify(numberEdits);
-        document.getElementById("nameEdits").value = JSON.stringify(nameEdits);
-        document.getElementById("genreEdits").value = JSON.stringify(genreEdits);
-        document.getElementById("epgEdits").value = JSON.stringify(epgEdits);
-        document.getElementById("fallbackEdits").value = JSON.stringify(fallbackEdits);
-        document.getElementById("save edits").submit();
-    }
-
-    var videoElement = document.getElementById("player");
-    var plyrPlayer = null;
-    var hls = null;
-    var currentStreamUrl = "";
-    var title = document.getElementById("channelLabel");
+function renderPortals() {
+    const grid = document.getElementById('portalGrid');
+    const container = document.getElementById('portalsContainer');
+    grid.innerHTML = '';
     
-    function selectChannel(ele) {
-        link = ele.getAttribute('data-link');
-        currentStreamUrl = link;
-        channel = ele.getAttribute('data-customChannelName');
-        if (channel == "") {
-            channel = ele.getAttribute('data-channelName');
-        }
-        title.innerHTML = channel;
-        
-        // Clean up existing instances
-        if (hls) {
-            hls.destroy();
-            hls = null;
-        }
-        
-        // Initialize Plyr if not already initialized
-        if (!plyrPlayer) {
-            plyrPlayer = new Plyr(videoElement, {
-                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
-                settings: ['quality', 'speed'],
-                quality: {
-                    default: 720,
-                    options: [1080, 720, 576, 480, 360]
-                },
-                volume: 0.25
-            });
-        }
-        
-        // Check if HLS is supported and if the URL is an HLS stream
-        if (Hls.isSupported() && (link.includes('.m3u8') || link.includes('hls'))) {
-            // Use Hls.js with aggressive buffering for smooth playback
-            hls = new Hls({
-                // Aggressive buffering settings
-                maxBufferLength: 60,              // Buffer up to 60 seconds ahead
-                maxMaxBufferLength: 120,          // Maximum buffer length
-                maxBufferSize: 120 * 1000 * 1000, // 120MB buffer size
-                maxBufferHole: 0.5,               // Max hole in buffer
-                lowLatencyMode: false,            // Disable low latency for more buffering
-                backBufferLength: 120,            // Keep 120s back buffer
-                
-                // Fragment loading settings
-                manifestLoadingTimeOut: 20000,    // 20s timeout for manifest
-                manifestLoadingMaxRetry: 6,       // Retry manifest loading
-                levelLoadingTimeOut: 20000,       // 20s timeout for level loading
-                levelLoadingMaxRetry: 6,          // Retry level loading
-                fragLoadingTimeOut: 30000,        // 30s timeout for fragment loading
-                fragLoadingMaxRetry: 10,          // Retry fragment loading more
-                
-                // Start loading immediately
-                startPosition: -1,                // Start from live edge
-                autoStartLoad: true,              // Start loading immediately
-                
-                // Progressive loading
-                progressive: true,
-                enableWorker: true,               // Use web worker for better performance
-                
-                // Reduce stalling
-                nudgeOffset: 0.1,
-                nudgeMaxRetry: 10,
-                maxFragLookUpTolerance: 0.25,
-                
-                // ABR (Adaptive Bitrate) settings
-                abrEwmaDefaultEstimate: 5000000,  // 5 Mbps default estimate
-                abrBandWidthFactor: 0.95,
-                abrBandWidthUpFactor: 0.7
-            });
-            
-            hls.loadSource(link);
-            hls.attachMedia(videoElement);
-            
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                plyrPlayer.play();
-            });
-            
-            hls.on(Hls.Events.ERROR, function(event, data) {
-                if (data.fatal) {
-                    console.error('HLS Error:', data);
-                    switch(data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.log('Network error, trying to recover...');
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.log('Media error, trying to recover...');
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            console.log('Fatal error, destroying HLS instance');
-                            hls.destroy();
-                            break;
-                    }
-                }
-            });
-        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-            // Native HLS support (Safari)
-            videoElement.src = link;
-            plyrPlayer.play();
-        } else {
-            // Regular video source
-            plyrPlayer.source = {
-                type: 'video',
-                sources: [{
-                    src: link,
-                    type: 'video/mp4'
-                }]
-            };
-            plyrPlayer.play();
-        }
+    if (!allPortals || allPortals.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-antenna icon"></i></div><p class="empty-title">No portals configured</p><p class="empty-subtitle text-muted">Add a portal to get started</p></div>';
+        return;
     }
     
-    function copyStreamUrl() {
-        if (currentStreamUrl) {
-            navigator.clipboard.writeText(currentStreamUrl).then(function() {
-                // Show success feedback
-                const btn = document.querySelector('.copy-url-btn');
-                const originalHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
-                btn.classList.remove('btn-primary');
-                btn.classList.add('btn-success');
-                
-                setTimeout(function() {
-                    btn.innerHTML = originalHtml;
-                    btn.classList.remove('btn-success');
-                    btn.classList.add('btn-primary');
-                }, 2000);
-            }).catch(function(err) {
-                console.error('Failed to copy URL:', err);
-                alert('Failed to copy URL to clipboard');
-            });
-        }
-    }
-
-    $('#videoModal').on('hidden.bs.modal', function () {
-        if (plyrPlayer) {
-            plyrPlayer.stop();
-        }
-        if (hls) {
-            hls.destroy();
-            hls = null;
-        }
-        currentStreamUrl = "";
-    })
-
-    /* Create an array with the values of all the checkboxes in a column */
-    $.fn.dataTable.ext.order['dom-checkbox'] = function (settings, col) {
-        return this.api().column(col, { order: 'index' }).nodes().map(function (td, i) {
-            return $('input', td).prop('checked') ? '1' : '0';
-        });
-    };
-
-    /* Create an array with the values of all the input boxes in a column, parsed as numbers */
-    $.fn.dataTable.ext.order['dom-text-numeric'] = function (settings, col) {
-        return this.api().column(col, { order: 'index' }).nodes().map(function (td, i) {
-            var val = $('input', td).val();
-            return val === '' ? $('input', td).attr('placeholder') : val * 1;
-        });
-    };
-
-    /* Create an array with the values of all the text boxes in a column */
-    $.fn.dataTable.ext.order['dom-text'] = function (settings, col) {
-        return this.api().column(col, { order: 'index' }).nodes().map(function (td, i) {
-            var val = $('input', td).val();
-            return val === '' ? $('input', td).attr('placeholder') : val;
-        });
-    };
-
-    // Populate filter dropdowns
-    function populateFilters() {
-        // Populate portals dropdown
-        fetch('/editor/portals')
-            .then(res => {
-                console.log('Portals response status:', res.status);
-                return res.json();
-            })
-            .then(data => {
-                console.log('Portals data:', data);
-                const select = document.getElementById('portalFilter');
-                if (data.portals && data.portals.length > 0) {
-                    data.portals.forEach(portal => {
-                        const option = document.createElement('option');
-                        option.value = portal;
-                        option.textContent = portal;
-                        select.appendChild(option);
-                    });
-                } else {
-                    console.warn('No portals returned');
-                }
-            })
-            .catch(err => console.error('Error loading portals:', err));
-
-        // Populate genres dropdown
-        fetch('/editor/genres')
-            .then(res => {
-                console.log('Genres response status:', res.status);
-                return res.json();
-            })
-            .then(data => {
-                console.log('Genres data:', data);
-                const select = document.getElementById('genreFilter');
-                if (data.genres && data.genres.length > 0) {
-                    data.genres.forEach(genre => {
-                        const option = document.createElement('option');
-                        option.value = genre;
-                        option.textContent = genre;
-                        select.appendChild(option);
-                    });
-                } else {
-                    console.warn('No genres returned');
-                }
-            })
-            .catch(err => console.error('Error loading genres:', err));
-    }
-
-    $(document).ready(function () {
-        // Populate filter dropdowns
-        populateFilters();
-
-        dataTable = $('#table').DataTable({
-            dom: "<'row m-1'<'col-auto'B><'col-auto ms-auto'f><'col-auto'l>>" +
-                "<'row'<'col-12'tr>>" +
-                "<'row mb-1 mb-lg-0'<'col-auto text-light'i><'col-auto ms-auto'p>>",
-            serverSide: true,
-            processing: true,
-            order: [[0, 'desc'], [2, 'asc']],
-            pageLength: 250,
-            lengthMenu: [[25, 50, 100, 250, 500, 1000], [25, 50, 100, 250, 500, 1000]],
-            columnDefs: [
-                { targets: [0, 1], width: "0%" },
-                { targets: 0, className: "align-middle", orderable: false, searchable: false },
-                { targets: 1, className: "align-middle", orderable: false, searchable: false },
-                { targets: 2, className: "align-middle", type: 'string' },
-                { targets: 3, className: "align-middle", type: 'string' },
-                { targets: 4, className: "align-middle" },
-                { targets: 5, className: "align-middle", type: 'string' },
-                { targets: 6, className: "align-middle", type: 'string' },
-                { targets: 7, className: "align-middle" }
-            ],
-            language: {
-                search: "",
-                searchPlaceholder: 'Filter',
-                lengthMenu: "_MENU_",
-                processing: "Loading channels..."
-            },
-            buttons: {
-                buttons: [
-                    {
-                        text: '<i class="ti ti-device-floppy me-2"></i>Save',
-                        titleAttr: 'Save',
-                        className: "btn btn-success",
-                        action: function () {
-                            save();
-                        }
-                    },
-                    {
-                        text: '<i class="ti ti-refresh me-2"></i>Refresh Channels',
-                        titleAttr: 'Refresh channel list from portal',
-                        className: "btn btn-primary",
-                        action: function () {
-                            refreshChannels();
-                        }
-                    },
-                    {
-                        text: '<i class="ti ti-rotate-clockwise me-2"></i>Reset',
-                        titleAttr: 'Reset',
-                        className: "btn btn-danger",
-                        action: function () {
-                            if (confirm("Confirm Reset\nThis will clear all edits!") == true) {
-                                document.getElementById('reset').submit();
-                            }
-                        }
-                    }
-                ],
-            },
-            ajax: {
-                "url": "/editor_data",
-                "dataType": "json",
-                "contentType": "application/json",
-                "data": function(d) {
-                    // Add custom filter parameters
-                    d.portal = $('#portalFilter').val();
-                    d.genre = $('#genreFilter').val();
-                    d.duplicates = $('#duplicateFilter').val();
-                }
-            },
-            columns: [
-                {
-                    data: "enabled",
-                    render: function (data, type, row, meta) {
-                        let r = '<div \
-                                class="form-check form-switch">\
-                                <input \
-                                type="checkbox" \
-                                class="checkbox form-check-input" \
-                                onchange="editEnabled(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '"'
-                        if (data == true) {
-                            r = r + ' checked';
-                        }
-                        r = r + '></div>'
-                        return r
-                    }
-                },
-                {
-                    data: "link",
-                    render: function (data, type, row, meta) {
-                        return '<button \
-                            class="btn btn-success btn-sm btn-icon" \
-                            title="Play" \
-                            data-bs-toggle="modal" \
-                            data-bs-target="#videoModal" \
-                            onclick="selectChannel(this)" \
-                            data-channelName="' + row.channelName + '" \
-                            data-customChannelName="' + row.customChannelName + '" \
-                            data-link="' + row.link + '">\
-                            <i class="ti ti-player-play"></i>\
-                        </button>'
-                    }
-                },
-                {
-                    data: "channelName",
-                    render: function (data, type, row, meta) {
-                        var duplicateBadge = '';
-                        if (row.duplicateCount && row.duplicateCount > 1) {
-                            duplicateBadge = '<span class="duplicate-badge">' + row.duplicateCount + 'x enabled</span>';
-                        }
-                        return '<div style="display: flex; align-items: center; gap: 5px;">' +
-                               '<input \
-                                type="text" \
-                                class="form-control" \
-                                style="min-width: 200px;" \
-                                onchange="editCustomName(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '" \
-                                placeholder="' + row.channelName + '" \
-                                title="' + row.channelName + '" \
-                                value="' + row.customChannelName + '">' +
-                               duplicateBadge +
-                               '</div>';
-                    },
-                },
-                {
-                    data: "genre",
-                    render: function (data, type, row, meta) {
-                        return '<input \
-                                type="text" \
-                                class="form-control" \
-                                style="min-width: 200px;" \
-                                onchange="editCustomGenre(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '" \
-                                placeholder="' + row.genre + '" \
-                                title="' + row.genre + '" \
-                                value="' + row.customGenre + '">'
-                    },
-                },
-                {
-                    data: "channelNumber",
-                    render: function (data, type, row, meta) {
-                        return '<input \
-                                type="text" \
-                                class="form-control" \
-                                style="min-width: 100px;" \
-                                onchange="editCustomNumber(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '" \
-                                placeholder="' + row.channelNumber + '" \
-                                title="' + row.channelNumber + '" \
-                                value="' + row.customChannelNumber + '">'
-                    },
-                },
-                {
-                    data: "channelId",
-                    render: function (data, type, row, meta) {
-                        return '<input \
-                                type="text" \
-                                class="form-control" \
-                                style="min-width: 200px;" \
-                                onchange="editCustomEpgId(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '" \
-                                placeholder="' + row.portal + row.channelId + '" \
-                                title="' + row.portal + row.channelId + '" \
-                                value="' + row.customEpgId + '">'
-                    },
-                },
-                {
-                    data: "openepgName",
-                    orderable: false,
-                    className: "text-center",
-                    render: function (data, type, row, meta) {
-                        if (data && data.trim() !== '') {
-                            return '<span class="badge bg-success" title="Mapped to: ' + data + '" style="cursor: help;">' + 
-                                   '<i class="ti ti-check"></i>' +
-                                   '</span>';
-                        } else {
-                            return '<span class="text-muted" title="Not mapped to OpenEPG" style="cursor: help;">-</span>';
-                        }
-                    },
-                },
-                {
-                    data: "fallbackChannel",
-                    render: function (data, type, row, meta) {
-                        return '<input \
-                                type="text" \
-                                class="form-control" \
-                                style="min-width: 200px;" \
-                                list="channelNamesList" \
-                                placeholder="Enter channel name..." \
-                                title="Type to search or click to see all channel names" \
-                                onchange="editFallback(this)" \
-                                data-portal="' + row.portal + '" \
-                                data-channelId="' + row.channelId + '" \
-                                value="' + row.fallbackChannel + '">'
-                    }
-                },
-                { data: "portalName" },
-            ],
-        });
-
-        // Add filter change event handlers
-        $('#portalFilter, #genreFilter, #duplicateFilter').on('change', function() {
-            dataTable.ajax.reload();
-        });
+    allPortals.forEach(portal => {
+        const enabledPercent = portal.total_channels > 0 ? Math.round((portal.enabled_channels / portal.total_channels) * 100) : 0;
         
-        // Add sorting arrows to table headers (after table is initialized)
-        setTimeout(function() {
-            $('#table thead th').each(function() {
-                const $th = $(this);
-                if (!$th.hasClass('sorting_disabled')) {
-                    $th.append('<span class="sort-arrows" style="display: inline-block; margin-left: 5px; font-size: 0.85em; vertical-align: middle;"><span class="arrow-up">▲</span><span class="arrow-down">▼</span></span>');
-                }
+        const card = document.createElement('div');
+        card.className = 'portal-card';
+        card.onclick = () => openPortalModal(portal);
+        
+        card.innerHTML = `
+            <div class="portal-name">${escapeHtml(portal.name)}</div>
+            <div class="portal-stats">
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${portal.enabled_channels}</div>
+                    <div class="portal-stat-label">Channels</div>
+                </div>
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${portal.enabled_genres}/${portal.total_genres}</div>
+                    <div class="portal-stat-label">Categories</div>
+                </div>
+                <div class="portal-stat-box">
+                    <div class="portal-stat-value">${enabledPercent}%</div>
+                    <div class="portal-stat-label">Active</div>
+                </div>
+            </div>
+            <div class="progress" style="height: 4px;">
+                <div class="progress-bar bg-success" style="width: ${enabledPercent}%"></div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function filterPortals() {
+    const search = document.getElementById('portalSearch').value.toLowerCase();
+    document.querySelectorAll('.portal-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
+    });
+}
+
+function updateStats() {
+    document.getElementById('totalPortals').textContent = allPortals.length;
+    const totalChannels = allPortals.reduce((sum, p) => sum + p.total_channels, 0);
+    document.getElementById('totalChannels').textContent = totalChannels;
+}
+
+function openPortalModal(portal) {
+    currentPortalId = portal.id;
+    currentPortalName = portal.name;
+    currentView = 'categories';
+    
+    const modal = new bootstrap.Modal(document.getElementById('editorModal'));
+    modal.show();
+    
+    // Show loading state
+    document.getElementById('modalTitle').textContent = `${portal.name} - Loading...`;
+    document.getElementById('modalStats').textContent = '';
+    document.getElementById('modalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading channels...</p></div>';
+    
+    // Fetch all channels for this portal
+    fetch(`/editor/portal-channels/${encodeURIComponent(portal.id)}`, {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            const portalChannels = data.channels || [];
+            
+            // Group by category
+            categoriesData = {};
+            portalChannels.forEach(ch => {
+                const genre = ch.customGenre || ch.genre || 'Uncategorized';
+                if (!categoriesData[genre]) categoriesData[genre] = [];
+                categoriesData[genre].push(ch);
             });
-        }, 100);
+            
+            showCategoriesView(portalChannels);
+        })
+        .catch(err => {
+            document.getElementById('modalContent').innerHTML = '<div class="alert alert-danger">Error loading channels</div>';
+        });
+}
+
+function showCategoriesView(portalChannels) {
+    currentView = 'categories';
+    
+    // Remove channels-view class for normal padding
+    document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
+    
+    const allGenres = Object.keys(categoriesData).sort();
+    const activeGenres = allGenres.filter(genre => categoriesData[genre].some(ch => ch.enabled));
+    const totalChannels = portalChannels ? portalChannels.length : 0;
+    const enabledCount = portalChannels ? portalChannels.filter(ch => ch.enabled).length : 0;
+    
+    // Decide which genres to show based on toggle
+    const genresToShow = showAllCategories ? allGenres : activeGenres;
+    
+    document.getElementById('modalTitle').textContent = `${currentPortalName} - Channel Editor`;
+    document.getElementById('modalStats').textContent = `${enabledCount} channels enabled • ${activeGenres.length} active categories`;
+    
+    document.getElementById('modalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    `;
+    
+    const toggleBadgeClass = showAllCategories ? 'bg-primary' : 'bg-secondary-lt';
+    const toggleBtnText = showAllCategories ? 'Showing All' : 'Show All';
+    
+    let html = `
+        <div class="channel-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="categorySearch" placeholder="Search categories..." oninput="filterCategories()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt me-2"><i class="ti ti-folder me-1"></i>${allGenres.length} Categories</span>
+                    <span class="badge bg-success-lt me-2"><i class="ti ti-tv me-1"></i>${totalChannels} Channels</span>
+                    <span class="badge ${toggleBadgeClass}" style="cursor: pointer;" onclick="toggleShowAll()">
+                        <i class="ti ti-eye me-1"></i>${toggleBtnText}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="category-grid">
+    `;
+    
+    genresToShow.forEach(genre => {
+        const genreChannels = categoriesData[genre];
+        const enabled = genreChannels.filter(c => c.enabled).length;
+        const isActive = enabled > 0;
+        const activeClass = (showAllCategories && isActive) ? 'category-card-active' : '';
+        html += `
+            <div class="category-card ${activeClass}" onclick="showChannelsView('${escapeHtml(genre).replace(/'/g, "\\'")}')">
+                <div class="category-name" title="${escapeHtml(genre)}">${escapeHtml(genre)}</div>
+                <div class="category-count">${enabled}/${genreChannels.length}</div>
+            </div>
+        `;
     });
     
-    // Function to deactivate duplicate enabled channels
-    function deactivateDuplicates() {
-        if (!confirm('This will deactivate all duplicate enabled channels, keeping only the first occurrence of each. Continue?')) {
-            return;
-        }
+    html += '</div>';
+    document.getElementById('modalContent').innerHTML = html;
+}
 
-        fetch('/editor/deactivate-duplicates', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+function toggleShowAll() {
+    showAllCategories = !showAllCategories;
+    const portalChannels = Object.values(categoriesData).flat();
+    showCategoriesView(portalChannels);
+}
+
+function filterCategories() {
+    const search = document.getElementById('categorySearch').value.toLowerCase();
+    document.querySelectorAll('.category-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'flex' : 'none';
+    });
+}
+
+function showChannelsView(genre) {
+    currentView = 'channels';
+    currentCategoryName = genre;
+    currentCategoryChannels = categoriesData[genre] || [];
+    
+    const enabledCount = currentCategoryChannels.filter(ch => ch.enabled).length;
+    
+    // Remove channels-view class - use normal padding
+    document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
+    
+    document.getElementById('modalTitle').textContent = `${genre}`;
+    document.getElementById('modalStats').textContent = `${currentCategoryChannels.length} channels • ${enabledCount} enabled`;
+    
+    document.getElementById('modalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="backToCategories()">
+            <i class="ti ti-arrow-left me-2"></i>Back
+        </button>
+        <button type="button" class="btn btn-success" onclick="saveChannelChanges()">
+            <i class="ti ti-device-floppy me-2"></i>Save Changes
+        </button>
+    `;
+    
+    let html = `
+        <div class="channel-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="channelSearch" placeholder="Search channels..." oninput="filterChannels()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt me-2"><i class="ti ti-tv me-1"></i>${currentCategoryChannels.length} Channels</span>
+                    <span class="badge bg-success-lt me-2"><i class="ti ti-check me-1"></i>${enabledCount} Enabled</span>
+                    <span class="badge bg-primary" style="cursor: pointer;" onclick="selectAllChannels()"><i class="ti ti-check me-1"></i>All</span>
+                    <span class="badge bg-secondary-lt" style="cursor: pointer;" onclick="deselectAllChannels()"><i class="ti ti-x me-1"></i>None</span>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-vcenter table-hover card-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px; vertical-align: middle;">
+                                <div class="form-check form-switch mb-0">
+                                    <input type="checkbox" class="form-check-input" onchange="toggleAllChannels(this)" id="toggleAll">
+                                </div>
+                            </th>
+                            <th style="width: 50px;">Play</th>
+                            <th>Channel Name</th>
+                            <th style="width: 100px;">Number</th>
+                            <th style="width: 200px;">EPG ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="channelsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('modalContent').innerHTML = html;
+    renderChannelsTable();
+}
+
+function renderChannelsTable() {
+    const tbody = document.getElementById('channelsTableBody');
+    tbody.innerHTML = '';
+    
+    currentCategoryChannels.forEach(ch => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <div class="form-check form-switch">
+                    <input type="checkbox" class="form-check-input channel-enabled" 
+                           ${ch.enabled ? 'checked' : ''}
+                           data-portal="${ch.portal}" data-channel-id="${ch.channelId}">
+                </div>
+            </td>
+            <td>
+                <button class="btn btn-success btn-sm btn-icon" onclick="playChannel('${ch.link}', '${escapeHtml(ch.customChannelName || ch.channelName).replace(/'/g, "\\'")}')">
+                    <i class="ti ti-player-play"></i>
+                </button>
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm channel-name" 
+                       placeholder="${escapeHtml(ch.channelName)}"
+                       value="${escapeHtml(ch.customChannelName || '')}"
+                       data-portal="${ch.portal}" data-channel-id="${ch.channelId}">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm channel-number" 
+                       placeholder="${ch.channelNumber}"
+                       value="${ch.customChannelNumber || ''}"
+                       data-portal="${ch.portal}" data-channel-id="${ch.channelId}">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm channel-epg" 
+                       placeholder="${escapeHtml(ch.portal + ch.channelId)}"
+                       value="${escapeHtml(ch.customEpgId || '')}"
+                       data-portal="${ch.portal}" data-channel-id="${ch.channelId}">
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function filterChannels() {
+    const search = document.getElementById('channelSearch').value.toLowerCase();
+    document.querySelectorAll('#channelsTableBody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(search) ? '' : 'none';
+    });
+}
+
+function toggleAllChannels(checkbox) {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = checkbox.checked);
+}
+
+function selectAllChannels() {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = true);
+    document.getElementById('toggleAll').checked = true;
+}
+
+function deselectAllChannels() {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = false);
+    document.getElementById('toggleAll').checked = false;
+}
+
+function backToCategories() {
+    // Rebuild portalChannels from categoriesData
+    const portalChannels = Object.values(categoriesData).flat();
+    showCategoriesView(portalChannels);
+}
+
+function saveChannelChanges() {
+    const enabledInputs = document.querySelectorAll('.channel-enabled');
+    const nameInputs = document.querySelectorAll('.channel-name');
+    const numberInputs = document.querySelectorAll('.channel-number');
+    const epgInputs = document.querySelectorAll('.channel-epg');
+    
+    edits = { enabled: [], name: [], number: [], epgId: [] };
+    
+    enabledInputs.forEach(input => {
+        edits.enabled.push({
+            portal: input.dataset.portal,
+            "channel id": input.dataset.channelId,
+            enabled: input.checked
+        });
+    });
+    
+    nameInputs.forEach(input => {
+        if (input.value) {
+            edits.name.push({
+                portal: input.dataset.portal,
+                "channel id": input.dataset.channelId,
+                "custom name": input.value
+            });
+        }
+    });
+    
+    numberInputs.forEach(input => {
+        if (input.value) {
+            edits.number.push({
+                portal: input.dataset.portal,
+                "channel id": input.dataset.channelId,
+                "custom number": input.value
+            });
+        }
+    });
+    
+    epgInputs.forEach(input => {
+        if (input.value) {
+            edits.epgId.push({
+                portal: input.dataset.portal,
+                "channel id": input.dataset.channelId,
+                "custom epg id": input.value
+            });
+        }
+    });
+    
+    const formData = new FormData();
+    formData.append('enabledEdits', JSON.stringify(edits.enabled));
+    formData.append('nameEdits', JSON.stringify(edits.name));
+    formData.append('numberEdits', JSON.stringify(edits.number));
+    formData.append('epgEdits', JSON.stringify(edits.epgId));
+    formData.append('genreEdits', JSON.stringify([]));
+    formData.append('fallbackEdits', JSON.stringify([]));
+    
+    fetch('/editor/save', { method: 'POST', body: formData, credentials: 'same-origin' })
+        .then(res => res.text())
+        .then(() => {
+            showToast('Changes saved successfully!', 'success');
+            loadPortals();
+            backToCategories();
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Successfully deactivated ' + data.deactivated + ' duplicate channels!');
-                dataTable.ajax.reload();
-            } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            alert('Error deactivating duplicates: ' + error);
+        .catch(err => showAlert('Error saving: ' + err, 'Error', 'danger'));
+}
+
+function refreshChannels() {
+    showConfirm('Refresh channel list from portals? This may take a few minutes.', 'Refresh Channels', function() {
+        const btn = document.getElementById('refreshBtn');
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Refreshing...';
+        btn.disabled = true;
+        
+        fetch('/editor/refresh', { method: 'POST', credentials: 'same-origin' })
+            .then(res => res.json())
+            .then(data => {
+                showAlert('Refreshed ' + data.total + ' channels!', 'Success', 'success');
+                loadPortals();
+            })
+            .catch(err => showAlert('Error: ' + err, 'Error', 'danger'))
+            .finally(() => { btn.innerHTML = origHtml; btn.disabled = false; });
+    });
+}
+
+// Video player
+let plyrPlayer = null;
+let hls = null;
+let currentStreamUrl = '';
+
+function playChannel(url, name) {
+    currentStreamUrl = url;
+    document.getElementById('channelLabel').textContent = name;
+    
+    const videoElement = document.getElementById('player');
+    if (hls) { hls.destroy(); hls = null; }
+    
+    if (!plyrPlayer) {
+        plyrPlayer = new Plyr(videoElement, {
+            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+            volume: 0.25
         });
     }
-
-    // Function to refresh channels from portal
-    function refreshChannels() {
-        if (!confirm('This will fetch the latest channel list from your portals. This may take a few minutes. Continue?')) {
-            return;
-        }
-        
-        // Show loading indicator
-        var btn = $('.btn-primary').first();
-        var originalText = btn.html();
-        btn.html('<span class="spinner-border spinner-border-sm me-2"></span>Refreshing...').prop('disabled', true);
-        
-        fetch('/editor/refresh', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert('Successfully refreshed ' + data.total + ' channels!');
-                dataTable.ajax.reload();
-            } else {
-                alert('Error refreshing channels: ' + (data.message || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            alert('Error refreshing channels: ' + error);
-        })
-        .finally(() => {
-            btn.html(originalText).prop('disabled', false);
-        });
+    
+    if (Hls.isSupported() && url.includes('.m3u8')) {
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(videoElement);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => plyrPlayer.play());
+    } else {
+        videoElement.src = url;
+        plyrPlayer.play();
     }
+    
+    const videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
+    videoModal.show();
+}
 
+function copyStreamUrl() {
+    navigator.clipboard.writeText(currentStreamUrl).then(() => {
+        const btn = event.target.closest('button');
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+        btn.classList.replace('btn-primary', 'btn-success');
+        setTimeout(() => { btn.innerHTML = origHtml; btn.classList.replace('btn-success', 'btn-primary'); }, 2000);
+    });
+}
+
+document.getElementById('videoModal').addEventListener('hidden.bs.modal', () => {
+    if (plyrPlayer) plyrPlayer.stop();
+    if (hls) hls.destroy();
+});
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
-{% endblock %} 
+{% endblock %}

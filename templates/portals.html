@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Portals - MacReplay{% endblock %}
+{% block title %}Portals - MacReplayXC{% endblock %}
 
 {% block content %}
 <div class="page-header d-print-none">
@@ -29,58 +29,65 @@
         {% if portals %}
         <div class="row row-cards">
             {% for portal_id, portal in portals.items() %}
-            <div class="col-md-6 col-lg-4">
-                <div class="card">
-                    <div class="card-status-top bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }}"></div>
+            <div class="col-md-6 col-xl-4">
+                <div class="card portal-card">
                     <div class="card-body">
-                        <div class="d-flex align-items-center mb-3">
+                        <div class="d-flex align-items-start mb-3">
+                            <div class="avatar avatar-lg bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }}-lt me-3">
+                                <i class="ti ti-antenna"></i>
+                            </div>
                             <div class="flex-fill">
                                 <h3 class="card-title mb-1">{{ portal.name or 'Unnamed Portal' }}</h3>
-                                <div class="text-muted small text-truncate">
-                                    {{ portal.url[:50] }}{% if portal.url|length > 50 %}...{% endif %}
+                                <div class="text-muted small text-truncate" title="{{ portal.url }}">
+                                    {{ portal.url[:40] }}{% if portal.url|length > 40 %}...{% endif %}
                                 </div>
                             </div>
-                            <span class="badge bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }} ms-2">
-                                {{ 'Enabled' if portal.enabled == 'true' else 'Disabled' }}
+                            <span class="badge bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }}-lt">
+                                {{ 'Active' if portal.enabled == 'true' else 'Inactive' }}
                             </span>
                         </div>
                         
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
+                        <div class="row g-3 mb-3">
+                            <div class="col-6 text-center">
+                                <div class="h2 mb-1">{{ portal.macs|length }}</div>
                                 <div class="text-muted small">MAC Addresses</div>
-                                <div class="h3 mb-0">{{ portal.macs|length }}</div>
                             </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Streams/MAC</div>
-                                <div class="h3 mb-0">{{ portal['streams per mac'] }}</div>
+                            <div class="col-6 text-center">
+                                <div class="h2 mb-1">{{ portal.get('enabled channels', [])|length }}</div>
+                                <div class="text-muted small">Channels</div>
                             </div>
                         </div>
                         
-                        <div class="row g-2">
+                        <div class="row g-2 text-center">
                             <div class="col-6">
-                                <div class="text-muted small">EPG Offset</div>
-                                <div>{{ portal['epg offset'] }} hours</div>
+                                <div class="badge bg-primary-lt w-100">
+                                    <i class="ti ti-player-play me-1"></i>{{ portal['streams per mac'] }} Streams
+                                </div>
                             </div>
                             <div class="col-6">
-                                <div class="text-muted small">Enabled Channels</div>
-                                <div>{{ portal.get('enabled channels', [])|length }}</div>
+                                <div class="badge bg-info-lt w-100">
+                                    <i class="ti ti-clock me-1"></i>{{ portal['epg offset'] }}h Offset
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="card-footer">
-                        <div class="btn-list">
-                            <button class="btn btn-outline-success btn-sm" onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
-                                <i class="ti ti-filter me-1"></i>
-                                Genres
-                            </button>
-                            <button class="btn btn-outline-primary btn-sm" onclick="editPortal('{{ portal_id }}')">
-                                <i class="ti ti-edit me-1"></i>
-                                Edit
-                            </button>
-                            <button class="btn btn-outline-danger btn-sm" onclick="deletePortal('{{ portal_id }}', '{{ portal.name }}')">
-                                <i class="ti ti-trash me-1"></i>
-                                Delete
-                            </button>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <button class="btn btn-outline-success btn-sm w-100" onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
+                                    <i class="ti ti-filter me-1"></i>Genres
+                                </button>
+                            </div>
+                            <div class="col-4">
+                                <button class="btn btn-outline-primary btn-sm w-100" onclick="editPortal('{{ portal_id }}')">
+                                    <i class="ti ti-edit me-1"></i>Edit
+                                </button>
+                            </div>
+                            <div class="col-4">
+                                <button class="btn btn-outline-danger btn-sm w-100" onclick="deletePortal('{{ portal_id }}', '{{ portal.name }}')">
+                                    <i class="ti ti-trash me-1"></i>Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -94,7 +101,7 @@
             </div>
             <p class="empty-title">No portals configured</p>
             <p class="empty-subtitle text-muted">
-                Add your first portal to get started with MacReplay
+                Add your first portal to get started with MacReplayXC
             </p>
             <div class="empty-action">
                 <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPortalModal">
@@ -176,88 +183,119 @@
 
 <!-- Edit Portal Modal -->
 <div class="modal modal-blur fade" id="editPortalModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <form method="POST" action="/portal/update" id="editPortalForm">
                 <input type="hidden" id="edit_portal_id" name="id">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="ti ti-edit me-2"></i>Edit Portal</h5>
+                    <div>
+                        <h5 class="modal-title"><i class="ti ti-edit me-2"></i>Edit Portal</h5>
+                        <div class="text-muted small" id="editPortalSubtitle"></div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="edit_enabled" name="enabled" value="true">
-                            <span class="form-check-label">Portal Enabled</span>
-                        </label>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label required">Portal Name</label>
-                        <input type="text" class="form-control" id="edit_name" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label required">Portal URL</label>
-                        <div class="input-icon">
-                            <span class="input-icon-addon">
-                                <i class="ti ti-link"></i>
-                            </span>
-                            <input type="url" class="form-control" id="edit_url" name="url" required>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Current MAC Addresses</label>
-                        <div class="card">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-vcenter card-table" id="editMacTable">
-                                    <tbody id="editMacTableBody">
-                                        <!-- MACs will be populated here -->
-                                    </tbody>
-                                </table>
+                    <!-- Status Toggle -->
+                    <div class="edit-status-card mb-4">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <div class="avatar avatar-lg me-3" id="editPortalAvatar">
+                                    <i class="ti ti-antenna"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold" id="editPortalNameDisplay">Portal Name</div>
+                                    <div class="text-muted small">Toggle to enable or disable this portal</div>
+                                </div>
                             </div>
+                            <label class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="edit_enabled" name="enabled" value="true" style="width: 3rem; height: 1.5rem;">
+                            </label>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label required">Update MAC Addresses</label>
-                        <textarea class="form-control" id="edit_macs" name="macs" rows="4" required></textarea>
-                        <small class="form-hint">Enter MAC addresses (one per line)</small>
-                    </div>
-                    <div class="row">
+                    
+                    <!-- Basic Settings -->
+                    <div class="row g-4">
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Streams per MAC</label>
-                                <input type="number" class="form-control" id="edit_streams_per_mac" name="streams per mac" min="0" max="10">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-settings me-2"></i>Basic Settings</h4>
+                                <div class="mb-3">
+                                    <label class="form-label required">Portal Name</label>
+                                    <input type="text" class="form-control" id="edit_name" name="name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label required">Portal URL</label>
+                                    <div class="input-icon">
+                                        <span class="input-icon-addon"><i class="ti ti-link"></i></span>
+                                        <input type="url" class="form-control" id="edit_url" name="url" required>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Proxy <span class="text-muted">(Optional)</span></label>
+                                    <div class="input-icon">
+                                        <span class="input-icon-addon"><i class="ti ti-server"></i></span>
+                                        <input type="text" class="form-control" id="edit_proxy" name="proxy" placeholder="http://proxy:port">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">EPG Offset (hours)</label>
-                                <input type="number" class="form-control" id="edit_epg_offset" name="epg offset" min="-12" max="12">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-adjustments me-2"></i>Configuration</h4>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Streams per MAC</label>
+                                        <input type="number" class="form-control" id="edit_streams_per_mac" name="streams per mac" min="0" max="10">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">EPG Offset</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="edit_epg_offset" name="epg offset" min="-12" max="12">
+                                            <span class="input-group-text">hours</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="retest" name="retest" value="true">
+                                        <span class="form-check-label">Retest all MAC addresses on save</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Proxy <span class="form-label-description">Optional</span></label>
-                        <div class="input-icon">
-                            <span class="input-icon-addon">
-                                <i class="ti ti-server"></i>
-                            </span>
-                            <input type="text" class="form-control" id="edit_proxy" name="proxy">
+                    
+                    <!-- MAC Addresses Section -->
+                    <div class="row g-4 mt-0">
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-device-desktop me-2"></i>Current MACs</h4>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-vcenter mb-0" id="editMacTable">
+                                        <thead>
+                                            <tr>
+                                                <th>MAC</th>
+                                                <th>Expires</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="editMacTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="retest" name="retest" value="true">
-                            <span class="form-check-label">Retest all MAC addresses</span>
-                        </label>
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100 d-flex flex-column">
+                                <h4 class="edit-section-title"><i class="ti ti-edit me-2"></i>Update MACs</h4>
+                                <textarea class="form-control flex-fill" id="edit_macs" name="macs" required placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY" style="resize: none;"></textarea>
+                                <small class="form-hint mt-2">One per line. Changes replace existing MACs.</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                        Cancel
-                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary ms-auto">
-                        <i class="ti ti-device-floppy me-1"></i>
-                        Update Portal
+                        <i class="ti ti-device-floppy me-1"></i>Save Changes
                     </button>
                 </div>
             </form>
@@ -301,36 +339,40 @@
 
 <!-- Genre Selection Modal -->
 <div class="modal modal-blur fade" id="genreSelectionModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable" role="document">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="ti ti-filter"></i> Select Genres for <span id="genre_portal_name"></span>
-                </h5>
+                <div>
+                    <h5 class="modal-title"><i class="ti ti-filter me-2"></i>Select Genres</h5>
+                    <div class="text-muted small" id="genre_portal_name"></div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="row g-2 mb-3">
-                    <div class="col-md-6">
-                        <div class="input-icon">
-                            <span class="input-icon-addon">
-                                <i class="ti ti-search"></i>
-                            </span>
-                            <input type="text" class="form-control" id="genreSearchInput" placeholder="Search genres..." onkeyup="filterGenres()">
+                <div class="genre-filter-sticky">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-4">
+                            <div class="input-icon">
+                                <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                <input type="text" class="form-control" id="genreSearchInput" placeholder="Search genres..." oninput="filterGenres()">
+                            </div>
                         </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex gap-2 justify-content-end">
-                            <span class="badge bg-primary align-self-center"><span id="selectedGenreCount">0</span> selected</span>
-                            <span class="badge bg-secondary align-self-center"><span id="visibleGenreCount">0</span> visible</span>
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllGenresModal()">
-                                <i class="ti ti-check me-1"></i>
-                                All
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAllGenresModal()">
-                                <i class="ti ti-x me-1"></i>
-                                None
-                            </button>
+                        <div class="col-md-8 text-end">
+                            <span class="badge bg-primary-lt me-1">
+                                <i class="ti ti-check me-1"></i><span id="selectedGenreCount">0</span> selected
+                            </span>
+                            <span class="badge bg-secondary-lt me-1" id="genreCacheStatus" style="display: none;">
+                                <i class="ti ti-database me-1"></i>Cache
+                            </span>
+                            <span class="badge bg-info" style="cursor: pointer;" onclick="refreshGenresFromPortal()" id="refreshGenresBtn">
+                                <i class="ti ti-refresh me-1"></i>Refresh
+                            </span>
+                            <span class="badge bg-primary" style="cursor: pointer;" onclick="selectAllGenresModal()">
+                                <i class="ti ti-check me-1"></i>All
+                            </span>
+                            <span class="badge bg-secondary-lt" style="cursor: pointer;" onclick="deselectAllGenresModal()">
+                                <i class="ti ti-x me-1"></i>None
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -339,31 +381,263 @@
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="mt-3 text-muted">Loading genres from portal...</p>
+                    <h5 class="mt-3" id="genreLoadingStatus">Loading genres...</h5>
+                    <p class="text-muted" id="genreLoadingDetails">Please wait...</p>
                 </div>
                 
                 <div id="genreListContainer" style="display: none;">
-                    <div class="row row-cards" id="genreList">
+                    <div class="genre-grid" id="genreList">
                         <!-- Genres will be loaded here -->
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                    Cancel
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary ms-auto" onclick="saveGenreSelectionModal()" id="saveGenresBtn">
-                    <i class="ti ti-device-floppy"></i> Save and Enable Channels
+                    <i class="ti ti-device-floppy me-1"></i>Save and Enable Channels
                 </button>
             </div>
         </div>
     </div>
 </div>
+
+
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* Genre Modal - Sticky search bar with glass effect */
+#genreSelectionModal .genre-filter-sticky {
+    position: sticky;
+    top: -2rem;
+    z-index: 10;
+    -webkit-backdrop-filter: blur(16px);
+}
+
+[data-bs-theme="light"] #genreSelectionModal .genre-filter-sticky {
+    background: linear-gradient(to bottom, 
+        rgba(255, 255, 255, 0.98) 0%, 
+        rgba(255, 255, 255, 0.95) 40%, 
+        rgba(255, 255, 255, 0.5) 70%,
+        rgba(255, 255, 255, 0) 100%) !important;
+}
+
+[data-bs-theme="dark"] #genreSelectionModal .genre-filter-sticky {
+    background: linear-gradient(to bottom, 
+        rgba(42, 42, 42, 0.98) 0%, 
+        rgba(42, 42, 42, 0.95) 40%, 
+        rgba(42, 42, 42, 0.5) 70%,
+        rgba(42, 42, 42, 0) 100%) !important;
+}
+
+/* Edit Portal Modal Styles */
+.edit-status-card {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 2px solid;
+}
+
+[data-bs-theme="light"] .edit-status-card {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .edit-status-card {
+    background: #1f1f1f;
+    border-color: #404040;
+}
+
+.edit-section-card {
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid;
+}
+
+[data-bs-theme="light"] .edit-section-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .edit-section-card {
+    background: #2a2a2a;
+    border-color: #404040;
+}
+
+.edit-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+/* Switch off state - neutral gray */
+[data-bs-theme="dark"] #editPortalModal .form-check-input:not(:checked),
+[data-bs-theme="dark"] #genreSelectionModal .form-check-input:not(:checked) {
+    background-color: #404040;
+    border-color: #404040;
+}
+
+/* MAC Table styling for Edit Modal */
+#editPortalModal .table {
+    margin-bottom: 0;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table thead th {
+    background-color: #1f1f1f;
+    color: #a0a0a0;
+    border-color: #404040;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table tbody td {
+    border-color: #404040;
+    background-color: transparent !important;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table tbody tr {
+    background-color: transparent !important;
+}
+
+/* Override Bootstrap table-warning/danger in dark mode */
+[data-bs-theme="dark"] #editPortalModal .table-warning,
+[data-bs-theme="dark"] #editPortalModal .table-warning td {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    color: #ffc107;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table-danger,
+[data-bs-theme="dark"] #editPortalModal .table-danger td {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+    color: #dc3545;
+}
+
+/* Light mode table styling */
+[data-bs-theme="light"] #editPortalModal .table thead th {
+    background-color: #f8fafc;
+    color: #64748b;
+    border-color: #e2e8f0;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+[data-bs-theme="light"] #editPortalModal .table tbody td {
+    border-color: #e2e8f0;
+}
+
+/* MAC code styling */
+#editPortalModal .table code {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+}
+
+[data-bs-theme="dark"] #editPortalModal .table code {
+    background-color: #1f1f1f;
+    color: #e0e0e0;
+}
+
+[data-bs-theme="light"] #editPortalModal .table code {
+    background-color: #f1f5f9;
+    color: #334155;
+}
+
+.genre-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 20px 0;
+}
+
+.genre-card {
+    border: 2px solid;
+    border-radius: 0.5rem;
+    padding: 15px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+[data-bs-theme="light"] .genre-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .genre-card {
+    background: #2a2a2a;
+    border-color: #404040;
+}
+
+.genre-card:hover {
+    border-color: #10b981 !important;
+}
+
+[data-bs-theme="light"] .genre-card.selected {
+    background: #d1fae5;
+    border-color: #10b981;
+}
+
+[data-bs-theme="dark"] .genre-card.selected {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: #10b981;
+}
+
+.genre-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.genre-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.genre-check {
+    font-size: 1.25rem;
+    color: #10b981;
+    display: none;
+}
+
+.genre-card.selected .genre-check {
+    display: block;
+}
+
+.genre-stats {
+    text-align: center;
+}
+
+.genre-stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.genre-stat-label {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+</style>
 <script>
 const portalsData = {{ portals | tojson }};
 
@@ -376,10 +650,35 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 {% endif %}
 
+function copyToClipboard(elementId) {
+    const input = document.getElementById(elementId);
+    input.select();
+    input.setSelectionRange(0, 99999); // For mobile devices
+    
+    navigator.clipboard.writeText(input.value).then(() => {
+        // Visual feedback
+        const button = event.target.closest('button');
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="ti ti-check"></i>';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        showAlert('Failed to copy to clipboard', 'Error', 'danger');
+    });
+}
+
 function editPortal(portalId) {
     const portal = portalsData[portalId];
     if (!portal) return;
     
+    // Set form values
     document.getElementById('edit_portal_id').value = portalId;
     document.getElementById('edit_enabled').checked = portal.enabled === 'true';
     document.getElementById('edit_name').value = portal.name;
@@ -389,7 +688,15 @@ function editPortal(portalId) {
     document.getElementById('edit_epg_offset').value = portal['epg offset'];
     document.getElementById('edit_proxy').value = portal.proxy || '';
     
-    // Populate MAC table with expiry dates
+    // Update header display
+    document.getElementById('editPortalSubtitle').textContent = `${Object.keys(portal.macs).length} MAC addresses • ${(portal['enabled channels'] || []).length} channels`;
+    document.getElementById('editPortalNameDisplay').textContent = portal.name;
+    
+    // Update avatar color based on status
+    const avatar = document.getElementById('editPortalAvatar');
+    avatar.className = portal.enabled === 'true' ? 'avatar avatar-lg bg-success-lt me-3' : 'avatar avatar-lg bg-secondary-lt me-3';
+    
+    // Populate MAC table with expiry dates and status
     const macTableBody = document.getElementById('editMacTableBody');
     macTableBody.innerHTML = '';
     
@@ -398,19 +705,23 @@ function editPortal(portalId) {
         const row = document.createElement('tr');
         const expires = Date.parse(expiry);
         const diff = expires - now;
-        const daysAway = diff / (1000 * 3600 * 24);
+        const daysAway = Math.floor(diff / (1000 * 3600 * 24));
         
-        // Add color coding
+        let statusBadge = '';
         if (now > expires) {
-            row.classList.add('table-danger');
+            statusBadge = '<span class="badge bg-danger">Expired</span>';
+        } else if (daysAway < 7) {
+            statusBadge = `<span class="badge bg-warning text-dark">${daysAway}d</span>`;
         } else if (daysAway < 30) {
-            row.classList.add('table-warning');
+            statusBadge = `<span class="badge bg-azure-lt">${daysAway}d</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-success">${daysAway}d</span>`;
         }
         
         row.innerHTML = `
             <td><code>${mac.toUpperCase()}</code></td>
-            <td>:</td>
-            <td>${expiry}</td>
+            <td class="text-muted small">${expiry}</td>
+            <td>${statusBadge}</td>
         `;
         macTableBody.appendChild(row);
     }
@@ -431,37 +742,70 @@ let selectedGenresSet = new Set();
 
 function selectGenres(portalId, portalName) {
     currentPortalId = portalId;
-    document.getElementById('genre_portal_name').textContent = portalName;
     
-    // Reset state
-    selectedGenresSet.clear();
-    genresData = [];
-    document.getElementById('genreLoadingMessage').style.display = 'block';
-    document.getElementById('genreListContainer').style.display = 'none';
-    
-    // Show modal
+    // Show modal first
     const modal = new bootstrap.Modal(document.getElementById('genreSelectionModal'));
     modal.show();
     
-    // Load genres
+    // Wait for modal to be shown, then initialize
+    setTimeout(() => {
+        const genrePortalName = document.getElementById('genre_portal_name');
+        const loadingMsg = document.getElementById('genreLoadingMessage');
+        const listContainer = document.getElementById('genreListContainer');
+        const cacheStatus = document.getElementById('genreCacheStatus');
+        
+        if (genrePortalName) genrePortalName.textContent = portalName;
+        
+        // Reset state (but don't clear selectedGenresSet yet - will be set from server)
+        genresData = [];
+        
+        if (loadingMsg) loadingMsg.style.display = 'block';
+        if (listContainer) listContainer.style.display = 'none';
+        if (cacheStatus) cacheStatus.style.display = 'none';
+        
+        // Load genres with cache support
+        loadGenresForModal(false);
+    }, 100);
+}
+
+function loadGenresForModal(forceRefresh) {
+    const loadingMsg = document.getElementById('genreLoadingMessage');
+    const listContainer = document.getElementById('genreListContainer');
+    const loadingStatus = document.getElementById('genreLoadingStatus');
+    const loadingDetails = document.getElementById('genreLoadingDetails');
+    
+    if (loadingMsg) loadingMsg.style.display = 'block';
+    if (listContainer) listContainer.style.display = 'none';
+    if (loadingStatus) loadingStatus.textContent = forceRefresh ? 'Refreshing from portal...' : 'Loading genres...';
+    if (loadingDetails) loadingDetails.textContent = 'Please wait...';
+    
     fetch('/portal/load-genres', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ portal_id: portalId })
+        body: JSON.stringify({ 
+            portal_id: currentPortalId,
+            force_refresh: forceRefresh
+        })
     })
     .then(res => res.json())
     .then(data => {
         if (data.error) {
-            alert('Error loading genres: ' + data.error);
-            modal.hide();
+            showAlert('Error loading genres: ' + data.error, 'Error', 'danger');
+            bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
             return;
         }
         
         genresData = data.genres;
         
-        // Pre-select enabled genres
+        // Show cache status
+        const cacheStatus = document.getElementById('genreCacheStatus');
+        if (cacheStatus) {
+            cacheStatus.style.display = data.from_cache ? 'inline-block' : 'none';
+        }
+        
+        // Always reset and pre-select enabled genres from server
         selectedGenresSet.clear();
         if (data.enabled_genres && data.enabled_genres.length > 0) {
             console.log('Pre-selecting genres:', data.enabled_genres);
@@ -471,13 +815,28 @@ function selectGenres(portalId, portalName) {
         
         renderGenresModal();
         
-        document.getElementById('genreLoadingMessage').style.display = 'none';
-        document.getElementById('genreListContainer').style.display = 'block';
+        const loadingMsg = document.getElementById('genreLoadingMessage');
+        const listContainer = document.getElementById('genreListContainer');
+        if (loadingMsg) loadingMsg.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'block';
     })
     .catch(err => {
         console.error('Error loading genres:', err);
-        alert('Error loading genres: ' + err);
-        modal.hide();
+        showAlert('Error loading genres: ' + err, 'Error', 'danger');
+        bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
+    });
+}
+
+function refreshGenresFromPortal() {
+    showConfirm('Refresh genres from portal? This will fetch the latest channel list.', 'Refresh Genres', function() {
+        const btn = document.getElementById('refreshGenresBtn');
+        btn.disabled = true;
+        
+        loadGenresForModal(true);
+        
+        setTimeout(() => {
+            btn.disabled = false;
+        }, 3000);
     });
 }
 
@@ -486,37 +845,29 @@ function renderGenresModal() {
     container.innerHTML = '';
     
     genresData.forEach(genre => {
-        const col = document.createElement('div');
-        col.className = 'col-sm-6 col-md-4 col-lg-3';
-        
-        // Check if this genre is selected
         const isSelected = selectedGenresSet.has(genre.name);
         
         const card = document.createElement('div');
-        card.className = 'card card-sm';
+        card.className = 'genre-card';
         if (isSelected) {
-            card.classList.add('card-active');
+            card.classList.add('selected');
         }
-        card.style.cursor = 'pointer';
         card.onclick = () => toggleGenreModal(genre.name);
         
         card.innerHTML = `
-            <div class="card-body p-2">
-                <div class="d-flex align-items-start">
-                    <div class="form-check mb-0 mt-1">
-                        <input class="form-check-input genre-checkbox" type="checkbox" id="genre_${escapeHtml(genre.name)}" data-genre="${escapeHtml(genre.name)}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">
-                    </div>
-                    <div class="ms-2 flex-fill" style="min-width: 0;">
-                        <div class="text-break" style="font-size: 0.875rem; line-height: 1.3;" title="${escapeHtml(genre.name)}">${escapeHtml(genre.name)}</div>
-                        <div class="text-muted" style="font-size: 0.75rem;">${genre.count} channels</div>
-                    </div>
-                    ${isSelected ? '<div class="ms-2 flex-shrink-0"><i class="ti ti-check text-success"></i></div>' : ''}
+            <div class="genre-header">
+                <div class="genre-name">${escapeHtml(genre.name)}</div>
+                <div class="genre-check">
+                    <i class="ti ti-check"></i>
                 </div>
+            </div>
+            <div class="genre-stats">
+                <div class="genre-stat-value">${genre.count}</div>
+                <div class="genre-stat-label">Channels</div>
             </div>
         `;
         
-        col.appendChild(card);
-        container.appendChild(col);
+        container.appendChild(card);
     });
     
     console.log('Rendered', genresData.length, 'genres,', selectedGenresSet.size, 'selected');
@@ -534,71 +885,58 @@ function toggleGenreModal(genreName) {
 }
 
 function selectAllGenresModal() {
-    // Select only visible genres
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        const col = checkbox.closest('.col-sm-6');
-        if (col && col.style.display !== 'none') {
-            const genreName = checkbox.dataset.genre;
-            selectedGenresSet.add(genreName);
+    // Select all visible genres
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (card.style.display !== 'none' && index < genresData.length) {
+            selectedGenresSet.add(genresData[index].name);
         }
     });
     updateGenreUIModal();
+    updateSelectedGenreCount();
 }
 
 function deselectAllGenresModal() {
-    // Deselect only visible genres
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        const col = checkbox.closest('.col-sm-6');
-        if (col && col.style.display !== 'none') {
-            const genreName = checkbox.dataset.genre;
-            selectedGenresSet.delete(genreName);
+    // Deselect all visible genres
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (card.style.display !== 'none' && index < genresData.length) {
+            selectedGenresSet.delete(genresData[index].name);
         }
     });
     updateGenreUIModal();
+    updateSelectedGenreCount();
 }
 
 function filterGenres() {
-    const searchTerm = document.getElementById('genreSearchInput').value.toLowerCase();
-    let visibleCount = 0;
+    const searchInput = document.getElementById('genreSearchInput');
+    if (!searchInput) return;
     
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        const genreName = checkbox.dataset.genre.toLowerCase();
-        const col = checkbox.closest('[class*="col-"]');
-        
-        if (genreName.includes(searchTerm)) {
-            col.style.display = '';
-            visibleCount++;
-        } else {
-            col.style.display = 'none';
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    const cards = document.querySelectorAll('.genre-card');
+    cards.forEach((card, index) => {
+        if (index < genresData.length) {
+            const genreName = genresData[index].name.toLowerCase();
+            
+            if (genreName.includes(searchTerm)) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
         }
     });
-    
-    document.getElementById('visibleGenreCount').textContent = visibleCount;
 }
 
 function updateGenreUIModal() {
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        const genreName = checkbox.dataset.genre;
-        const isSelected = selectedGenresSet.has(genreName);
-        checkbox.checked = isSelected;
-        
-        // Update card styling
-        const card = checkbox.closest('.card');
-        if (isSelected) {
-            card.classList.add('card-active');
-            // Add checkmark if not exists
-            if (!card.querySelector('.ti-check')) {
-                const checkIcon = document.createElement('div');
-                checkIcon.className = 'ms-auto';
-                checkIcon.innerHTML = '<i class="ti ti-check text-success"></i>';
-                card.querySelector('.d-flex').appendChild(checkIcon);
-            }
-        } else {
-            card.classList.remove('card-active');
-            // Remove checkmark
-            const checkIcon = card.querySelector('.ms-auto');
-            if (checkIcon && checkIcon.querySelector('.ti-check')) {
-                checkIcon.remove();
+    // Update all genre cards based on selectedGenresSet
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (index < genresData.length) {
+            const genreName = genresData[index].name;
+            const isSelected = selectedGenresSet.has(genreName);
+            
+            if (isSelected) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
             }
         }
     });
@@ -607,25 +945,23 @@ function updateGenreUIModal() {
 }
 
 function updateSelectedGenreCount() {
-    document.getElementById('selectedGenreCount').textContent = selectedGenresSet.size;
-    
-    // Count visible genres
-    let visibleCount = 0;
-    document.querySelectorAll('.genre-checkbox').forEach(checkbox => {
-        const col = checkbox.closest('.col-sm-6');
-        if (col && col.style.display !== 'none') {
-            visibleCount++;
-        }
-    });
-    document.getElementById('visibleGenreCount').textContent = visibleCount;
+    const selectedCountEl = document.getElementById('selectedGenreCount');
+    if (selectedCountEl) {
+        selectedCountEl.textContent = selectedGenresSet.size;
+    }
 }
 
 function saveGenreSelectionModal() {
     if (selectedGenresSet.size === 0) {
-        if (!confirm('No genres selected. This means no channels will be enabled. Continue?')) {
-            return;
-        }
+        showConfirm('No genres selected. This means no channels will be enabled. Continue?', 'Warning', function() {
+            performSaveGenres();
+        });
+        return;
     }
+    performSaveGenres();
+}
+
+function performSaveGenres() {
     
     const saveBtn = document.getElementById('saveGenresBtn');
     const originalText = saveBtn.innerHTML;
@@ -649,23 +985,28 @@ function saveGenreSelectionModal() {
         saveBtn.innerHTML = originalText;
         
         if (data.error) {
-            alert('Error saving: ' + data.error);
+            showAlert('Error saving: ' + data.error, 'Error', 'danger');
             return;
         }
         
-        alert(`Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!`);
         bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
         
-        // Optionally redirect to editor
-        if (confirm('Channels have been enabled. Go to the editor to view them?')) {
-            window.location.href = '/editor';
-        }
+        // Combined success message with redirect option
+        showConfirm(
+            `Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!<br><br>Go to the editor to view them?`, 
+            'Success', 
+            function() {
+                window.location.href = '/editor';
+            },
+            null,
+            'success'
+        );
     })
     .catch(err => {
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalText;
         console.error('Error saving:', err);
-        alert('Error saving: ' + err);
+        showAlert('Error saving: ' + err, 'Error', 'danger');
     });
 }
 

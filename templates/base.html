@@ -3,17 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MacReplay{% endblock %}</title>
+    <title>{% block title %}MacReplayXC{% endblock %}</title>
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" rel="stylesheet">
     <link href="/static/style.css" rel="stylesheet">
+    <!-- Theme color AFTER Tabler CSS to override their blue default -->
+    <meta name="theme-color" id="theme-color-meta" content="#0a0a0a">
     <script>
         // Theme switcher - set before page loads
         (function() {
             const theme = localStorage.getItem('theme') || 'dark';
             const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
             document.documentElement.setAttribute('data-bs-theme', isDark ? 'dark' : 'light');
+            
+            // Update theme-color meta tag for browser chrome
+            const metaThemeColor = document.getElementById('theme-color-meta');
+            if (metaThemeColor) {
+                metaThemeColor.setAttribute('content', isDark ? '#0a0a0a' : '#ffffff');
+            }
+            
             // Set body class immediately
             if (document.body) {
                 document.body.classList.toggle('theme-dark', isDark);
@@ -25,155 +34,121 @@
 </head>
 <body>
     <div class="page">
-        <header class="navbar navbar-expand-md d-print-none">
-            <div class="container-xl">
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
-                    <a href="/">
+        <!-- Single unified navbar -->
+        <header class="navbar-wrapper d-print-none">
+            <nav class="navbar navbar-expand-lg">
+                <div class="container-xl">
+                    <!-- Brand -->
+                    <a class="navbar-brand" href="/">
                         <i class="ti ti-player-play"></i>
-                        MacReplay
+                        MacReplayXC
                     </a>
-                </h1>
-                <div class="navbar-nav flex-row order-md-last">
-                    <div class="nav-item dropdown">
-                        <a href="#" class="nav-link px-0" data-bs-toggle="dropdown" tabindex="-1" aria-label="Theme switcher">
-                            <i class="ti ti-moon icon theme-icon-active d-none d-md-inline-block"></i>
-                            <span class="d-md-none">Theme</span>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end" style="--tblr-dropdown-min-width: 10rem;">
-                            <a href="#" class="dropdown-item" data-bs-theme-value="light">
-                                <i class="ti ti-sun me-2"></i>
-                                Light
-                            </a>
-                            <a href="#" class="dropdown-item active" data-bs-theme-value="dark">
-                                <i class="ti ti-moon me-2"></i>
-                                Dark
-                            </a>
-                            <a href="#" class="dropdown-item" data-bs-theme-value="auto">
-                                <i class="ti ti-device-desktop me-2"></i>
-                                Auto
-                            </a>
-                        </div>
-                    </div>
-                    <div class="nav-item dropdown">
-                        <a href="#" class="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown">
-                            <i class="ti ti-download"></i>
-                            <div class="d-none d-xl-block ps-2">
-                                <div>Downloads</div>
-                            </div>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
-                            <a href="/playlist.m3u" target="_blank" class="dropdown-item">
-                                <i class="ti ti-list me-2"></i>
-                                M3U Playlist
-                            </a>
-                            <a href="/xmltv" target="_blank" class="dropdown-item">
-                                <i class="ti ti-tv me-2"></i>
-                                XMLTV Guide
-                            </a>
-                        </div>
-                    </div>
-                    <div class="nav-item">
-                        <a href="/logout" class="nav-link px-0" title="Logout">
-                            <i class="ti ti-logout icon"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </header>
-        <header class="navbar-expand-md">
-            <div class="collapse navbar-collapse" id="navbar-menu">
-                <div class="navbar navbar-light">
-                    <div class="container-xl">
+                    
+                    <!-- Mobile toggle -->
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    
+                    <!-- Main navigation -->
+                    <div class="collapse navbar-collapse" id="navbar-menu">
+                        <ul class="navbar-nav me-auto">
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/dashboard' %}active{% endif %}" href="/dashboard">
+                                    <i class="ti ti-chart-line me-1"></i>
+                                    Dashboard
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/portals' %}active{% endif %}" href="/portals">
+                                    <i class="ti ti-antenna me-1"></i>
+                                    Portals
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/editor' %}active{% endif %}" href="/editor">
+                                    <i class="ti ti-edit me-1"></i>
+                                    Editor
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/epg' %}active{% endif %}" href="/epg">
+                                    <i class="ti ti-calendar me-1"></i>
+                                    EPG
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/xc-users' %}active{% endif %}" href="/xc-users">
+                                    <i class="ti ti-users me-1"></i>
+                                    XC Users
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/settings' %}active{% endif %}" href="/settings">
+                                    <i class="ti ti-settings me-1"></i>
+                                    Settings
+                                </a>
+                            </li>
+                        </ul>
+                        
+                        <!-- Right side items -->
                         <ul class="navbar-nav">
-                            <li class="nav-item">
-                                <a class="nav-link" href="/portals">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-antenna"></i>
-                                    </span>
-                                    <span class="nav-link-title">Portals</span>
+                            <!-- Theme switcher -->
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link" data-bs-toggle="dropdown" aria-label="Theme">
+                                    <i class="ti ti-moon theme-icon-active"></i>
                                 </a>
+                                <div class="dropdown-menu dropdown-menu-end" id="themeDropdown">
+                                    <a href="#" class="dropdown-item theme-item" data-bs-theme-value="light">
+                                        <i class="ti ti-sun me-2"></i>Light
+                                    </a>
+                                    <a href="#" class="dropdown-item theme-item active" data-bs-theme-value="dark">
+                                        <i class="ti ti-moon me-2"></i>Dark
+                                    </a>
+                                    <a href="#" class="dropdown-item theme-item" data-bs-theme-value="auto">
+                                        <i class="ti ti-device-desktop me-2"></i>Auto
+                                    </a>
+                                </div>
                             </li>
+                            <!-- Logout -->
                             <li class="nav-item">
-                                <a class="nav-link" href="/editor">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-edit"></i>
-                                    </span>
-                                    <span class="nav-link-title">Channel Editor</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/epg">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-calendar"></i>
-                                    </span>
-                                    <span class="nav-link-title">Portal EPG</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/xc-users">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-users"></i>
-                                    </span>
-                                    <span class="nav-link-title">XC Users</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/settings">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-settings"></i>
-                                    </span>
-                                    <span class="nav-link-title">Settings</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/dashboard">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <i class="ti ti-chart-line"></i>
-                                    </span>
-                                    <span class="nav-link-title">Dashboard</span>
+                                <a href="/logout" class="nav-link" title="Logout">
+                                    <i class="ti ti-logout"></i>
                                 </a>
                             </li>
                         </ul>
                     </div>
                 </div>
-            </div>
+            </nav>
         </header>
         
+        <!-- Toast Container -->
+        <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;" id="toastContainer"></div>
+        
         <div class="page-wrapper">
-            <div class="page-body">
-                <div class="container-xl">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
                             {% for category, message in messages %}
-                                <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }} alert-dismissible" role="alert">
-                                    <div class="d-flex">
-                                        <div>
-                                            <i class="ti ti-{{ 'alert-circle' if category == 'danger' else 'check' }} icon alert-icon"></i>
-                                        </div>
-                                        <div>
-                                            {{ message }}
-                                        </div>
-                                    </div>
-                                    <a class="btn-close" data-bs-dismiss="alert" aria-label="close"></a>
-                                </div>
+                                showToast('{{ message | e }}', '{{ category }}');
                             {% endfor %}
-                        {% endif %}
-                    {% endwith %}
+                        });
+                    </script>
+                {% endif %}
+            {% endwith %}
 
-                    {% block content %}{% endblock %}
-                </div>
-            </div>
+            {% block content %}{% endblock %}
             
-            <footer class="footer footer-transparent d-print-none">
+            <footer class="footer footer-transparent d-print-none" style="border-top: none;">
                 <div class="container-xl">
-                    <div class="row text-center align-items-center">
+                    <div class="row align-items-center">
                         <div class="col-12 col-lg-auto mt-3 mt-lg-0">
                             <ul class="list-inline list-inline-dots mb-0">
                                 <li class="list-inline-item">
-                                    MacReplay - IPTV Portal Proxy | Modded by Un1x
+                                    <strong>MacReplayXC</strong> - IPTV Portal Proxy
+                                </li>
+                                <li class="list-inline-item">
+                                    Fork by <strong>Un1x</strong>
                                 </li>
                             </ul>
                         </div>
@@ -191,6 +166,12 @@
             document.documentElement.setAttribute('data-bs-theme', isDark ? 'dark' : 'light');
             document.body.classList.toggle('theme-dark', isDark);
             document.body.classList.toggle('theme-light', !isDark);
+            
+            // Update theme-color meta tag for browser chrome
+            const metaThemeColor = document.getElementById('theme-color-meta');
+            if (metaThemeColor) {
+                metaThemeColor.setAttribute('content', isDark ? '#0a0a0a' : '#ffffff');
+            }
         }
 
         const showActiveTheme = (theme, focus = false) => {
@@ -222,6 +203,9 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             const storedTheme = localStorage.getItem('theme') || 'dark';
+            
+            // Force set theme-color after everything loads
+            setTheme(storedTheme);
             showActiveTheme(storedTheme);
 
             document.querySelectorAll('[data-bs-theme-value]').forEach(toggle => {
@@ -234,6 +218,154 @@
                 });
             });
         });
+        
+        // Also set on window load to ensure it's after all scripts
+        window.addEventListener('load', () => {
+            const storedTheme = localStorage.getItem('theme') || 'dark';
+            const isDark = storedTheme === 'dark' || (storedTheme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            
+            // Remove any other theme-color meta tags that Tabler might have added
+            document.querySelectorAll('meta[name="theme-color"]:not(#theme-color-meta)').forEach(el => el.remove());
+            
+            // Set our theme-color
+            const metaThemeColor = document.getElementById('theme-color-meta');
+            if (metaThemeColor) {
+                metaThemeColor.setAttribute('content', isDark ? '#0a0a0a' : '#ffffff');
+            }
+        });
+        
+        // Toast notification system
+        function showToast(message, type = 'success', duration = 4000) {
+            const container = document.getElementById('toastContainer');
+            const id = 'toast-' + Date.now();
+            
+            const iconMap = {
+                'success': { icon: 'check', color: 'success', title: 'Success' },
+                'danger': { icon: 'alert-circle', color: 'danger', title: 'Error' },
+                'warning': { icon: 'alert-triangle', color: 'warning', title: 'Warning' },
+                'info': { icon: 'info-circle', color: 'info', title: 'Info' }
+            };
+            const config = iconMap[type] || iconMap['success'];
+            
+            const toastHtml = `
+                <div id="${id}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <span class="avatar avatar-xs me-2 bg-${config.color}-lt">
+                            <i class="ti ti-${config.icon}"></i>
+                        </span>
+                        <strong class="me-auto">${config.title}</strong>
+                        <small>just now</small>
+                        <button type="button" class="ms-2 btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                </div>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', toastHtml);
+            
+            const toastEl = document.getElementById(id);
+            const toast = new bootstrap.Toast(toastEl, { delay: duration });
+            toast.show();
+            
+            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+        }
+        
+        // Tabler Modal Dialogs
+        function showAlert(message, title = 'Notice', type = 'info') {
+            const modalId = 'alertModal_' + Date.now();
+            const iconClass = {
+                'success': 'ti-check text-success',
+                'danger': 'ti-alert-triangle text-danger',
+                'warning': 'ti-alert-triangle text-warning',
+                'info': 'ti-info-circle text-primary'
+            }[type] || 'ti-info-circle text-primary';
+            
+            const modalHtml = `
+                <div class="modal modal-blur fade" id="${modalId}" tabindex="-1" style="display: none;" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+                        <div class="modal-content">
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <div class="modal-status bg-${type === 'danger' ? 'danger' : type === 'warning' ? 'warning' : type === 'success' ? 'success' : 'primary'}"></div>
+                            <div class="modal-body text-center py-4">
+                                <i class="ti ${iconClass} icon mb-2 icon-lg"></i>
+                                <h3>${title}</h3>
+                                <div class="text-muted">${message}</div>
+                            </div>
+                            <div class="modal-footer">
+                                <div class="w-100">
+                                    <button type="button" class="btn btn-primary w-100" data-bs-dismiss="modal">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modalEl = document.getElementById(modalId);
+            const modal = new bootstrap.Modal(modalEl);
+            
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                modalEl.remove();
+            });
+            
+            modal.show();
+        }
+        
+        function showConfirm(message, title = 'Confirm', onConfirm, onCancel, type = 'warning') {
+            const modalId = 'confirmModal_' + Date.now();
+            
+            const config = {
+                'success': { icon: 'ti-check', color: 'success', btnClass: 'btn-success', btnText: 'Continue' },
+                'warning': { icon: 'ti-alert-triangle', color: 'warning', btnClass: 'btn-warning', btnText: 'Confirm' },
+                'danger': { icon: 'ti-alert-triangle', color: 'danger', btnClass: 'btn-danger', btnText: 'Confirm' }
+            }[type] || { icon: 'ti-alert-triangle', color: 'warning', btnClass: 'btn-warning', btnText: 'Confirm' };
+            
+            const modalHtml = `
+                <div class="modal modal-blur fade" id="${modalId}" tabindex="-1" style="display: none;" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+                        <div class="modal-content">
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <div class="modal-status bg-${config.color}"></div>
+                            <div class="modal-body text-center py-4">
+                                <i class="ti ${config.icon} icon mb-2 text-${config.color} icon-lg"></i>
+                                <h3>${title}</h3>
+                                <div class="text-muted">${message}</div>
+                            </div>
+                            <div class="modal-footer">
+                                <div class="w-100">
+                                    <div class="row">
+                                        <div class="col">
+                                            <button type="button" class="btn w-100" data-bs-dismiss="modal">No</button>
+                                        </div>
+                                        <div class="col">
+                                            <button type="button" class="btn ${config.btnClass} w-100" id="${modalId}_confirm">Yes</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modalEl = document.getElementById(modalId);
+            const modal = new bootstrap.Modal(modalEl);
+            
+            document.getElementById(modalId + '_confirm').addEventListener('click', function() {
+                modal.hide();
+                if (onConfirm) onConfirm();
+            });
+            
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                modalEl.remove();
+            });
+            
+            modal.show();
+        }
     </script>
     {% block scripts %}{% endblock %}
 </body>

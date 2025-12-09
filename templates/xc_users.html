@@ -1,6 +1,140 @@
 {% extends "base.html" %}
 
-{% block title %}XC API Users - MacReplay{% endblock %}
+{% block title %}XC API Users - MacReplayXC{% endblock %}
+
+{% block head %}
+<style>
+    .user-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+        padding: 20px 0;
+    }
+    
+    .user-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px;
+        transition: border-color 0.2s ease;
+        position: relative;
+    }
+    
+    [data-bs-theme="light"] .user-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .user-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .user-card:hover {
+        border-color: #10b981;
+    }
+    
+    .user-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    
+    .user-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+    
+    [data-bs-theme="light"] .user-avatar {
+        background: #10b981;
+        color: white;
+    }
+    
+    [data-bs-theme="dark"] .user-avatar {
+        background: #10b981;
+        color: white;
+    }
+    
+    .user-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .user-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+        word-break: break-word;
+    }
+    
+    .user-password {
+        font-family: monospace;
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    
+    .user-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    
+    .user-stat {
+        text-align: center;
+        padding: 8px;
+        border-radius: 0.375rem;
+    }
+    
+    [data-bs-theme="light"] .user-stat {
+        background: #f8fafc;
+    }
+    
+    [data-bs-theme="dark"] .user-stat {
+        background: #1f1f1f;
+    }
+    
+    .user-stat-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    .user-stat-label {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+    
+    .user-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+    }
+    
+    .filter-bar {
+        position: sticky;
+        top: 56px;
+        z-index: 100;
+        padding: 15px 0;
+        margin-bottom: 10px;
+    }
+    
+    [data-bs-theme="light"] .filter-bar {
+        background: #f8fafc;
+    }
+    
+    [data-bs-theme="dark"] .filter-bar {
+        background: #1a1a1a;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-header d-print-none">
@@ -14,10 +148,21 @@
                 <div class="text-muted mt-1">Manage users who can access streams via XC API</div>
             </div>
             <div class="col-auto">
-                <button class="btn btn-primary" onclick="showAddUserModal()">
-                    <i class="ti ti-plus me-1"></i>
-                    Add User
-                </button>
+                <div class="btn-list">
+                    {% if settings.get('xc api enabled') == 'true' %}
+                        <span class="badge bg-success d-flex align-items-center" style="padding: 0.5rem 0.75rem; font-size: 1rem;" title="XC API Enabled">
+                            <i class="ti ti-check"></i>
+                        </span>
+                    {% else %}
+                        <span class="badge bg-danger d-flex align-items-center" style="padding: 0.5rem 0.75rem; font-size: 1rem;" title="XC API Disabled">
+                            <i class="ti ti-x"></i>
+                        </span>
+                    {% endif %}
+                    <button class="btn btn-primary" onclick="showAddUserModal()">
+                        <i class="ti ti-plus me-1"></i>
+                        Add User
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -26,44 +171,45 @@
 <div class="page-body">
     <div class="container-xl">
         
-        <!-- XC API Status -->
-        <div class="row row-cards mb-3">
-            <div class="col-12">
-                <div class="alert alert-{{ 'success' if settings.get('xc api enabled') == 'true' else 'warning' }}">
-                    <div class="d-flex">
-                        <div><i class="ti ti-{{ 'check' if settings.get('xc api enabled') == 'true' else 'alert-circle' }} icon alert-icon"></i></div>
-                        <div>
-                            <h4 class="alert-title">XC API Status: {{ 'Enabled' if settings.get('xc api enabled') == 'true' else 'Disabled' }}</h4>
-                            <div class="text-muted">
-                                {% if settings.get('xc api enabled') == 'true' %}
-                                    XC API is active. Users can access streams at: <code>http://{{ request.host }}/player_api.php</code><br>
-                                    <small>Example URL for clients: <code>http://{{ request.host }}/player_api.php?username=USER&password=PASS</code></small>
-                                {% else %}
-                                    XC API is disabled. Enable it in Settings to allow users to connect.
-                                {% endif %}
-                            </div>
-                        </div>
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Search Users</label>
+                    <input type="text" class="form-control" id="userSearch" placeholder="Type to filter..." oninput="filterUsers()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Status Filter</label>
+                    <select class="form-select" id="statusFilter" onchange="filterUsers()">
+                        <option value="">All Users</option>
+                        <option value="active">Active Only</option>
+                        <option value="disabled">Disabled Only</option>
+                        <option value="expired">Expired Only</option>
+                    </select>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="mt-4">
+                        <span class="badge bg-primary-lt me-2">
+                            <i class="ti ti-users me-1"></i>
+                            <span id="totalUsers">0</span> Users
+                        </span>
+                        <span class="badge bg-success-lt">
+                            <i class="ti ti-plug-connected me-1"></i>
+                            <span id="activeConnections">0</span> Active
+                        </span>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Users List -->
-        <div class="row row-cards">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Users</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="usersList">
-                            <div class="text-center py-3">
-                                <div class="spinner-border text-primary" role="status"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <!-- Users Grid -->
+        <div id="usersContainer">
+            <div class="user-grid" id="userGrid"></div>
+        </div>
+        
+        <div id="loadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3">Loading users...</p>
         </div>
         
     </div>
@@ -154,48 +300,155 @@ function loadUsers() {
         });
 }
 
+let allUsers = [];
+
 function displayUsers(users) {
-    const container = document.getElementById('usersList');
+    allUsers = users || [];
+    document.getElementById('loadingIndicator').style.display = 'none';
     
-    if (!users || users.length === 0) {
-        container.innerHTML = '<div class="empty"><p class="empty-title">No users yet</p><p class="empty-subtitle">Click "Add User" to create your first XC API user</p></div>';
+    renderUsers();
+    updateStats();
+}
+
+function renderUsers() {
+    const grid = document.getElementById('userGrid');
+    const container = document.getElementById('usersContainer');
+    grid.innerHTML = '';
+    
+    if (!allUsers || allUsers.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-users icon"></i></div><p class="empty-title">No users yet</p><p class="empty-subtitle text-muted">Click "Add User" to create your first XC API user</p></div>';
         return;
     }
     
-    let html = '<div class="table-responsive"><table class="table table-vcenter">';
-    html += '<thead><tr><th>Username</th><th>Password</th><th>Status</th><th>Connections</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
+    // Apply filters
+    const searchTerm = document.getElementById('userSearch').value.toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
     
-    users.forEach(user => {
-        const statusClass = user.enabled ? 'success' : 'secondary';
-        const statusText = user.enabled ? 'Active' : 'Disabled';
+    const filteredUsers = allUsers.filter(user => {
+        // Search filter
+        if (searchTerm && !user.username.toLowerCase().includes(searchTerm)) {
+            return false;
+        }
         
-        html += `
-            <tr>
-                <td><strong>${user.username}</strong></td>
-                <td><code>${user.password}</code></td>
-                <td><span class="badge bg-${statusClass}-lt">${statusText}</span></td>
-                <td>
-                    <span class="badge bg-${user.active_connections > 0 ? 'primary' : 'secondary'}-lt">
-                        ${user.active_connections}/${user.max_connections}
-                    </span>
-                </td>
-                <td>${user.expires_at || 'Never'}</td>
-                <td>
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" onclick='editUser(${JSON.stringify(user)})' title="Edit">
-                            <i class="ti ti-edit"></i>
-                        </button>
-                        <button class="btn btn-outline-danger" onclick="deleteUser('${user.id}', '${user.username}')" title="Delete">
-                            <i class="ti ti-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
+        // Status filter
+        if (statusFilter === 'active' && !user.enabled) return false;
+        if (statusFilter === 'disabled' && user.enabled) return false;
+        if (statusFilter === 'expired' && (!user.expires_at || new Date(user.expires_at) > new Date())) return false;
+        
+        return true;
     });
     
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
+    if (filteredUsers.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-search icon"></i></div><p class="empty-title">No users found</p><p class="empty-subtitle text-muted">Try adjusting your filters</p></div>';
+        return;
+    }
+    
+    filteredUsers.forEach(user => {
+        const isExpired = user.expires_at && new Date(user.expires_at) < new Date();
+        const statusClass = isExpired ? 'danger' : (user.enabled ? 'success' : 'secondary');
+        const statusText = isExpired ? 'Expired' : (user.enabled ? 'Active' : 'Disabled');
+        const statusIcon = isExpired ? 'alert-circle' : (user.enabled ? 'check' : 'x');
+        
+        const card = document.createElement('div');
+        card.className = 'user-card';
+        
+        card.innerHTML = `
+            <div class="user-header">
+                <div class="user-avatar">
+                    <i class="ti ti-user"></i>
+                </div>
+                <div class="user-info">
+                    <div class="user-name">${escapeHtml(user.username)}</div>
+                    <div class="user-password">${escapeHtml(user.password)}</div>
+                </div>
+                <span class="badge bg-${statusClass}-lt">
+                    <i class="ti ti-${statusIcon} me-1"></i>${statusText}
+                </span>
+            </div>
+            
+            <div class="user-stats">
+                <div class="user-stat">
+                    <div class="user-stat-value text-${user.active_connections > 0 ? 'primary' : 'muted'}">${user.active_connections}/${user.max_connections}</div>
+                    <div class="user-stat-label">Connections</div>
+                </div>
+                <div class="user-stat">
+                    <div class="user-stat-value">${user.expires_at ? formatDate(user.expires_at) : '∞'}</div>
+                    <div class="user-stat-label">Expires</div>
+                </div>
+            </div>
+            
+            <div class="user-actions">
+                <button class="btn btn-success btn-sm" onclick="copyPlaylistUrl('${escapeHtml(user.username)}', '${escapeHtml(user.password)}', this)" title="Copy Playlist URL">
+                    <i class="ti ti-copy me-1"></i>Playlist
+                </button>
+                <button class="btn btn-outline-primary btn-sm" onclick='editUser(${JSON.stringify(user).replace(/'/g, "&#39;")})'>
+                    <i class="ti ti-edit me-1"></i>Edit
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteUser('${user.id}', '${escapeHtml(user.username)}')">
+                    <i class="ti ti-trash me-1"></i>Delete
+                </button>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+function filterUsers() {
+    renderUsers();
+}
+
+function updateStats() {
+    document.getElementById('totalUsers').textContent = allUsers.length;
+    const activeConns = allUsers.reduce((sum, u) => sum + (u.active_connections || 0), 0);
+    document.getElementById('activeConnections').textContent = activeConns;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return 'Never';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'Expired';
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays < 7) return `${diffDays}d`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+    return `${Math.floor(diffDays / 30)}mo`;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function copyPlaylistUrl(username, password, btn) {
+    // Generate XC API playlist URL
+    const baseUrl = window.location.origin;
+    const playlistUrl = `${baseUrl}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&type=m3u_plus&output=ts`;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(playlistUrl).then(() => {
+        // Visual feedback
+        const originalHtml = btn.innerHTML;
+        const originalClass = btn.className;
+        
+        btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+        btn.className = 'btn btn-success btn-sm';
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.className = originalClass;
+        }, 2000);
+        
+        showToast('Playlist URL copied to clipboard', 'success');
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        showAlert('Failed to copy to clipboard', 'Error', 'danger');
+    });
 }
 
 function showAddUserModal() {
@@ -253,22 +506,25 @@ function saveUser() {
     .then(data => {
         if (data.success) {
             userModal.hide();
+            showToast(isEdit ? 'User updated successfully' : 'User created successfully', 'success');
             loadUsers();
         } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
         }
     })
     .catch(err => {
         console.error('Error:', err);
-        alert('Error saving user');
+        showAlert('Error saving user', 'Error', 'danger');
     });
 }
 
 function deleteUser(userId, username) {
-    if (!confirm(`Delete user "${username}"?`)) {
-        return;
-    }
-    
+    showConfirm(`Delete user "${username}"?`, 'Delete User', function() {
+        performDeleteUser(userId);
+    }, null, 'danger');
+}
+
+function performDeleteUser(userId) {
     fetch('/xc-users/delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -278,14 +534,15 @@ function deleteUser(userId, username) {
     .then(res => res.json())
     .then(data => {
         if (data.success) {
+            showToast('User deleted successfully', 'success');
             loadUsers();
         } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
         }
     })
     .catch(err => {
         console.error('Error:', err);
-        alert('Error deleting user');
+        showAlert('Error deleting user', 'Error', 'danger');
     });
 }
 </script>
