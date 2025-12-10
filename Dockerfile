@@ -28,10 +28,10 @@ COPY static/ static/
 
 # Create non-root user for security
 RUN useradd -m -u 1000 macreplay && \
-    chown -R root:root /app
+    chown -R macreplay:macreplay /app
 
 # Switch to non-root user
-#USER macreplay
+USER macreplay
 
 # Set environment variables for containerized deployment
 ENV HOST=0.0.0.0:8001

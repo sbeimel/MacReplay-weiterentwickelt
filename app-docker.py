@@ -122,6 +122,16 @@ epg_refresh_progress = {
     "started_at": None
 }
 
+# Editor refresh progress tracking
+editor_refresh_progress = {
+    "running": False,
+    "current_portal": "",
+    "current_step": "",
+    "portals_done": 0,
+    "portals_total": 0,
+    "started_at": None
+}
+
 d_ffmpegcmd = [
     "-re",                      # Flag for real-time streaming
     "-http_proxy", "<proxy>",   # Proxy setting
@@ -644,22 +654,42 @@ def init_db():
     logger.info("Database initialized successfully")
 
 
+def refresh_channels_cache_with_progress():
+    """Wrapper for refresh_channels_cache with progress tracking."""
+    global editor_refresh_progress
+    try:
+        return refresh_channels_cache()
+    finally:
+        editor_refresh_progress["running"] = False
+        editor_refresh_progress["current_step"] = "Completed"
+
 def refresh_channels_cache():
     """Refresh the channels cache from STB portals - fetches from ALL MACs."""
+    global editor_refresh_progress
+    
     logger.info("Starting channel cache refresh...")
+    editor_refresh_progress["current_step"] = "Loading portals..."
+    
     portals = getPortals()
     conn = get_db_connection()
     cursor = conn.cursor()
     
     total_channels = 0
+    portal_index = 0
     
     for portal_id in portals:
         portal = portals[portal_id]
         if portal["enabled"] == "true":
+            portal_index += 1
             portal_name = portal["name"]
             url = portal["url"]
             macs = list(portal["macs"].keys())
             proxy = portal["proxy"]
+            
+            # Update progress
+            editor_refresh_progress["current_portal"] = portal_name
+            editor_refresh_progress["current_step"] = f"Starting {portal_name}..."
+            editor_refresh_progress["portals_done"] = portal_index - 1
             
             # Get existing settings from JSON config for migration
             enabled_channels = portal.get("enabled channels", [])
@@ -670,18 +700,24 @@ def refresh_channels_cache():
             fallback_channels = portal.get("fallback channels", {})
             
             logger.info(f"Fetching channels for portal: {portal_name} from {len(macs)} MACs")
+            editor_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s)"
             
             # Fetch from ALL MACs and merge
             all_channels_map = {}  # channel_id -> channel data
             all_genres_dict = {}  # genre_id -> genre_name
             
+            mac_index = 0
             for mac in macs:
+                mac_index += 1
                 logger.info(f"Trying MAC: {mac}")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Fetching from MAC {mac_index}/{len(macs)}"
                 try:
                     token = stb.getToken(url, mac, proxy)
                     if token:
                         stb.getProfile(url, mac, token, proxy)
+                        editor_refresh_progress["current_step"] = f"{portal_name}: Getting channels from MAC {mac_index}/{len(macs)}"
                         mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                        editor_refresh_progress["current_step"] = f"{portal_name}: Getting genres from MAC {mac_index}/{len(macs)}"
                         mac_genres = stb.getGenreNames(url, mac, token, proxy)
                         
                         if mac_channels:
@@ -691,10 +727,12 @@ def refresh_channels_cache():
                                 if channel_id not in all_channels_map:
                                     all_channels_map[channel_id] = channel
                             logger.info(f"MAC {mac}: Added {len(mac_channels)} channels (total: {len(all_channels_map)})")
+                            editor_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(all_channels_map)} channels"
                         
                         if mac_genres:
                             all_genres_dict.update(mac_genres)
                             logger.info(f"MAC {mac}: Added genres (total: {len(all_genres_dict)})")
+                            editor_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(all_genres_dict)} genres"
                             
                 except Exception as e:
                     logger.error(f"Error fetching from MAC {mac}: {e}")
@@ -702,11 +740,15 @@ def refresh_channels_cache():
             
             if all_channels_map and all_genres_dict:
                 logger.info(f"Processing {len(all_channels_map)} total channels for {portal_name}")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Checking EPG availability..."
                 
                 # Fetch EPG data from ALL MACs to check which channels have portal EPG
                 merged_epg = {}
+                epg_mac_index = 0
                 for mac in macs:
+                    epg_mac_index += 1
                     try:
+                        editor_refresh_progress["current_step"] = f"{portal_name}: Checking EPG from MAC {epg_mac_index}/{len(macs)}"
                         token = stb.getToken(url, mac, proxy)
                         if token:
                             stb.getProfile(url, mac, token, proxy)
@@ -720,6 +762,7 @@ def refresh_channels_cache():
                         continue
                 
                 logger.info(f"Portal {portal_name}: Got EPG for {len(merged_epg)} channels")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Saving {len(all_channels_map)} channels to database..."
                 
                 for channel_id, channel in all_channels_map.items():
                     channel_name = str(channel["name"])
@@ -765,11 +808,16 @@ def refresh_channels_cache():
                 
                 conn.commit()
                 logger.info(f"Successfully cached {len(all_channels_map)} channels for {portal_name}")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {len(all_channels_map)} channels saved"
+                editor_refresh_progress["portals_done"] = portal_index
             else:
                 logger.error(f"Failed to fetch channels for portal: {portal_name}")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Error - failed to fetch channels"
+                editor_refresh_progress["portals_done"] = portal_index
     
     conn.close()
     logger.info(f"Channel cache refresh complete. Total channels: {total_channels}")
+    editor_refresh_progress["current_step"] = f"Completed! {total_channels} channels from {portal_index} portals"
     return total_channels
 
 
@@ -901,7 +949,8 @@ def cleanupOldXCConnections():
     timeout = 300  # 5 minutes
     
     modified = False
-    for user_id, user in users.items():
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for user_id, user in list(users.items()):
         active_connections = user.get("active_connections", {})
         to_remove = []
         
@@ -2024,6 +2073,382 @@ def editorSave():
     flash("Playlist config saved!", "success")
     return redirect("/editor", code=302)
 
+
+@app.route("/editor/bulk-edit", methods=["POST"])
+@authorise
+def editor_bulk_edit():
+    """Apply bulk search & replace to channel names and genres."""
+    try:
+        data = request.get_json()
+        rules = data.get('rules', [])
+        apply_to_names = data.get('apply_to_names', True)
+        apply_to_genres = data.get('apply_to_genres', False)
+        case_sensitive = data.get('case_sensitive', False)
+        use_regex = data.get('use_regex', False)
+        
+        if not rules:
+            return flask.jsonify({"success": False, "error": "No rules provided"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create tables for history and saved rules
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bulk_edit_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                rules TEXT NOT NULL,
+                apply_to_names INTEGER NOT NULL,
+                apply_to_genres INTEGER NOT NULL,
+                channels_backup TEXT NOT NULL
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bulk_edit_saved_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                search_text TEXT NOT NULL,
+                replace_text TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_used TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Get all channels and save as backup
+        cursor.execute('SELECT portal, channel_id, name, custom_name, genre, custom_genre FROM channels')
+        channels = cursor.fetchall()
+        
+        import json
+        channels_backup = json.dumps([dict(ch) for ch in channels])
+        
+        # Save to history
+        cursor.execute('''
+            INSERT INTO bulk_edit_history (timestamp, rules, apply_to_names, apply_to_genres, channels_backup)
+            VALUES (datetime('now'), ?, ?, ?, ?)
+        ''', (json.dumps(rules), 1 if apply_to_names else 0, 1 if apply_to_genres else 0, channels_backup))
+        
+        # Save individual rules for persistence
+        for rule in rules:
+            search_text = rule['search']
+            replace_text = rule['replace']
+            
+            # Check if rule already exists
+            cursor.execute('''
+                SELECT id FROM bulk_edit_saved_rules 
+                WHERE search_text = ? AND replace_text = ?
+            ''', (search_text, replace_text))
+            
+            if cursor.fetchone():
+                # Update last_used timestamp
+                cursor.execute('''
+                    UPDATE bulk_edit_saved_rules 
+                    SET last_used = datetime('now')
+                    WHERE search_text = ? AND replace_text = ?
+                ''', (search_text, replace_text))
+            else:
+                # Insert new rule
+                cursor.execute('''
+                    INSERT INTO bulk_edit_saved_rules (search_text, replace_text)
+                    VALUES (?, ?)
+                ''', (search_text, replace_text))
+        
+        # Keep only last 10 history entries
+        cursor.execute('''
+            DELETE FROM bulk_edit_history 
+            WHERE id NOT IN (
+                SELECT id FROM bulk_edit_history 
+                ORDER BY id DESC 
+                LIMIT 10
+            )
+        ''')
+        
+        conn.commit()
+        
+        # Re-fetch channels for processing (cursor was used for history operations)
+        cursor.execute('SELECT portal, channel_id, name, custom_name, genre, custom_genre FROM channels')
+        channels = cursor.fetchall()
+        
+        updated_count = 0
+        
+        for channel in channels:
+            portal = channel['portal']
+            channel_id = channel['channel_id']
+            original_name = channel['custom_name'] or channel['name']
+            original_genre = channel['custom_genre'] or channel['genre']
+            
+            new_name = original_name
+            new_genre = original_genre
+            
+            # Apply rules to name
+            if apply_to_names and original_name:
+                for rule in rules:
+                    search = rule['search']
+                    replace = rule['replace']
+                    
+                    if use_regex:
+                        import re
+                        flags = 0 if case_sensitive else re.IGNORECASE
+                        try:
+                            new_name = re.sub(search, replace, new_name, flags=flags)
+                        except re.error as e:
+                            logger.error(f"Regex error: {e}")
+                            continue
+                    else:
+                        if case_sensitive:
+                            new_name = new_name.replace(search, replace)
+                        else:
+                            # Case-insensitive replace
+                            import re
+                            pattern = re.compile(re.escape(search), re.IGNORECASE)
+                            new_name = pattern.sub(replace, new_name)
+            
+            # Apply rules to genre
+            if apply_to_genres and original_genre:
+                for rule in rules:
+                    search = rule['search']
+                    replace = rule['replace']
+                    
+                    if use_regex:
+                        import re
+                        flags = 0 if case_sensitive else re.IGNORECASE
+                        try:
+                            new_genre = re.sub(search, replace, new_genre, flags=flags)
+                        except re.error as e:
+                            logger.error(f"Regex error: {e}")
+                            continue
+                    else:
+                        if case_sensitive:
+                            new_genre = new_genre.replace(search, replace)
+                        else:
+                            import re
+                            pattern = re.compile(re.escape(search), re.IGNORECASE)
+                            new_genre = pattern.sub(replace, new_genre)
+            
+            # Clean up whitespace
+            new_name = ' '.join(new_name.split()).strip()
+            new_genre = ' '.join(new_genre.split()).strip()
+            
+            # Update if changed
+            if new_name != original_name or new_genre != original_genre:
+                if apply_to_names and new_name != original_name:
+                    cursor.execute('''
+                        UPDATE channels 
+                        SET custom_name = ? 
+                        WHERE portal = ? AND channel_id = ?
+                    ''', (new_name, portal, channel_id))
+                
+                if apply_to_genres and new_genre != original_genre:
+                    cursor.execute('''
+                        UPDATE channels 
+                        SET custom_genre = ? 
+                        WHERE portal = ? AND channel_id = ?
+                    ''', (new_genre, portal, channel_id))
+                
+                updated_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        # Refresh playlist and EPG (XC API queries database directly, so no separate cache to clear)
+        global cached_xmltv, last_playlist_host
+        last_playlist_host = None  # Force M3U playlist regeneration
+        threading.Thread(target=refresh_xmltv, daemon=True).start()  # Refresh EPG
+        
+        logger.info(f"Bulk edit applied: {updated_count} channels updated")
+        
+        return flask.jsonify({
+            "success": True,
+            "updated": updated_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in bulk edit: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/editor/bulk-edit/undo", methods=["POST"])
+@authorise
+def editor_bulk_edit_undo():
+    """Undo the last bulk edit operation."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the last history entry
+        cursor.execute('''
+            SELECT id, channels_backup FROM bulk_edit_history 
+            ORDER BY id DESC 
+            LIMIT 1
+        ''')
+        history = cursor.fetchone()
+        
+        if not history:
+            return flask.jsonify({"success": False, "error": "No history to undo"}), 400
+        
+        import json
+        channels_backup = json.loads(history['channels_backup'])
+        
+        # Restore channels from backup
+        for channel in channels_backup:
+            cursor.execute('''
+                UPDATE channels 
+                SET custom_name = ?, custom_genre = ?
+                WHERE portal = ? AND channel_id = ?
+            ''', (channel['custom_name'], channel['custom_genre'], 
+                  channel['portal'], channel['channel_id']))
+        
+        # Delete the history entry
+        cursor.execute('DELETE FROM bulk_edit_history WHERE id = ?', (history['id'],))
+        
+        conn.commit()
+        conn.close()
+        
+        # Refresh playlist and EPG
+        global cached_xmltv, last_playlist_host
+        last_playlist_host = None
+        threading.Thread(target=refresh_xmltv, daemon=True).start()
+        
+        logger.info("Bulk edit undone successfully")
+        
+        return flask.jsonify({
+            "success": True,
+            "message": "Last bulk edit undone successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error undoing bulk edit: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/editor/bulk-edit/history", methods=["GET"])
+@authorise
+def editor_bulk_edit_history():
+    """Get bulk edit history."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, timestamp, rules FROM bulk_edit_history 
+            ORDER BY id DESC 
+            LIMIT 10
+        ''')
+        history = cursor.fetchall()
+        conn.close()
+        
+        import json
+        history_list = []
+        for entry in history:
+            rules = json.loads(entry['rules'])
+            history_list.append({
+                'id': entry['id'],
+                'timestamp': entry['timestamp'],
+                'rules': rules
+            })
+        
+        return flask.jsonify({
+            "success": True,
+            "history": history_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting bulk edit history: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/editor/bulk-edit/saved-rules", methods=["GET"])
+@authorise
+def editor_bulk_edit_saved_rules():
+    """Get saved bulk edit rules."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT search_text, replace_text, last_used 
+            FROM bulk_edit_saved_rules 
+            ORDER BY last_used DESC 
+            LIMIT 50
+        ''')
+        rules = cursor.fetchall()
+        conn.close()
+        
+        rules_list = []
+        for rule in rules:
+            rules_list.append({
+                'search': rule['search_text'],
+                'replace': rule['replace_text'],
+                'last_used': rule['last_used']
+            })
+        
+        return flask.jsonify({
+            "success": True,
+            "rules": rules_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting saved rules: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/editor/bulk-edit/clear-saved-rules", methods=["POST"])
+@authorise
+def editor_bulk_edit_clear_saved_rules():
+    """Clear all saved bulk edit rules."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM bulk_edit_saved_rules')
+        conn.commit()
+        conn.close()
+        
+        logger.info("Cleared all saved bulk edit rules")
+        
+        return flask.jsonify({
+            "success": True,
+            "message": "All saved rules cleared"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing saved rules: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/editor/reset-all", methods=["POST"])
+@authorise
+def editor_reset_all_customizations():
+    """Reset all custom names and genres to original values."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE channels 
+            SET custom_name = NULL,
+                custom_genre = NULL
+        ''')
+        
+        conn.commit()
+        conn.close()
+        
+        # Refresh playlist and EPG
+        global cached_xmltv, last_playlist_host
+        last_playlist_host = None
+        threading.Thread(target=refresh_xmltv, daemon=True).start()
+        
+        logger.info("All customizations reset to original values")
+        
+        return flask.jsonify({
+            "success": True,
+            "message": "All customizations reset successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error resetting customizations: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/editor/reset", methods=["POST"])
 @authorise
 def editorReset():
@@ -2061,12 +2486,36 @@ def editorReset():
 def editor_refresh():
     """Manually trigger a refresh of the channel cache."""
     try:
-        total = refresh_channels_cache()
-        logger.info(f"Channel cache refreshed: {total} channels")
-        return flask.jsonify({"status": "success", "total": total})
+        global editor_refresh_progress
+        
+        if editor_refresh_progress["running"]:
+            return flask.jsonify({"error": "Channel refresh already in progress"}), 400
+        
+        # Initialize progress
+        portals = getPortals()
+        enabled_portals = [p for p in portals.values() if p.get("enabled") == "true"]
+        
+        editor_refresh_progress = {
+            "running": True,
+            "current_portal": "",
+            "current_step": "Starting...",
+            "portals_done": 0,
+            "portals_total": len(enabled_portals),
+            "started_at": time.time()
+        }
+        
+        threading.Thread(target=refresh_channels_cache_with_progress, daemon=True).start()
+        return flask.jsonify({"success": True, "message": "Channel refresh started"})
     except Exception as e:
-        logger.error(f"Error refreshing channel cache: {e}")
-        return flask.jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Error starting channel refresh: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/editor/refresh/progress", methods=["GET"])
+@authorise
+def editor_refresh_progress_status():
+    """Get channel refresh progress."""
+    return flask.jsonify(editor_refresh_progress)
 
 @app.route("/editor/deactivate-duplicates", methods=["POST"])
 @authorise
@@ -2180,7 +2629,8 @@ def xc_users_list():
     users = getXCUsers()
     user_list = []
     
-    for user_id, user in users.items():
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for user_id, user in list(users.items()):
         active_cons = len(user.get("active_connections", {}))
         user_list.append({
             "id": user_id,
@@ -2369,91 +2819,83 @@ def cleanup_orphaned_channels():
 
 def generate_playlist():
     global cached_playlist
-    logger.info("Generating playlist.m3u...")
+    logger.info("Generating playlist.m3u from database...")
 
     playlist_host = request.host or "0.0.0.0:8001"
     
     channels = []
+    
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, channel_id
+    ''')
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Get portal info
     portals = getPortals()
+    
+    for channel in db_channels:
+        portal_id = channel['portal']
+        channel_id = str(channel['channel_id'])
+        
+        # Check if portal is enabled
+        if portal_id not in portals or portals[portal_id].get("enabled") != "true":
+            continue
+        
+        # Use custom values if available, otherwise use original values
+        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
+        genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
+        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        
+        # Build M3U entry - escape quotes in attributes
+        def escape_quotes(text):
+            return str(text).replace('"', '&quot;') if text else ""
+        
+        m3u_entry = "#EXTINF:-1"
+        m3u_entry += ' tvg-id="' + escape_quotes(epg_id) + '"'
+        
+        if getSettings().get("use channel numbers", "true") == "true" and channel_number:
+            m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
+        
+        if getSettings().get("use channel genres", "true") == "true" and genre:
+            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        
+        m3u_entry += ',' + str(channel_name) + "\n"
+        m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
+        
+        channels.append(m3u_entry)
 
-    for portal in portals:
-        if portals[portal]["enabled"] == "true":
-            enabledChannels = portals[portal].get("enabled channels", [])
-            if len(enabledChannels) != 0:
-                name = portals[portal]["name"]
-                url = portals[portal]["url"]
-                macs = list(portals[portal]["macs"].keys())
-                proxy = portals[portal]["proxy"]
-                customChannelNames = portals[portal].get("custom channel names", {})
-                customGenres = portals[portal].get("custom genres", {})
-                customChannelNumbers = portals[portal].get("custom channel numbers", {})
-                customEpgIds = portals[portal].get("custom epg ids", {})
-
-                for mac in macs:
-                    try:
-                        token = stb.getToken(url, mac, proxy)
-                        stb.getProfile(url, mac, token, proxy)
-                        allChannels = stb.getAllChannels(url, mac, token, proxy)
-                        genres = stb.getGenreNames(url, mac, token, proxy)
-                        break
-                    except:
-                        allChannels = None
-                        genres = None
-
-                if allChannels and genres:
-                    for channel in allChannels:
-                        channelId = str(channel.get("id"))
-                        if channelId in enabledChannels:
-                            channelName = customChannelNames.get(channelId)
-                            if channelName is None:
-                                channelName = str(channel.get("name"))
-                            genre = customGenres.get(channelId)
-                            if genre is None:
-                                genreId = str(channel.get("tv_genre_id"))
-                                genre = str(genres.get(genreId))
-                            channelNumber = customChannelNumbers.get(channelId)
-                            if channelNumber is None:
-                                channelNumber = str(channel.get("number"))
-                            epgId = customEpgIds.get(channelId)
-                            if epgId is None:
-                                epgId = channelName
-                            channels.append(
-                                "#EXTINF:-1"
-                                + ' tvg-id="'
-                                + epgId
-                                + (
-                                    '" tvg-chno="' + channelNumber
-                                    if getSettings().get("use channel numbers", "true")
-                                    == "true"
-                                    else ""
-                                )
-                                + (
-                                    '" group-title="' + genre
-                                    if getSettings().get("use channel genres", "true")
-                                    == "true"
-                                    else ""
-                                )
-                                + '",'
-                                + channelName
-                                + "\n"
-                                + "http://"
-                                + playlist_host
-                                + "/play/"
-                                + portal
-                                + "/"
-                                + channelId
-                            )
-                else:
-                    logger.error("Error making playlist for {}, skipping".format(name))
-
+    # Sort channels based on settings
     if getSettings().get("sort playlist by channel name", "true") == "true":
-        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0])
+        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
     if getSettings().get("use channel numbers", "true") == "true":
         if getSettings().get("sort playlist by channel number", "false") == "true":
-            channels.sort(key=lambda k: k.split('tvg-chno="')[1].split('"')[0])
+            def get_channel_number(k):
+                try:
+                    if 'tvg-chno="' in k:
+                        return int(k.split('tvg-chno="')[1].split('"')[0])
+                    return 999999  # Put channels without numbers at the end
+                except (ValueError, IndexError):
+                    return 999999
+            channels.sort(key=get_channel_number)
     if getSettings().get("use channel genres", "true") == "true":
         if getSettings().get("sort playlist by channel genre", "false") == "true":
-            channels.sort(key=lambda k: k.split('group-title="')[1].split('"')[0])
+            def get_genre(k):
+                try:
+                    if 'group-title="' in k:
+                        return k.split('group-title="')[1].split('"')[0]
+                    return "zzz"  # Put channels without genre at the end
+                except IndexError:
+                    return "zzz"
+            channels.sort(key=get_genre)
 
     playlist = "#EXTM3U \n"
     playlist = playlist + "\n".join(channels)
@@ -2673,15 +3115,18 @@ def refresh_xmltv():
     day_before_yesterday_str = day_before_yesterday.strftime("%Y%m%d%H%M%S") + " +0000"
 
     # Check if EPG fallback is enabled
+    epg_refresh_progress["current_step"] = "Loading EPG settings..."
     epg_fallback_enabled = settings.get("epg fallback enabled", "false") == "true"
     epg_fallback_countries = settings.get("epg fallback countries", "").split(",")
     epg_fallback_countries = [c.strip() for c in epg_fallback_countries if c.strip()]
     
     fallback_epg = {}
     if epg_fallback_enabled and epg_fallback_countries:
+        epg_refresh_progress["current_step"] = f"Fetching fallback EPG for {', '.join(epg_fallback_countries)}..."
         logger.info(f"EPG fallback enabled for countries: {epg_fallback_countries}")
         fallback_epg = fetch_epgshare_fallback(epg_fallback_countries)
         logger.info(f"Loaded fallback EPG for {len(fallback_epg)} channels")
+        epg_refresh_progress["current_step"] = f"Loaded fallback EPG for {len(fallback_epg)} channels"
 
     # Build XMLTV directly without caching old programmes (memory optimization)
     channels_xml = ET.Element("tv")
@@ -2692,16 +3137,16 @@ def refresh_xmltv():
     portal_index = 0
     for portal in portals:
         if portals[portal]["enabled"] == "true":
+            portal_index += 1
             portal_name = portals[portal]["name"]
             portal_epg_offset = int(portals[portal]["epg offset"])
             
-            # Update progress
+            # Update progress - show current portal being processed
             epg_refresh_progress["current_portal"] = portal_name
-            epg_refresh_progress["current_step"] = f"Fetching EPG from {portal_name}"
-            epg_refresh_progress["portals_done"] = portal_index
+            epg_refresh_progress["current_step"] = f"Starting {portal_name}..."
+            epg_refresh_progress["portals_done"] = portal_index - 1  # Show as "processing X of Y"
             
             logger.info(f"Fetching EPG | Portal: {portal_name} | offset: {portal_epg_offset} |")
-            portal_index += 1
 
             enabledChannels = portals[portal].get("enabled channels", [])
             if len(enabledChannels) != 0:
@@ -2713,16 +3158,25 @@ def refresh_xmltv():
                 customEpgIds = portals[portal].get("custom epg ids", {})
                 customChannelNumbers = portals[portal].get("custom channel numbers", {})
 
+                epg_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s), {len(enabledChannels)} enabled channels"
+
                 # Fetch channels and EPG from ALL MACs and merge
                 all_channels_map = {}  # channelId -> channel data
                 merged_epg = {}  # channelId -> [programmes]
                 
+                mac_index = 0
                 for mac in macs:
                     try:
+                        mac_index += 1
+                        epg_refresh_progress["current_step"] = f"{portal_name}: Authenticating MAC {mac_index}/{len(macs)} ({mac})"
                         token = stb.getToken(url, mac, proxy)
                         if token:
                             stb.getProfile(url, mac, token, proxy)
+                            
+                            epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac_index}/{len(macs)}"
                             mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                            
+                            epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac_index}/{len(macs)}"
                             mac_epg = stb.getEpg(url, mac, token, 24, proxy)
                             
                             if mac_channels:
@@ -2731,6 +3185,7 @@ def refresh_xmltv():
                                     if ch_id not in all_channels_map:
                                         all_channels_map[ch_id] = ch
                                 logger.info(f"MAC {mac}: Got {len(mac_channels)} channels")
+                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(mac_channels)} channels"
                             
                             if mac_epg:
                                 for ch_id, programmes in mac_epg.items():
@@ -2739,8 +3194,10 @@ def refresh_xmltv():
                                     if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
                                         merged_epg[ch_id] = programmes
                                 logger.info(f"MAC {mac}: Got EPG for {len(mac_epg)} channels")
+                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - EPG for {len(mac_epg)} channels"
                             else:
                                 logger.warning(f"MAC {mac}: No EPG data returned")
+                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - No EPG data"
                             
                             # Clear MAC data
                             if mac_channels:
@@ -2750,14 +3207,17 @@ def refresh_xmltv():
                             
                     except Exception as e:
                         logger.error(f"Error fetching data for MAC {mac}: {e}")
+                        epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - Error: {str(e)[:50]}"
                         continue
                 
                 logger.info(f"Portal {portal_name}: Total {len(all_channels_map)} channels, EPG for {len(merged_epg)} channels")
+                epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(all_channels_map)} channels..."
 
                 if all_channels_map:
                     # Convert enabled channels to set for faster lookup
                     enabled_set = set(enabledChannels)
                     
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Loading custom EPG mappings from database..."
                     # Get custom EPG IDs from database (set via EPG page)
                     conn = get_db_connection()
                     cursor = conn.cursor()
@@ -2769,121 +3229,168 @@ def refresh_xmltv():
                     db_custom_epg_ids = {row['channel_id']: row['custom_epg_id'] for row in cursor.fetchall()}
                     conn.close()
                     
+                    # Get genres for this portal to show category names
+                    genres_dict = {}
+                    try:
+                        for mac in macs:
+                            token = stb.getToken(url, mac, proxy)
+                            if token:
+                                genres = stb.getGenres(url, mac, token, proxy)
+                                if genres:
+                                    for genre in genres:
+                                        genre_id = str(genre.get("id"))
+                                        genre_name = str(genre.get("title", "Unknown"))
+                                        genres_dict[genre_id] = genre_name
+                                    break  # Got genres, no need to try other MACs
+                    except Exception as e:
+                        logger.error(f"Error fetching genres: {e}")
+                    
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Building XMLTV for {len(enabled_set)} enabled channels..."
+                    
+                    # Group channels by genre for progress display
+                    channels_by_genre = {}
                     for channelId, channel in all_channels_map.items():
-                        try:
-                            if channelId not in enabled_set:
-                                continue
+                        if channelId in enabled_set:
+                            genre_id = str(channel.get("tv_genre_id", ""))
+                            genre_name = genres_dict.get(genre_id, "Other")
+                            if genre_name not in channels_by_genre:
+                                channels_by_genre[genre_name] = []
+                            channels_by_genre[genre_name].append((channelId, channel))
+                    
+                    # Process channels by genre
+                    processed_channels = 0
+                    total_enabled = len(enabled_set)
+                    
+                    for genre_name, genre_channels in channels_by_genre.items():
+                        epg_refresh_progress["current_step"] = f"{portal_name}: Processing {genre_name} ({processed_channels}/{total_enabled} channels)"
+                        
+                        for channelId, channel in genre_channels:
+                            try:
+                                processed_channels += 1
                                 
-                            channelName = customChannelNames.get(channelId, channel.get("name"))
-                            channelNumber = customChannelNumbers.get(channelId, str(channel.get("number")))
-                            # Priority: 1. Database custom EPG ID, 2. JSON config custom EPG ID, 3. Channel number
-                            epgId = db_custom_epg_ids.get(channelId) or customEpgIds.get(channelId, channelNumber)
-
-                            channelEle = ET.SubElement(channels_xml, "channel", id=epgId)
-                            ET.SubElement(channelEle, "display-name").text = channelName
-                            logo = channel.get("logo")
-                            if logo:
-                                ET.SubElement(channelEle, "icon", src=logo)
-
-                            channel_epg = merged_epg.get(channelId, [])
-                            
-                            if not channel_epg:
-                                # Try fallback EPG if enabled
-                                fallback_used = False
-                                if epg_fallback_enabled and fallback_epg:
-                                    # Try to match by channel name using improved matching
-                                    matched_fb_id = find_best_epg_match(channelName, fallback_epg)
-                                    if matched_fb_id:
-                                        # Find the fallback data by channel_id
-                                        fb_data = None
-                                        for fb_name, data in fallback_epg.items():
-                                            if data['channel_id'] == matched_fb_id:
-                                                fb_data = data
-                                                break
-                                        
-                                        if fb_data and fb_data.get('programmes'):
-                                            for p in fb_data['programmes'][:50]:  # Limit to 50 programmes
-                                                try:
-                                                    programmeEle = ET.SubElement(
-                                                        channels_xml, "programme",
-                                                        start=p['start'], stop=p['stop'], channel=epgId
-                                                    )
-                                                    ET.SubElement(programmeEle, "title").text = p['title']
-                                                    if p['desc']:
-                                                        ET.SubElement(programmeEle, "desc").text = p['desc']
-                                                    programme_count += 1
-                                                    fallback_used = True
-                                                except Exception as e:
-                                                    pass
-                                            if fallback_used:
-                                                logger.debug(f"Used fallback EPG for {channelName}")
+                                # Update progress every 10 channels
+                                if processed_channels % 10 == 0:
+                                    epg_refresh_progress["current_step"] = f"{portal_name}: Processing {genre_name} ({processed_channels}/{total_enabled} channels)"
                                 
-                                if not fallback_used:
-                                    # Create dummy EPG
-                                    channels_without_epg.append(channelName)
-                                    start_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-                                    stop_time = start_time + timedelta(hours=24)
-                                    start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                    stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                    programmeEle = ET.SubElement(
-                                        channels_xml, "programme", start=start, stop=stop, channel=epgId
-                                    )
-                                    ET.SubElement(programmeEle, "title").text = channelName
-                                    ET.SubElement(programmeEle, "desc").text = channelName
-                                    programme_count += 1
-                            else:
-                                for p in channel_epg:
-                                    try:
-                                        start_ts = p.get("start_timestamp")
-                                        stop_ts = p.get("stop_timestamp")
-                                        if not start_ts or not stop_ts:
-                                            continue
+                                channelName = customChannelNames.get(channelId, channel.get("name"))
+                                channelNumber = customChannelNumbers.get(channelId, str(channel.get("number")))
+                                # Priority: 1. Database custom EPG ID, 2. JSON config custom EPG ID, 3. Channel number
+                                epgId = db_custom_epg_ids.get(channelId) or customEpgIds.get(channelId, channelNumber)
+
+                                channelEle = ET.SubElement(channels_xml, "channel", id=epgId)
+                                ET.SubElement(channelEle, "display-name").text = channelName
+                                logo = channel.get("logo")
+                                if logo:
+                                    ET.SubElement(channelEle, "icon", src=logo)
+
+                                channel_epg = merged_epg.get(channelId, [])
+                                
+                                if not channel_epg:
+                                    # Try fallback EPG if enabled
+                                    fallback_used = False
+                                    if epg_fallback_enabled and fallback_epg:
+                                        # Try to match by channel name using improved matching
+                                        matched_fb_id = find_best_epg_match(channelName, fallback_epg)
+                                        if matched_fb_id:
+                                            # Find the fallback data by channel_id
+                                            fb_data = None
+                                            for fb_name, data in fallback_epg.items():
+                                                if data['channel_id'] == matched_fb_id:
+                                                    fb_data = data
+                                                    break
                                             
-                                        start_time = datetime.utcfromtimestamp(start_ts) + timedelta(hours=portal_epg_offset)
-                                        stop_time = datetime.utcfromtimestamp(stop_ts) + timedelta(hours=portal_epg_offset)
+                                            if fb_data and fb_data.get('programmes'):
+                                                for p in fb_data['programmes'][:50]:  # Limit to 50 programmes
+                                                    try:
+                                                        programmeEle = ET.SubElement(
+                                                            channels_xml, "programme",
+                                                            start=p['start'], stop=p['stop'], channel=epgId
+                                                        )
+                                                        ET.SubElement(programmeEle, "title").text = p['title']
+                                                        if p['desc']:
+                                                            ET.SubElement(programmeEle, "desc").text = p['desc']
+                                                        programme_count += 1
+                                                        fallback_used = True
+                                                    except Exception as e:
+                                                        pass
+                                                if fallback_used:
+                                                    logger.debug(f"Used fallback EPG for {channelName}")
+                                    
+                                    if not fallback_used:
+                                        # Create dummy EPG
+                                        channels_without_epg.append(channelName)
+                                        start_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+                                        stop_time = start_time + timedelta(hours=24)
                                         start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
                                         stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                        
-                                        if start <= day_before_yesterday_str:
-                                            continue
-                                            
                                         programmeEle = ET.SubElement(
                                             channels_xml, "programme", start=start, stop=stop, channel=epgId
                                         )
-                                        ET.SubElement(programmeEle, "title").text = p.get("name", "")
-                                        desc = p.get("descr", "")
-                                        if desc:
-                                            ET.SubElement(programmeEle, "desc").text = desc
+                                        ET.SubElement(programmeEle, "title").text = channelName
+                                        ET.SubElement(programmeEle, "desc").text = channelName
                                         programme_count += 1
-                                    except Exception as e:
-                                        logger.error(f"Error processing programme: {e}")
-                        except Exception as e:
-                            logger.error(f"Error processing channel: {e}")
+                                else:
+                                    for p in channel_epg:
+                                        try:
+                                            start_ts = p.get("start_timestamp")
+                                            stop_ts = p.get("stop_timestamp")
+                                            if not start_ts or not stop_ts:
+                                                continue
+                                                
+                                            start_time = datetime.utcfromtimestamp(start_ts) + timedelta(hours=portal_epg_offset)
+                                            stop_time = datetime.utcfromtimestamp(stop_ts) + timedelta(hours=portal_epg_offset)
+                                            start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
+                                            stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
+                                            
+                                            if start <= day_before_yesterday_str:
+                                                continue
+                                                
+                                            programmeEle = ET.SubElement(
+                                                channels_xml, "programme", start=start, stop=stop, channel=epgId
+                                            )
+                                            ET.SubElement(programmeEle, "title").text = p.get("name", "")
+                                            desc = p.get("descr", "")
+                                            if desc:
+                                                ET.SubElement(programmeEle, "desc").text = desc
+                                            programme_count += 1
+                                        except Exception as e:
+                                            logger.error(f"Error processing programme: {e}")
+                            except Exception as e:
+                                logger.error(f"Error processing channel: {e}")
                     
                     # Clear data from memory
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Completed - {programme_count} total programmes"
+                    epg_refresh_progress["portals_done"] = portal_index  # Mark this portal as done
                     del merged_epg
                     del all_channels_map
                     gc.collect()
                 else:
                     logger.error(f"Error making XMLTV for {name}, skipping")
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Error - skipping"
+                    epg_refresh_progress["portals_done"] = portal_index  # Mark this portal as done
 
     if channels_without_epg:
         logger.warning(f"{len(channels_without_epg)} channels without EPG data")
 
+    epg_refresh_progress["current_step"] = "Generating XMLTV file..."
     # Generate XML string without minidom (much more memory efficient)
     rough_string = ET.tostring(channels_xml, encoding="unicode")
     
     # Simple formatting without minidom
     formatted_xmltv = '<?xml version="1.0" encoding="UTF-8"?>\n' + rough_string
 
+    epg_refresh_progress["current_step"] = f"Writing XMLTV cache ({programme_count} programmes)..."
     # Write to cache file
     try:
         with open(cache_file, "w", encoding="utf-8") as f:
             f.write(formatted_xmltv)
         logger.info(f"XMLTV cache updated with {programme_count} programmes.")
+        epg_refresh_progress["current_step"] = f"XMLTV cache updated with {programme_count} programmes"
     except Exception as e:
         logger.error(f"Error writing XMLTV cache: {e}")
+        epg_refresh_progress["current_step"] = f"Error writing cache: {str(e)}"
 
+    epg_refresh_progress["current_step"] = "Finalizing..."
     # Update global cache
     global cached_xmltv, last_updated
     cached_xmltv = formatted_xmltv
@@ -2894,6 +3401,8 @@ def refresh_xmltv():
     del rough_string
     del fallback_epg
     gc.collect()
+    
+    epg_refresh_progress["current_step"] = f"Completed! {programme_count} programmes from {portal_index} portals"
     
 @app.route("/xmltv", methods=["GET"])
 @authorise
@@ -3392,62 +3901,56 @@ def xc_get_playlist():
     
     m3u_content = "#EXTM3U\n"
     
-    for portal_id, portal in portals.items():
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id, logo
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, channel_id
+    ''')
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for portal_id, portal in list(portals.items()):
         if portal.get("enabled") != "true":
             continue
         if allowed_portals and portal_id not in allowed_portals:
             continue
         
-        enabled_channels = portal.get("enabled channels", [])
-        if not enabled_channels:
+        # Get channels for this portal from database
+        portal_channels = [ch for ch in db_channels if ch['portal'] == portal_id]
+        if not portal_channels:
             continue
         
-        custom_names = portal.get("custom channel names", {})
-        custom_numbers = portal.get("custom channel numbers", {})
-        custom_genres = portal.get("custom genres", {})
+        # Use the same host as the request came from (handles reverse proxy correctly)
+        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+        host = request.headers.get('X-Forwarded-Host', request.host)
         
-        # Get channels
-        url = portal.get("url")
-        macs = list(portal.get("macs", {}).keys())
-        proxy = portal.get("proxy", "")
-        
-        all_channels = None
-        genres = None
-        
-        for mac in macs:
-            try:
-                token = stb.getToken(url, mac, proxy)
-                if token:
-                    stb.getProfile(url, mac, token, proxy)
-                    all_channels = stb.getAllChannels(url, mac, token, proxy)
-                    genres = stb.getGenreNames(url, mac, token, proxy)
-                    if all_channels:
-                        break
-            except:
-                continue
-        
-        if all_channels and genres:
-            for channel in all_channels:
-                channel_id = str(channel.get("id"))
-                if channel_id not in enabled_channels:
-                    continue
-                
-                channel_name = custom_names.get(channel_id, channel.get("name", ""))
-                channel_number = custom_numbers.get(channel_id, str(channel.get("number", "")))
-                genre_id = str(channel.get("tv_genre_id", ""))
-                genre_name = custom_genres.get(channel_id, genres.get(genre_id, ""))
-                logo = channel.get("logo", "")
-                
-                stream_id = f"{portal_id}_{channel_id}"
-                # Use the same host as the request came from (handles reverse proxy correctly)
-                scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-                host = request.headers.get('X-Forwarded-Host', request.host)
-                # Standard XC API URL format for maximum compatibility
-                # Add .ts extension for better IPTV client compatibility
-                stream_url = f"{scheme}://{host}/{username}/{password}/{stream_id}.ts"
-                
-                m3u_content += f'#EXTINF:-1 tvg-id="{channel_name}" tvg-name="{channel_name}" tvg-logo="{logo}" group-title="{genre_name}",{channel_name}\n'
-                m3u_content += f'{stream_url}\n'
+        for db_channel in portal_channels:
+            channel_id = str(db_channel['channel_id'])
+            
+            # Use custom values if available, otherwise use original values
+            channel_name = db_channel['custom_name'] if db_channel['custom_name'] else (db_channel['name'] or "Unknown Channel")
+            genre = db_channel['custom_genre'] if db_channel['custom_genre'] else (db_channel['genre'] or "")
+            channel_number = db_channel['custom_number'] if db_channel['custom_number'] else (db_channel['number'] or "")
+            epg_id = db_channel['custom_epg_id'] if db_channel['custom_epg_id'] else channel_name
+            logo = db_channel['logo'] or ""
+            
+            stream_id = f"{portal_id}_{channel_id}"
+            # Standard XC API URL format for maximum compatibility
+            # Add .ts extension for better IPTV client compatibility
+            stream_url = f"{scheme}://{host}/{username}/{password}/{stream_id}.ts"
+            
+            # Escape quotes in attributes
+            def escape_quotes(text):
+                return str(text).replace('"', '&quot;') if text else ""
+            
+            m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(genre)}",{channel_name}\n'
+            m3u_content += f'{stream_url}\n'
     
     return Response(m3u_content, mimetype="application/x-mpegURL")
 
@@ -3564,52 +4067,40 @@ def xc_get_live_categories(user):
     categories = []
     categories_with_channels = set()  # Track which categories have enabled channels
     
-    for portal_id, portal in portals.items():
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT portal, 
+               COALESCE(NULLIF(custom_genre, ''), NULLIF(genre, ''), 'Unknown') as genre_name
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, genre_name
+    ''')
+    db_genres = cursor.fetchall()
+    conn.close()
+    
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for portal_id, portal in list(portals.items()):
         if portal.get("enabled") != "true":
             continue
         if allowed_portals and portal_id not in allowed_portals:
             continue
         
-        enabled_channels = portal.get("enabled channels", [])
-        if not enabled_channels:
-            continue
+        # Get genres for this portal from database
+        portal_genres = [g for g in db_genres if g['portal'] == portal_id]
         
-        # Get channels to find which genres are actually used
-        url = portal.get("url")
-        macs = list(portal.get("macs", {}).keys())
-        proxy = portal.get("proxy", "")
-        
-        all_channels = None
-        genres = None
-        
-        for mac in macs:
-            try:
-                token = stb.getToken(url, mac, proxy)
-                if token:
-                    stb.getProfile(url, mac, token, proxy)
-                    all_channels = stb.getAllChannels(url, mac, token, proxy)
-                    genres = stb.getGenreNames(url, mac, token, proxy)
-                    if all_channels and genres:
-                        break
-            except:
-                continue
-        
-        if all_channels and genres:
-            # Find which genres have enabled channels
-            for channel in all_channels:
-                channel_id = str(channel.get("id"))
-                if channel_id in enabled_channels:
-                    genre_id = str(channel.get("tv_genre_id", ""))
-                    category_key = f"{portal_id}_{genre_id}"
-                    
-                    if category_key not in categories_with_channels:
-                        categories_with_channels.add(category_key)
-                        genre_name = genres.get(genre_id, "Unknown")
-                        categories.append({
-                            "category_id": category_key,
-                            "category_name": genre_name,
-                            "parent_id": 0
-                        })
+        for genre_data in portal_genres:
+            genre_name = genre_data['genre_name']
+            category_key = f"{portal_id}_{genre_name}"
+            
+            if category_key not in categories_with_channels:
+                categories_with_channels.add(category_key)
+                categories.append({
+                    "category_id": category_key,
+                    "category_name": genre_name,
+                    "parent_id": 0
+                })
     
     return flask.jsonify(categories)
 
@@ -3621,74 +4112,67 @@ def xc_get_live_streams(user):
     
     streams = []
     
-    for portal_id, portal in portals.items():
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id, logo
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, channel_id
+    ''')
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for portal_id, portal in list(portals.items()):
         if portal.get("enabled") != "true":
             continue
         if allowed_portals and portal_id not in allowed_portals:
             continue
         
-        enabled_channels = portal.get("enabled channels", [])
-        if not enabled_channels:
+        # Get channels for this portal from database
+        portal_channels = [ch for ch in db_channels if ch['portal'] == portal_id]
+        if not portal_channels:
             continue
         
-        custom_names = portal.get("custom channel names", {})
-        custom_numbers = portal.get("custom channel numbers", {})
-        custom_genres = portal.get("custom genres", {})
-        
-        # Get channels
-        url = portal.get("url")
-        macs = list(portal.get("macs", {}).keys())
-        proxy = portal.get("proxy", "")
-        
-        all_channels = None
-        genres = None
-        
-        for mac in macs:
-            try:
-                token = stb.getToken(url, mac, proxy)
-                if token:
-                    stb.getProfile(url, mac, token, proxy)
-                    all_channels = stb.getAllChannels(url, mac, token, proxy)
-                    genres = stb.getGenreNames(url, mac, token, proxy)
-                    if all_channels:
-                        break
-            except:
-                continue
-        
-        if all_channels and genres:
-            for channel in all_channels:
-                channel_id = str(channel.get("id"))
-                if channel_id not in enabled_channels:
-                    continue
-                
-                channel_name = custom_names.get(channel_id, channel.get("name", ""))
-                channel_number = custom_numbers.get(channel_id, str(channel.get("number", "")))
-                genre_id = str(channel.get("tv_genre_id", ""))
-                genre_name = custom_genres.get(channel_id, genres.get(genre_id, ""))
-                
-                # Create internal stream ID
-                internal_id = f"{portal_id}_{channel_id}"
-                
-                # XC API expects numeric stream_id - use deterministic hash
-                # Python's hash() is not deterministic across sessions, so use hashlib
-                import hashlib
-                numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
-                
-                streams.append({
-                    "num": int(channel_number) if channel_number.isdigit() else 0,
-                    "name": channel_name,
-                    "stream_type": "live",
-                    "stream_id": numeric_id,
-                    "stream_icon": channel.get("logo", ""),
-                    "epg_channel_id": channel_name,
-                    "added": "",
-                    "category_id": f"{portal_id}_{genre_id}",
-                    "custom_sid": internal_id,  # Store real ID for reverse lookup
-                    "tv_archive": 0,
-                    "direct_source": "",
-                    "tv_archive_duration": 0,
-                    "container_extension": "ts"
-                })
+        for db_channel in portal_channels:
+            channel_id = str(db_channel['channel_id'])
+            
+            # Use custom values if available, otherwise use original values
+            channel_name = db_channel['custom_name'] if db_channel['custom_name'] else (db_channel['name'] or "Unknown Channel")
+            genre = db_channel['custom_genre'] if db_channel['custom_genre'] else (db_channel['genre'] or "Unknown")
+            channel_number = db_channel['custom_number'] if db_channel['custom_number'] else (db_channel['number'] or "")
+            epg_id = db_channel['custom_epg_id'] if db_channel['custom_epg_id'] else channel_name
+            logo = db_channel['logo'] or ""
+            
+            # Create internal stream ID
+            internal_id = f"{portal_id}_{channel_id}"
+            
+            # XC API expects numeric stream_id - use deterministic hash
+            # Python's hash() is not deterministic across sessions, so use hashlib
+            import hashlib
+            numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+            
+            # Create category_id that matches the one in xc_get_live_categories
+            category_id = f"{portal_id}_{genre}"
+            
+            streams.append({
+                "num": int(channel_number) if channel_number.isdigit() else 0,
+                "name": channel_name,
+                "stream_type": "live",
+                "stream_id": numeric_id,
+                "stream_icon": logo,
+                "epg_channel_id": epg_id,
+                "added": "",
+                "category_id": category_id,
+                "custom_sid": internal_id,  # Store real ID for reverse lookup
+                "tv_archive": 0,
+                "direct_source": "",
+                "tv_archive_duration": 0,
+                "container_extension": "ts"
+            })
     
     return flask.jsonify(streams)
 
@@ -3749,7 +4233,8 @@ def xc_stream(username, password, stream_id, extension=None):
         found = False
         
         import hashlib
-        for pid, portal in portals.items():
+        # Create a copy to avoid RuntimeError if dictionary changes during iteration
+        for pid, portal in list(portals.items()):
             if portal.get("enabled") != "true":
                 continue
             enabled_channels = portal.get("enabled channels", [])

@@ -1,5 +1,6 @@
 Flask==3.0.0
 waitress==3.0.0
 requests==2.31.0
+cloudscraper==1.2.71
 pytest==7.4.0
 pytest-mock==3.11.1

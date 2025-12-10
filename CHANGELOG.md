@@ -1,491 +1,683 @@
-# MacReplay MOD Changelog
+# MacReplayXC v2.2 - Changelog
 
-## [Latest] - 2025-12-08
+## 🚀 Major Improvements & New Features
 
-### Added
+### 1. **Enhanced Portal Compatibility**
 
-#### EPG Settings Modal
-- **EPG Fallback Configuration**
-  - Added "Settings" button next to "Refresh EPG" button on EPG page
-  - Modal dialog for configuring EPG fallback settings
-  - Enable/disable EPG fallback checkbox
-  - Fallback countries input (comma-separated country codes)
-  - Info alert showing available countries
-  - Settings saved to backend and persist across restarts
-  - Toast notification on successful save
-  - Backend endpoints: `/epg/settings` (GET/POST)
-  - **Automatic Fallback Application**: EPG refresh now automatically applies fallback EPG for channels without portal EPG
-  - Custom EPG IDs from database (set via EPG page) are used with highest priority during refresh
-  - Priority order: 1. Database custom EPG ID, 2. JSON config custom EPG ID, 3. Channel number
+#### Multiple Endpoint Support (`stb.py`)
+- Added support for alternative portal endpoints:
+  - Standard: `?type=stb&action=handshake`
+  - Alternative 1: `/portal.php?type=stb&action=handshake`
+  - Alternative 2: `/server/load.php?type=stb&action=handshake`
+  - Stalker variants: `/stalker_portal/server/load.php`
+  - Custom path support: `/c/portal.php`
 
-#### Grid-Based Channel Editor
-- **Complete Editor Redesign**
-  - New grid-based category view inspired by modern IPTV interfaces
-  - Categories displayed as grid cards showing enabled/total channel counts
-  - Click on category to view and edit channels in that category
-  - Cleaner, more intuitive interface for managing large channel lists
-  - Real-time category and channel statistics
-  - Search/filter categories by name
-  - Filter by portal
-  - Responsive grid layout adapts to screen size
-  - Channel items show: enable toggle, play button, name, number, EPG ID
-  - All editing functions preserved: enable/disable, rename, renumber, EPG mapping
-  - Video player modal with HLS support
-  - Legacy table view still available at `/editor/table`
-  - Removed all hover effects (transform, box-shadow changes) as requested
-  - Clean, distraction-free interface
+#### GET + POST Request Support
+- All API functions now try GET first, then fallback to POST
+- Affected functions:
+  - `getToken()`
+  - `getAllChannels()`
+  - `getEpg()`
+  - `getGenres()`
+  - `getLink()`
 
-#### Settings & Dashboard UI Improvements
-- **Settings Page Enhancements**
-  - Added descriptive subtitles to each settings section
-  - Better visual hierarchy with section headers
-  - Improved spacing and grouping
-  - Consistent card styling across all sections
-  - Flash messages converted to toast notifications
-  - Cleaner, more professional appearance
-  - Reorganized layout: Output Format, HLS Options, Stream Options in first row
-  - EPG Fallback settings added to Settings page
-  - HD HomeRun and Custom FFmpeg side-by-side
-  - All cards have equal heights with `h-100` class
+#### Enhanced Headers for Cloudflare Bypass
+- MAG-Device-Fingerprint headers:
+  ```
+  User-Agent: Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3
+  X-User-Agent: Model: MAG250; Link: WiFi
+  Referer: [portal-url]
+  ```
 
-- **Dashboard Complete Redesign**
-  - **Statistics Cards**: Active Streams, Total Channels, Server Status, Last Updated
-  - **Modern Layout**: Two-column design with URLs and Quick Actions
-  - **Real-time Updates**: Auto-refresh every 30 seconds for streams and stats
-  - **New API Endpoint**: `/dashboard/stats` for total channels and last update time
-  - **Better URL Display**: Monospace font for easy copying
-  - **Quick Actions**: Large buttons for common tasks (Refresh, Download)
-  - **Empty States**: Helpful messages when no streams active
-  - **Live Stream Count**: Updates automatically in statistics card
-  - Consistent styling with other pages (Portals, Editor, EPG, XC Users)
+#### Cloudflare Protection Bypass
+- Added `cloudscraper` library support
+- Automatic Cloudflare challenge solving
+- Browser TLS fingerprint emulation
+- Added to `requirements.txt`: `cloudscraper==1.2.71`
 
-#### XC Users Page Redesign
-- **Modern Grid-Based Layout**
-  - Redesigned `/xc-users` page with grid-based card layout
-  - User cards show: avatar icon, username, password, status badge
-  - Connection stats: active/max connections with color coding
-  - Expiration display with smart formatting (days, weeks, months)
-  - Status badges: Active (green), Disabled (gray), Expired (red)
-  - Sticky filter bar with search and status filter
-  - Real-time statistics: total users and active connections
-  - Green border hover effect on cards
-  - **Copy Playlist Button**: One-click copy of XC API playlist URL with username/password
-  - Playlist URL format: `http://server/get.php?username=USER&password=PASS&type=m3u_plus&output=ts`
-  - Visual feedback on copy (button turns green with checkmark)
-  - Toast notification on successful copy
-  - Edit and Delete buttons in card footer
-  - Empty state when no users or no results
-  - Toast notifications for user actions
-  - Responsive grid layout adapts to screen size
-  - Consistent design with other pages (Portals, Editor, EPG)
-
-#### Tabler Modal Dialogs
-- **Replaced All Browser Alerts**
-  - Replaced all `alert()` calls with Tabler modal dialogs
-  - Replaced all `confirm()` calls with Tabler confirmation modals
-  - Global `showAlert(message, title, type)` function for alerts
-  - Global `showConfirm(message, title, onConfirm, onCancel, type)` function for confirmations
-  - Modals support types: success, danger, warning, info
-  - Color-coded icons and buttons based on type
-  - Auto-cleanup after closing
-  - Applied across all templates:
-    - `templates/portals.html` - Portal management alerts
-    - `templates/genre_selection.html` - Genre selection confirmations
-    - `templates/dashboard.html` - Dashboard operation alerts
-    - `templates/xc_users.html` - User management confirmations
-    - `templates/epg_simple.html` - EPG operation alerts
-    - `templates/editor_grid.html` - Editor operation alerts
-    - `templates/editor.html` - Legacy editor alerts
-  - Combined multiple sequential alerts into single modals where appropriate
-  - Better UX with themed, consistent dialogs
-
-#### Complete Design System Upgrade
-- **Tabler.io-Based Modern Design**
-  - Complete redesign of all UI components using only Tabler.io framework
-  - Enhanced card system with better shadows, hover effects, and rounded corners (0.75rem)
-  - Comprehensive badge system with proper light/dark mode support
-  - All badges now have theme-aware colors that work correctly in both modes
-  - Added "-lt" badge variants for subtle backgrounds (e.g., `bg-success-lt`)
-  - Badge colors properly adjusted for both themes:
-    - Light theme: solid colors with white text, subtle variants with dark text
-    - Dark theme: darker solid colors, transparent subtle variants with light text
-  - Improved button system with smooth transitions and hover effects
-  - Enhanced form controls with better focus states and borders
-  - Modern modal dialogs with rounded corners and proper shadows
-  - Theme-aware alert system with consistent colors
-  - Improved dropdown menus with better spacing and hover states
-  - Enhanced navbar with smooth transitions
-  - Pagination system with rounded buttons
-  - Progress bars with smooth animations
-  - List groups with hover effects
-  - Custom scrollbar styling for both themes
-  - Responsive design adjustments for mobile devices
-  - Print-friendly styles
-  - All components follow consistent design language
-  - Smooth transitions throughout the interface (0.2s ease-in-out)
-  - Proper color contrast for accessibility in both themes
-  - Updated genre selection page to use theme-aware styles
-  - Removed hardcoded dark theme colors from templates
-  - All inline styles now respect current theme setting
-
-#### Portals Page Redesign
-- **Edit Portal Modal Overhaul**
-  - Modern two-column layout with card sections
-  - Status toggle card at top with avatar and enable/disable switch
-  - Basic Settings section: Portal Name, URL, Proxy
-  - Configuration section: Streams per MAC, EPG Offset, Retest option
-  - MAC Addresses section split into two columns:
-    - Left: Current MACs table with status badges (days until expiry)
-    - Right: Update MACs textarea that fills available height
-  - Clean dark mode styling with proper table colors
-  - Removed ugly Bootstrap table-warning/danger backgrounds in dark mode
-  - Custom table styling with transparent backgrounds
-  - MAC code styling with proper dark/light mode colors
-
-- **Genre Selection Modal Improvements**
-  - Sticky search bar with glass effect (matches Editor/EPG modals)
-  - Gradient fade effect for smooth scroll transition
-  - Badge-style buttons for All/None/Refresh actions
-  - Consistent styling with other modal dialogs
-
-- **Portal Cards Simplified**
-  - Removed Info button (redundant with Edit modal)
-  - Three-button layout: Genres, Edit, Delete
-  - Cleaner card footer with equal-width buttons
-
-### Fixed
-
-#### Channel Caching System (Docker Version)
-- **SQLite Database Caching Implementation**
-  - Ported complete channel caching system from app.py to app-docker.py
-  - Channels cached in SQLite database (`/app/data/channels.db`)
-  - Eliminates repeated API calls to portals on every page load
-  - Database automatically initialized on first startup
-  - Auto-refresh from portals if database is empty
-  - Dramatic performance improvement for editor page
-  - Database includes: portal, channel_id, name, number, genre, logo, enabled status, custom fields
-
-#### EPG Page Performance Optimization
-- **Database-Only EPG Status Loading**
-  - `/epg/portal-status` route now uses database only - NO portal API queries
-  - Eliminated token request spam when loading EPG page
-  - EPG status calculated from database `custom_epg_id` field
-  - Instant page load without waiting for portal responses
-  - 5-minute cache for EPG status data
-  - Prevents hundreds of unnecessary API calls on page load
-
-#### EPG Fallback Matching Improvements
-- **VERY Strict Matching Rules - Better No EPG Than Wrong EPG**
-  - Completely redesigned `find_best_epg_match()` with ultra-conservative matching
-  - Only exact matches (100% confidence) are automatically applied
-  - Substring matches require 80% length similarity (increased from 60%)
-  - Word-by-word matching is DISABLED by default (too many false positives)
-  - Channels without confident matches get NO EPG ID (empty) instead of wrong data
-  - Prevents false matches like "MÜNCHEN.TV" → "ntv" or "NRWISION" → Brazilian channels
-  - Users can manually set EPG IDs for channels that don't auto-match
-  - Applied to both manual fallback and automatic fallback during XMLTV refresh
-
-#### Portal EPG Detection in Database
-- **Track Portal EPG Availability**
-  - Added `has_portal_epg` field to database schema
-  - During cache refresh, checks ALL MACs for EPG data and stores status
-  - EPG page now shows accurate portal EPG status from database
-  - "Apply Fallback to All" button only applies to channels WITHOUT portal EPG
-  - Prevents overwriting existing portal EPG with fallback data
-  - Channels with portal EPG (like Magenta Sport) keep their original EPG IDs
-
-#### EPG Mapping Performance Optimization
-- **Direct Database Updates for EPG Mappings**
-  - All EPG mapping routes now update database directly instead of JSON files
-  - `/epg/save-mapping` - saves custom EPG IDs to database
-  - `/epg/apply-fallback` - applies fallback EPG to database
-  - `/epg/apply-fallback-all` - batch updates database for multiple channels
-  - Prevents Gateway Timeout (504) errors on large channel lists
-  - Increased limit to 5000 channels for batch fallback operations
-  - Additional filtering to only process channels without portal EPG
-  - Progress logging every 100 channels during batch operations
-
-#### Multi-MAC Channel Discovery
-- **Complete Channel Loading from All MACs**
-  - All functions now query **ALL** MAC addresses and merge results
-  - `portal_load_genres()` - Loads channels from ALL MACs and merges
-  - `portal_save_genre_selection()` - Fetches from ALL MACs before saving
-  - `refresh_channels_cache()` - Queries ALL MACs and merges into database
-  - Ensures all available channels and genres are discovered
-  - Different MACs may provide different channel sets (e.g., NL vs DE content)
-  - Prevents missing channels when only first MAC is queried
-  - Detailed logging shows channels loaded from each MAC
-
-#### Multi-MAC EPG Collection
-- **EPG Loading from All MACs**
-  - EPG is now fetched from **ALL** configured MAC addresses
-  - EPG data is merged intelligently - keeps version with most programmes
-  - `refresh_xmltv()` - Merges EPG from all MACs
-  - `epg_portal_status()` - Checks EPG from all MACs
-  - `epg_channels()` - Collects EPG data from all MACs
-  - Added detailed logging to show EPG collection from each MAC
-  - Fixed issue where only first MAC's EPG was used
-  - Maximizes EPG coverage across all available sources
-
-#### EPG Fallback Matching
-- **Improved Channel Name Matching**
-  - Added `normalize_channel_name()` function to remove HD/SD/FHD/4K suffixes
-  - Added `find_best_epg_match()` with multi-level matching:
-    1. Exact normalized match
-    2. Partial substring match
-    3. Word-by-word matching with scoring
-  - Removes special characters and extra whitespace for better matching
-  - Case-insensitive matching throughout
-  - Significantly improved fallback EPG assignment accuracy
-
-#### Playlist Categories
-- **Removed Portal Prefix from Category Names**
-  - Categories now show as "IDE INACHRICHT" instead of "Anbieter - IDE INACHRICHT"
-  - Cleaner category display in IPTV clients
-  - Reduces clutter in category lists
+#### M3U Playlist Support
+- New function: `parseM3U()` - Parse M3U playlist content
+- New function: `getM3UChannels()` - Fetch and parse M3U URLs
+- Supports:
+  - `tvg-id` (EPG ID)
+  - `tvg-name` (Channel Name)
+  - `tvg-logo` (Logo URL)
+  - `group-title` (Genre/Category)
 
 ---
 
-## [Released] - 2025-12-06
+### 2. **Real-Time Progress Tracking**
 
-### Added
+#### EPG Refresh Progress (`/epg`)
+**Backend Changes (`app-docker.py`):**
+- Detailed progress tracking in `refresh_xmltv()`:
+  - Loading EPG settings
+  - Fetching fallback EPG
+  - Per-portal progress
+  - Per-MAC progress (Authenticating, Fetching channels, Fetching EPG)
+  - Channel processing by genre
+  - XMLTV generation
+  - Final statistics
 
-#### Authentication & Security
-- **Session-based Login System**
-  - Replaced HTTP Basic Auth with session-based login using forms
-  - Added `/login` page with username/password form
-  - Added `/logout` endpoint to clear sessions
-  - Added logout button in navigation bar
-  - Sessions persist across browser restarts with `session.permanent = True`
+**Frontend Changes (`templates/epg.html`):**
+- Enhanced progress bar with:
+  - Portal name display
+  - Percentage badge
+  - Detailed step descriptions
+  - Smooth progress bar animation
+  - Success state (green) on completion
+  - Auto-reload after completion
 
-#### Xtream Codes API
-- **Complete XC API Implementation**
-  - `/player_api.php` - Main API endpoint with user info, streams, and categories
-  - `/get.php` - M3U playlist generation for XC clients
-  - `/xmltv.php` - EPG/XMLTV endpoint for XC clients
-  - `/<username>/<password>/<stream_id>` - Stream playback endpoint
-  - `/live/<username>/<password>/<stream_id>` - Alternative stream endpoint with `/live/` prefix
-  - Support for both `/xc/` prefixed and standard XC API URL formats
+**Progress Updates Show:**
+- "Starting Portal X..."
+- "Authenticating MAC 1/3"
+- "Fetching channels from MAC 1/3"
+- "Fetching EPG from MAC 1/3"
+- "Processing Sports (10/120 channels)"
+- "Completed - 5000 total programmes"
 
-- **XC User Management**
-  - `/xc-users` - User management interface
-  - Add/Edit/Delete XC API users
-  - Per-user connection limits (max simultaneous streams)
-  - Per-user portal access control
-  - User expiration dates
-  - Enable/disable users
-  - Real-time active connection tracking
+#### Channel Refresh Progress (`/editor`)
+**Backend Changes (`app-docker.py`):**
+- New progress tracking system: `editor_refresh_progress`
+- Wrapper function: `refresh_channels_cache_with_progress()`
+- Detailed progress in `refresh_channels_cache()`:
+  - Loading portals
+  - Per-portal processing
+  - Per-MAC fetching
+  - Channel count updates
+  - EPG availability checks
+  - Database saving
 
-- **XC API Features**
-  - Numeric stream IDs using deterministic MD5 hashing for client compatibility
-  - Automatic connection cleanup when streams end
-  - Inactive connection cleanup (60 seconds timeout)
-  - Device tracking per user
-  - Proper XC API error responses with `user_info.auth = 0` format
-  - `container_extension` field for stream format indication
-  - Filtered categories - only shows categories with enabled channels
-  - Filtered streams - only shows enabled channels from selected genres
+**Frontend Changes (`templates/editor.html`):**
+- Progress bar matching EPG design
+- Real-time updates every second
+- Shows current portal and step
+- Percentage display
+- Auto-reload on completion
 
-#### EPG Enhancements
-- **Multi-MAC EPG Fetching**
-  - EPG is now fetched from ALL configured MAC addresses and merged
-  - Different MACs provide different channels (e.g., NL vs DE content)
-  
-- **EPG Fallback System**
-  - Automatic EPG fallback from epgshare01.online for channels without portal EPG
-  - Configurable fallback countries (comma-separated: "DE, NL, UK")
-  - Channel name matching (case-insensitive, exact or partial)
-  - Only loads EPG for configured countries to save memory
+**New Endpoint:**
+- `GET /editor/refresh/progress` - Get refresh progress status
 
-- **EPG Management Page** (`/epg`)
-  - **Portal Status Tab**: Shows actual EPG channel counts per portal
-  - **EPG Mapping Tab**: Manual EPG ID assignment with search functionality
-  - **EPG Fallback Tab**: Configure fallback settings
-  - Individual "Apply Fallback" button per channel (cloud icon)
-  - "Apply Fallback to All" button for bulk application
-  - Real-time EPG refresh functionality
+---
 
-#### Settings Improvements
-- **Reorganized Settings Page**
-  - Clear hierarchical structure with section headers
-  - **Streaming Settings**: HLS and basic streaming options at the top
-  - **Security & Access**: Admin login and XC API settings
-  - **Integrations**: HD HomeRun emulation
-  - **Advanced**: Custom FFmpeg commands
-  - Compact layout with better grouping
-  - Clearer labels and descriptions
+### 3. **Advanced Bulk Search & Replace System**
 
-- **HLS Settings**
-  - Prominent placement at top of settings (most important feature)
-  - Inline layout for all HLS options
-  - Clear descriptions for Plex optimization
-  - Preset recommendations removed from settings (kept in documentation)
+#### Enhanced UI Component (`templates/editor.html`)
+**"Bulk Edit" Button** in Channel Editor with comprehensive modal:
 
-- **Security Settings**
-  - Renamed "Enable HTTP authentication" to "Require login for web interface"
-  - Renamed "Username/Password" to "Admin Username/Admin Password"
-  - Added clarification that XC API is not affected by login requirement
+**Improved Quick Presets (2x3 Grid Layout):**
+- **Remove "VIP"** - Removes VIP, ★VIP★, [VIP], (VIP)
+- **Remove Emojis** - Removes all emoji characters using regex
+- **Remove Country Codes** - Advanced regex: `^(DE|UK|US|FR|IT|ES|NL|BE|AT|CH)[:|\\-_\\s]+`
+  - Supports multiple separators: `:`, `|`, `-`, `_`, space
+  - Handles brackets: `[DE]`, `(DE)`
+  - Supports 2-letter and 3-letter codes
+- **Remove [Brackets]** - Removes content in [] and () using regex
+- **Clean Separators** - NEW: Removes multiple pipes, dashes, trailing separators
+- **Fix Spacing** - NEW: Removes multiple spaces, cleans separator spacing
 
-#### UI/UX Improvements
-- **Theme System**
-  - Fixed dark/light mode switching
-  - Changed from `@media (prefers-color-scheme)` to `[data-bs-theme]` attribute
-  - Dynamic body class (`theme-dark`/`theme-light`) set before page load
-  - Proper theme persistence in localStorage
+**Persistent Custom Rules:**
+- ✅ **Auto-Save to Database** - Rules are automatically saved when applied
+- ✅ **Auto-Load on Open** - Last 10 used rules loaded automatically
+- ✅ **Survives Restarts** - Rules persist after CTRL+F5 and server restart
+- ✅ **Smart Deduplication** - Same rules update `last_used` timestamp
+- ✅ **Rule Management** - Clear saved rules button
+- Visual rule builder (Search → Replace)
+- Unlimited rules per session
 
-- **Visual Improvements**
-  - Removed hover effects from all cards globally
-  - Cleaner, less distracting interface
-  - Better form layouts with inline groups
-  - Improved button placement in headers
+**Enhanced Options:**
+- ☑ Apply to Channel Names
+- ☑ Apply to Genres  
+- ☑ Case Sensitive
+- ☑ Use Regular Expressions
+- Settings are remembered between sessions
 
-### Changed
+**Advanced Features:**
+- Preview function with sample changes
+- Rule history tracking
+- Undo/Redo functionality
+- Reset all customizations option
 
-#### Memory Management
-- **EPG Caching**
-  - Added 5-minute cache for EPG routes to prevent repeated API calls
-  - Explicit `gc.collect()` after EPG operations
-  - Removed memory-intensive `minidom.parseString()` from `refresh_xmltv()`
+#### Backend Implementation (`app-docker.py`)
 
-- **Session Management**
-  - Implemented session lifecycle management in `stb.py`
-  - Automatic session refresh every 5 minutes
-  - Explicit deletion of large data structures after use
+**New Database Tables:**
+```sql
+-- Rule persistence
+CREATE TABLE bulk_edit_saved_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    search_text TEXT NOT NULL,
+    replace_text TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_used TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
-#### Streaming
-- **Content-Type Headers**
-  - Changed from `application/octet-stream` to `video/mp2t` for MPEG-TS streams
-  - Added `Accept-Ranges: none` header
-  - Proper MIME type for better client compatibility
+-- Edit history for undo
+CREATE TABLE bulk_edit_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    rules TEXT NOT NULL,
+    apply_to_names INTEGER NOT NULL,
+    apply_to_genres INTEGER NOT NULL,
+    channels_backup TEXT NOT NULL
+);
+```
 
-- **Stream URLs**
-  - XC API streams now use standard format: `http://server/username/password/stream_id.ts`
-  - Added `.ts` extension to all stream URLs for better IPTV client compatibility
-  - Support for multiple URL formats (standard, `/xc/`, `/live/`)
+**New Endpoints:**
+- `POST /editor/bulk-edit` - Apply bulk search & replace
+- `GET /editor/bulk-edit/saved-rules` - Load persistent rules
+- `POST /editor/bulk-edit/clear-saved-rules` - Clear saved rules
+- `GET /editor/bulk-edit/history` - Get edit history
+- `POST /editor/bulk-edit/undo` - Undo last edit
+- `POST /editor/reset-all` - Reset all customizations
 
-#### Configuration
-- **Error Handling**
-  - Added try-catch for HLS settings parsing
-  - Default values used when config contains invalid data
-  - Prevents container crashes from malformed configuration
+**Enhanced Features:**
+- ✅ **Database Integration** - All changes stored in `channels` table
+- ✅ **XC API Compatibility** - Changes immediately visible in XC players
+- ✅ **M3U Playlist Sync** - Auto-refreshes M3U playlists
+- ✅ **History System** - Complete backup before each edit
+- ✅ **Undo Functionality** - Restore previous state
+- ✅ **Rule Persistence** - Rules saved automatically
+- Processes all channels in single transaction
+- Supports regex and plain text
+- Case-sensitive/insensitive matching
+- Automatic whitespace cleanup
 
-### Fixed
+---
 
-#### Authentication
-- **Decorator Issues**
-  - Fixed `@authorise` decorator missing `return decorated` statement
-  - Created `@xc_auth_only` decorator for XC API routes (no HTTP Basic Auth fallback)
-  - Created `@xc_auth_optional` decorator for routes that support both auth methods
-  - Fixed decorator execution order issues
+### 4. **XC API Database Integration**
 
-#### Streaming
-- **XC API Stream Playback**
-  - Fixed stream playback by calling `stream_channel()` directly instead of redirecting
-  - Separated `stream_channel()` internal function from `channel()` route
-  - Added proper connection cleanup wrapper for XC API streams
-  - Fixed numeric stream ID reverse lookup using deterministic MD5 hashing
+#### Complete XC API Overhaul (`app-docker.py`)
+**Problem:** XC API was reading from config files instead of database, so bulk edits weren't reflected in IPTV players.
 
-#### Routes
-- **Protected Routes**
-  - Added `/data/<path:filename>` route that returns 403 to block direct config access
-  - Added checks in XC stream routes to block `/data/` and `MacReplay.json` access
-  - Prevented route conflicts between XC API and system paths
+**Solution:** Complete rewrite of XC API functions to use database:
 
-#### EPG
-- **XMLTV for XC API**
-  - Fixed `/xmltv.php` to return cached XMLTV directly without auth issues
-  - Removed double authentication in XC XMLTV endpoint
-  - Proper content type and headers for XMLTV responses
+**Updated Functions:**
+- `xc_get_playlist()` - M3U playlist generation
+- `xc_get_live_streams()` - Stream list for players
+- `xc_get_live_categories()` - Category list
 
-#### UI
-- **Settings Page**
-  - Fixed duplicate form field IDs
-  - Improved form validation
-  - Better error messages
-  - Fixed theme switcher initialization
+**Key Changes:**
+```python
+# OLD: Config-based (didn't reflect bulk edits)
+custom_names = portal.get("custom channel names", {})
+channel_name = custom_names.get(channel_id, channel.get("name"))
 
-### Security
+# NEW: Database-based (reflects all edits immediately)
+cursor.execute('SELECT custom_name, name FROM channels WHERE...')
+channel_name = db_channel['custom_name'] or db_channel['name']
+```
 
-- **Access Control**
-  - XC API routes now properly isolated from web UI authentication
-  - Admin login required for web interface (configurable)
-  - XC API uses separate user authentication system
-  - Protected `/data/` directory from external access
-  - Connection limits per XC user to prevent abuse
+**Benefits:**
+- ✅ **Immediate Updates** - Bulk edits visible instantly in players
+- ✅ **Consistent Data** - M3U and XC API use same source
+- ✅ **Better Performance** - No portal queries needed
+- ✅ **Offline Capability** - Works even when portals are down
+- ✅ **Custom Values** - Respects all custom names, genres, numbers
 
-- **Session Management**
-  - Secure session cookies
-  - Automatic session cleanup
-  - CSRF protection via session tokens
+#### Fixed Category Matching
+**Problem:** Empty categories in UHF/IPTV players
 
-### Performance
+**Root Cause:** Category IDs didn't match between streams and categories:
+- Categories: `"portal_id_genre_name"`
+- Streams: `"genre_name"`
 
-- **Caching**
-  - 5-minute cache for EPG data
-  - 5-minute cache for XMLTV
-  - Reduced redundant API calls to portal providers
+**Solution:**
+```python
+# Consistent category_id format
+category_id = f"{portal_id}_{genre}"
+```
 
-- **Memory Optimization**
-  - Explicit garbage collection after heavy operations
-  - Removed memory-intensive XML parsing
-  - Session lifecycle management
-  - Automatic cleanup of inactive connections
+**Result:** All channels now appear in correct categories
 
-### Developer Experience
+---
 
-- **Code Organization**
-  - Separated authentication decorators for different use cases
-  - Created reusable `stream_channel()` function
-  - Better error handling and logging
-  - Consistent naming conventions
+### 5. **Enhanced Playlist Generation**
 
-- **Logging**
-  - Added XC API request logging
-  - Connection tracking logs
-  - Cleanup operation logs
-  - Debug logs for troubleshooting
+#### Database-Driven M3U Generation (`app-docker.py`)
+**Complete rewrite of `generate_playlist()` function:**
 
-### Documentation
+**OLD System (Config-based):**
+- Read from portal config files
+- Required live portal connections
+- Didn't reflect database changes
+- Slow and unreliable
 
-- **Settings UI**
-  - Clearer descriptions for all settings
-  - Inline help text for complex options
-  - Examples for configuration values
-  - Links to related features
+**NEW System (Database-driven):**
+```python
+# Direct database query
+cursor.execute('''
+    SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+           number, custom_number, custom_epg_id
+    FROM channels 
+    WHERE enabled = 1
+''')
 
-- **XC Users Page**
-  - Shows actual server URL for client configuration
-  - Example URLs for different endpoints
-  - Status indicators for API and users
-  - Connection count display
+# Use custom values with fallbacks
+channel_name = custom_name or name or "Unknown Channel"
+genre = custom_genre or genre or "Unknown"
+```
 
-## Migration Notes
+**Improvements:**
+- ✅ **Instant Updates** - Bulk edits immediately in M3U
+- ✅ **Robust Sorting** - Safe sorting with error handling
+- ✅ **Quote Escaping** - Proper M3U attribute escaping
+- ✅ **Null Handling** - Safe handling of empty values
+- ✅ **Performance** - No external API calls needed
 
-### Breaking Changes
+#### Fixed Sorting Crashes
+**Problem:** Playlist generation crashed with 500 errors
 
-- **Authentication**: HTTP Basic Auth replaced with session-based login. Users must log in via `/login` page.
-- **XC API**: Stream IDs are now numeric instead of string format `portal_id_channel_id`. Existing XC clients must refresh their playlists.
+**Root Causes:**
+1. Missing `epg_id` column in database
+2. Unsafe string splitting for sorting
+3. Unescaped quotes in M3U attributes
 
-### Configuration Changes
+**Solutions:**
+```python
+# Safe sorting with fallbacks
+def get_channel_number(k):
+    try:
+        if 'tvg-chno="' in k:
+            return int(k.split('tvg-chno="')[1].split('"')[0])
+        return 999999  # Put channels without numbers at end
+    except (ValueError, IndexError):
+        return 999999
 
-- **Settings**: "Enable HTTP authentication" renamed to "Require login for web interface"
-- **HLS Settings**: Invalid values now use defaults instead of crashing
+# Quote escaping
+def escape_quotes(text):
+    return str(text).replace('"', '&quot;') if text else ""
+```
 
-### Upgrade Steps
+---
 
-1. Backup your `MacReplay.json` configuration file
-2. Pull latest changes and rebuild container: `docker-compose up --build -d`
-3. Log in to web interface with your existing credentials
-4. If using XC API: Delete and re-add playlists in IPTV clients
-5. Review and update settings if needed
+### 6. **UI/UX Improvements**
 
-## Known Issues
+#### Fixed Portal Edit Modal Scrolling (`templates/portals.html`)
+**Problem:** With many MAC addresses, "Save Changes" button was unreachable
 
-- None at this time
+**Solution:**
+```css
+#editPortalModal .modal-body {
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
 
-## Future Enhancements
+#editPortalModal .modal-dialog {
+    max-height: 90vh;
+}
+```
 
-- [ ] Multi-language support for UI
-- [ ] Advanced EPG mapping with regex patterns
-- [ ] Automatic portal health monitoring
-- [ ] Statistics and analytics dashboard
+**Result:**
+- ✅ Modal body scrolls independently
+- ✅ Header & footer remain fixed
+- ✅ "Save Changes" always accessible
+- ✅ Responsive to screen size
+
+---
+
+### 5. **Better Error Handling & Logging**
+
+#### Enhanced `getUrl()` Function (`stb.py`)
+- Extended path search:
+  - `/c/xpcom.common.js`
+  - `/portal/c/xpcom.common.js`
+  - `/server/c/xpcom.common.js`
+  - Dynamic path detection from URL
+- Detailed debug logging
+- Tries with and without proxy
+- Better error messages
+
+#### Session Management
+- Automatic session refresh every 5 minutes
+- Prevents memory leaks
+- Connection pooling with retry logic
+
+---
+
+## 📝 Configuration Changes
+
+### Updated Files
+
+#### `requirements.txt`
+```diff
+Flask==3.0.0
+waitress==3.0.0
+requests==2.31.0
++cloudscraper==1.2.71
+pytest==7.4.0
+pytest-mock==3.11.1
+```
+
+#### `Dockerfile`
+- No changes needed (already installs from requirements.txt)
+
+---
+
+## 🔧 API Changes
+
+### New Endpoints
+
+1. **`GET /editor/refresh/progress`**
+   - Returns channel refresh progress
+   - Response:
+     ```json
+     {
+       "running": true,
+       "current_portal": "Portal Name",
+       "current_step": "Fetching from MAC 1/3",
+       "portals_done": 1,
+       "portals_total": 3,
+       "started_at": 1234567890
+     }
+     ```
+
+2. **`GET /epg/refresh/progress`**
+   - Returns EPG refresh progress
+   - Same response format as above
+
+3. **`POST /editor/bulk-edit`**
+   - Apply bulk search & replace
+   - Request:
+     ```json
+     {
+       "rules": [
+         {"search": "VIP", "replace": ""}
+       ],
+       "apply_to_names": true,
+       "apply_to_genres": false,
+       "case_sensitive": false,
+       "use_regex": false
+     }
+     ```
+   - Response:
+     ```json
+     {
+       "success": true,
+       "updated": 150
+     }
+     ```
+
+4. **`GET /editor/bulk-edit/saved-rules`**
+   - Load persistent bulk edit rules
+   - Response:
+     ```json
+     {
+       "success": true,
+       "rules": [
+         {
+           "search": "VIP",
+           "replace": "",
+           "last_used": "2024-12-10 15:30:00"
+         }
+       ]
+     }
+     ```
+
+5. **`POST /editor/bulk-edit/undo`**
+   - Undo last bulk edit operation
+   - Response:
+     ```json
+     {
+       "success": true,
+       "message": "Last bulk edit undone successfully"
+     }
+     ```
+
+6. **`POST /editor/reset-all`**
+   - Reset all custom names and genres to original values
+   - Response:
+     ```json
+     {
+       "success": true,
+       "message": "All customizations reset successfully"
+     }
+     ```
+
+---
+
+## 🐛 Bug Fixes
+
+1. **Portal Edit Modal Scrolling**
+   - Fixed: Modal body now scrolls properly with many MAC addresses
+   - "Save Changes" button always accessible
+   - Enhanced CSS with flexbox layout
+
+2. **Portal URL Detection**
+   - Fixed: Now correctly detects portal.php at root level
+   - Example: `http://dlta4k.com/portal.php` (not `/c/portal.php`)
+
+3. **EPG Progress Bar**
+   - Fixed: Progress bar now moves correctly
+   - Shows actual progress percentage
+
+4. **Channel Refresh Progress**
+   - Fixed: Portal count now updates correctly
+   - Shows "Processing X of Y" accurately
+
+5. **XC API Empty Categories**
+   - Fixed: Categories now show channels correctly
+   - Problem: Category IDs didn't match between streams and categories
+   - Solution: Consistent `portal_id_genre` format
+
+6. **Playlist Generation Crashes**
+   - Fixed: 500 Internal Server Error on playlist update
+   - Problem: Missing `epg_id` column, unsafe sorting, unescaped quotes
+   - Solution: Database schema fix, safe sorting, quote escaping
+
+7. **Bulk Edit Not Reflecting in Players**
+   - Fixed: Changes now immediately visible in XC API players
+   - Problem: XC API read from config instead of database
+   - Solution: Complete XC API rewrite to use database
+
+8. **Country Code Removal**
+   - Fixed: Now removes `DE|` and other separator variants
+   - Enhanced regex patterns for better detection
+   - Added "Clean Separators" preset for leftover symbols
+
+---
+
+## 🔒 Security Improvements
+
+1. **Cloudflare Bypass**
+   - Added cloudscraper for legitimate portal access
+   - Better handling of protected portals
+
+2. **Session Management**
+   - Automatic session cleanup
+   - Prevents memory leaks
+   - Connection pooling
+
+---
+
+## 📊 Performance Improvements
+
+1. **Progress Tracking**
+   - Real-time updates without blocking
+   - Threading for background operations
+   - Efficient polling (1 second intervals)
+
+2. **Bulk Edit System**
+   - Processes all channels in single transaction
+   - Efficient regex compilation
+   - Automatic whitespace cleanup
+   - Rule persistence with deduplication
+   - Smart rule loading (only when needed)
+
+3. **XC API Optimization**
+   - No more live portal queries for XC API
+   - Direct database access
+   - Cached channel data
+   - Faster response times
+
+4. **Playlist Generation**
+   - Database-driven instead of config-based
+   - No external API dependencies
+   - Efficient sorting algorithms
+   - Reduced memory usage
+
+5. **Session Management**
+   - Connection pooling with retry logic
+   - Automatic session refresh
+   - Reduced overhead
+
+---
+
+## 🎯 Known Limitations
+
+1. **Cloudflare Protection**
+   - Some portals with aggressive Cloudflare protection may still not work
+   - Requires residential IP (not datacenter/VPN)
+   - Example: `dlta4k.com` works from residential IP but not from Docker
+
+2. **M3U Support**
+   - M3U parsing implemented but not yet integrated into UI
+   - Requires portal type selection in UI
+
+---
+
+## 🚀 Migration Guide
+
+### For Existing Users
+
+1. **Update Dependencies:**
+   ```bash
+   docker-compose down
+   docker-compose build --no-cache
+   docker-compose up -d
+   ```
+
+2. **Or Install in Running Container:**
+   ```bash
+   docker exec -it macreplay pip install cloudscraper==1.2.71
+   docker restart macreplay
+   ```
+
+3. **No Configuration Changes Required**
+   - All improvements are backward compatible
+   - Existing portals will work better automatically
+
+### For New Users
+
+1. **Standard Installation:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **All features work out of the box**
+
+---
+
+## 📖 Usage Examples
+
+### Enhanced Bulk Edit Examples
+
+**Remove VIP from all channels:**
+1. Open Channel Editor
+2. Click "Bulk Edit"
+3. Click "Remove VIP" preset
+4. Click "Preview" to see changes
+5. Click "Apply Changes"
+6. Rules are automatically saved for next time
+
+**Remove Country Codes (Enhanced):**
+1. Click "Bulk Edit"
+2. Click "Remove Country Codes" preset
+3. Now removes: `DE:`, `DE|`, `DE-`, `DE_`, `[DE]`, `(DE)`
+4. Apply - works with any separator
+
+**Clean Leftover Separators:**
+1. Click "Bulk Edit"
+2. Click "Clean Separators" preset
+3. Removes: `|||`, `---`, trailing `|`, leading `-`
+4. Apply
+
+**Fix Spacing Issues:**
+1. Click "Bulk Edit"
+2. Click "Fix Spacing" preset
+3. Removes multiple spaces, cleans separator spacing
+4. Apply
+
+**Persistent Rules:**
+1. Add custom rules
+2. Apply changes
+3. Close modal
+4. Refresh page (CTRL+F5) or restart server
+5. Open "Bulk Edit" - your rules are back!
+
+**Undo Changes:**
+1. Click "Bulk Edit"
+2. Click "Undo Last" button
+3. Restores previous state
+
+**Reset Everything:**
+1. Click "Bulk Edit"
+2. Click "Reset All" button
+3. All custom names/genres back to original
+
+---
+
+## 🙏 Credits
+
+- **SFVIP Player** - Inspiration for portal compatibility improvements
+- **cloudscraper** - Cloudflare bypass library
+- **mitmproxy** - Understanding of proxy-based portal access
+
+---
+
+## 📅 Release Date
+
+December 10, 2024 (v2.2)
+
+---
+
+## 🔮 Future Improvements
+
+1. **M3U Portal Type**
+   - Add portal type selection in UI
+   - Full M3U playlist support
+
+2. **Advanced Rule Management**
+   - Rule templates/presets sharing
+   - Import/export rule sets
+   - Rule scheduling
+
+3. **Health Check System**
+   - Automatic portal health monitoring
+   - Status indicators
+
+4. **Channel Deduplication**
+   - Automatic duplicate detection
+   - Smart merging
+
+5. **Enhanced Undo System**
+   - Multiple undo levels
+   - Selective undo by rule
+   - Change diff viewer
+
+6. **Backup & Restore**
+   - Configuration backup
+   - Database export/import
+   - Automated backups
+
+7. **Webhook Notifications**
+   - Discord/Telegram notifications
+   - Event-based alerts
+
+---
+
+## 🎉 What's New in v2.2
+
+### Key Highlights:
+- ✅ **Persistent Bulk Edit Rules** - Never lose your rules again!
+- ✅ **XC API Database Integration** - Changes instantly visible in players
+- ✅ **Enhanced Country Code Removal** - Handles all separator types
+- ✅ **Undo/Redo System** - Safely experiment with changes
+- ✅ **Fixed Empty Categories** - All channels show up correctly
+- ✅ **Robust Playlist Generation** - No more 500 errors
+- ✅ **6 Quick Presets** - Clean separators, fix spacing, and more
+
+### Upgrade Benefits:
+- **For Power Users:** Advanced bulk editing with persistence
+- **For IPTV Players:** Instant updates, no more refresh delays
+- **For Stability:** Robust error handling, no more crashes
+- **For Convenience:** Rules remember your preferences
