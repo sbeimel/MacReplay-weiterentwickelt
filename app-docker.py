@@ -4293,9 +4293,13 @@ def generate_playlist(portal_id=None):
     playlist = "#EXTM3U \n"
     playlist = playlist + "\n".join(channels)
 
-    cached_playlist = playlist
-    logger.info("Playlist generated and cached.")
+    # Only cache the full playlist, not portal-specific ones
+    if portal_id is None:
+        cached_playlist = playlist
     
+    logger.info(f"Generated playlist with {len(channels)} channels")
+    return playlist
+
 def normalize_channel_name(name):
     """Normalize channel name for better matching."""
     import re
