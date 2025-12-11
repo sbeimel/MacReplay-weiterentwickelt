@@ -13,14 +13,7 @@ except ImportError:
     CLOUDSCRAPER_AVAILABLE = False
     logging.getLogger("MacReplay.stb").info("cloudscraper not available - some portals with Cloudflare protection may not work")
 
-# Try to import PySocks for SOCKS5 proxy support
-try:
-    import socks
-    import socket
-    PYSOCKS_AVAILABLE = True
-except ImportError:
-    PYSOCKS_AVAILABLE = False
-    logging.getLogger("MacReplay.stb").info("PySocks not available - SOCKS5 proxy support will be disabled")
+# Removed PySocks dependency as we now use requests' built-in SOCKS support
 
 logger = logging.getLogger("MacReplay.stb")
 logger.setLevel(logging.DEBUG)
@@ -53,30 +46,6 @@ def _get_session(use_cloudscraper=False, proxy=None):
             except:
                 pass
         
-        # Configure proxy if provided
-        if proxy and PYSOCKS_AVAILABLE:
-            try:
-                parsed = urlparse(proxy)
-                if parsed.scheme == 'socks5':
-                    # Extract auth if present
-                    username = parsed.username or None
-                    password = parsed.password or None
-                    
-                    # Set up SOCKS5 proxy
-                    socks.set_default_proxy(
-                        socks.SOCKS5,
-                        parsed.hostname,
-                        parsed.port or 1080,
-                        username=username,
-                        password=password
-                    )
-                    socket.socket = socks.socksocket
-                    logger.debug(f"Configured SOCKS5 proxy: {parsed.hostname}:{parsed.port or 1080}")
-                
-                # For HTTP/HTTPS proxies, they'll be handled by requests' proxies parameter
-            except Exception as e:
-                logger.error(f"Error setting up proxy {proxy}: {e}")
-        
         # Use cloudscraper if available and requested (for Cloudflare bypass)
         if use_cloudscraper and CLOUDSCRAPER_AVAILABLE:
             _session = cloudscraper.create_scraper(
@@ -97,6 +66,19 @@ def _get_session(use_cloudscraper=False, proxy=None):
         # Store current proxy with the session
         _session._current_proxy = proxy
         _session_created = current_time
+    
+    # Set proxy for this request if provided
+    if proxy:
+        # Convert socks5h:// to socks5:// if needed (socks5h resolves hostname on client side)
+        proxy_url = proxy.replace('socks5h://', 'socks5://')
+        _session.proxies = {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+        logger.debug(f"Using proxy: {proxy_url}")
+    else:
+        # Ensure no proxy is set when proxy is None
+        _session.proxies = {}
     
     return _session
 
