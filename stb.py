@@ -13,8 +13,6 @@ except ImportError:
     CLOUDSCRAPER_AVAILABLE = False
     logging.getLogger("MacReplay.stb").info("cloudscraper not available - some portals with Cloudflare protection may not work")
 
-# Removed PySocks dependency as we now use requests' built-in SOCKS support
-
 logger = logging.getLogger("MacReplay.stb")
 logger.setLevel(logging.DEBUG)
 
@@ -24,22 +22,14 @@ _session_created = 0
 _SESSION_MAX_AGE = 300  # Refresh session every 5 minutes
 
 
-def _get_session(use_cloudscraper=False, proxy=None):
-    """Get or create a requests session with automatic refresh and proxy support.
-    
-    Args:
-        use_cloudscraper (bool): Whether to use cloudscraper for Cloudflare bypass
-        proxy (str, optional): Proxy URL in format 'socks5://user:pass@host:port' or 'http://user:pass@host:port'
-    """
+def _get_session(use_cloudscraper=False):
+    """Get or create a requests session with automatic refresh."""
     global _session, _session_created
     
     current_time = time.time()
     
-    # Create new session if none exists, if too old, or if proxy settings changed
-    if (_session is None or 
-        (current_time - _session_created) > _SESSION_MAX_AGE or 
-        getattr(_session, '_current_proxy', None) != proxy):
-        
+    # Create new session if none exists or if too old
+    if _session is None or (current_time - _session_created) > _SESSION_MAX_AGE:
         if _session is not None:
             try:
                 _session.close()
@@ -63,22 +53,7 @@ def _get_session(use_cloudscraper=False, proxy=None):
             _session.mount("https://", HTTPAdapter(max_retries=retries))
             logger.debug("Created new requests session")
         
-        # Store current proxy with the session
-        _session._current_proxy = proxy
         _session_created = current_time
-    
-    # Set proxy for this request if provided
-    if proxy:
-        # Convert socks5h:// to socks5:// if needed (socks5h resolves hostname on client side)
-        proxy_url = proxy.replace('socks5h://', 'socks5://')
-        _session.proxies = {
-            'http': proxy_url,
-            'https': proxy_url
-        }
-        logger.debug(f"Using proxy: {proxy_url}")
-    else:
-        # Ensure no proxy is set when proxy is None
-        _session.proxies = {}
     
     return _session
 
@@ -101,7 +76,7 @@ def getUrl(url, proxy=None):
     def parseResponse(url, data):
         try:
             java = data.text.replace(" ", "").replace("'", "").replace("+", "")
-            pattern = re.search(r"varpattern.*\/\(http.*)\/;", java).group(1)
+            pattern = re.search(r"varpattern.*\/(\(http.*)\/;", java).group(1)
             result = re.search(pattern, url)
             protocolIndex = re.search(r"this\.portal_protocol.*(\d).*;", java).group(1)
             ipIndex = re.search(r"this\.portal_ip.*(\d).*;", java).group(1)
