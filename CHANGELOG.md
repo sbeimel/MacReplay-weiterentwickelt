@@ -1,3 +1,48 @@
+# MacReplayXC v2.3 - Changelog
+
+## 🎉 December 11, 2025 - Dashboard & UI Improvements
+
+### **Dashboard Live Log System**
+- **🔄 Real-time Log Monitoring**: Implemented AJAX-based live log system with configurable refresh intervals
+- **⏱️ Refresh Intervals**: 1s, 2s, 5s, 10s, or Paused with live countdown timer
+- **🎨 Badge-Style Controls**: Redesigned all log controls as interactive badges positioned on the right
+- **🌓 Light/Dark Mode Support**: Complete styling for both themes with proper color schemes
+- **📝 Enhanced Log Display**: Color-coded log levels (Error=Red, Warning=Orange, Info=Blue, Debug=Green)
+- **🔄 Auto-scroll Toggle**: Smart auto-scrolling with visual feedback
+- **🗑️ Clear Function**: One-click log clearing with cache reset
+- **⚡ Performance**: Set-based caching prevents duplicates and manages memory efficiently
+
+### **Dashboard URL Fields Enhancement**
+- **🎨 Professional Design**: M3U and XMLTV URL fields with icons and colored input groups
+- **📋 One-Click Copy**: Enhanced copy buttons with visual feedback
+- **🌓 Theme Support**: Proper styling for both light and dark modes
+- **📱 Responsive Layout**: Optimized for all screen sizes
+
+### **VOD Page Footer Fix**
+- **📍 Proper Positioning**: Fixed footer placement to match other pages
+- **🏗️ Structure Cleanup**: Moved all modals inside page-body for consistent layout
+- **🎨 Visual Consistency**: Footer now appears under content instead of at bottom of viewport
+
+### **Settings System Improvements**
+- **🔧 Public Access Toggle**: Added "Allow public access to /playlist.m3u and /xmltv" setting
+- **💾 Persistent Storage**: Fixed settings not being saved by adding to defaultSettings
+- **🔒 Security Control**: When disabled, login is required for playlist/xmltv access
+- **✅ Proper Validation**: Settings are now correctly loaded and saved
+
+### **JavaScript Error Fixes**
+- **🐛 Dashboard Error**: Fixed "Cannot set properties of null" error by removing non-existent serverUrl element
+- **📅 Date Handling**: Improved timestamp parsing with multiple fallbacks for "Invalid Date" issues
+- **🔄 Timer Management**: Proper cleanup of refresh and countdown timers
+- **⚡ Performance**: Optimized polling logic with better error handling
+
+### **Technical Improvements**
+- **🏗️ Code Structure**: Cleaner separation of concerns in JavaScript functions
+- **🎯 Error Handling**: Comprehensive error catching with user-friendly messages
+- **💾 Memory Management**: Efficient log caching with size limits
+- **🔄 State Management**: Consistent timer and UI state handling
+
+---
+
 # MacReplayXC v2.2 - Changelog
 
 ## 🚀 Major Improvements & New Features
@@ -46,7 +91,51 @@
 
 ---
 
-### 2. **Real-Time Progress Tracking**
+### 2. **VOD & Series Management System**
+
+#### Complete VOD Infrastructure (`/vods`)
+- **New VOD Management Page**: Grid-based category view with modern design
+- **Portal Integration**: Fetches VOD/Series categories from all enabled portals
+- **Dynamic Modal System**: Two-level navigation (categories → items)
+- **Type Filtering**: Separate VOD (Movies) and Series categories
+- **Search & Filter**: Real-time category and item filtering
+
+#### VOD Settings Modal
+- **Stream Type Selection**:
+  - FFmpeg Processing (recommended) - transcoded streams
+  - Direct URL - faster but less compatible
+- **MAC Rotation**: Automatic load balancing across available MACs
+- **Persistent Settings**: Saved to database and survives restarts
+
+#### XC API VOD Support
+- **New XC API Endpoints**:
+  - `get_vod_categories` - Movie categories
+  - `get_series_categories` - TV series categories  
+  - `get_vod_streams` - Movie streams with metadata
+  - `get_series` - Series streams with episode data
+- **VOD Streaming Routes**:
+  - `/movie/<username>/<password>/<stream_id>` - Movie streaming
+  - `/series/<username>/<password>/<stream_id>` - Series streaming
+- **Metadata Support**: Ratings, descriptions, cast, director, genre, year
+- **Poster/Cover Images**: Full screenshot_uri support
+
+#### STB VOD Functions (`stb.py`)
+- `getVodCategories()` - Fetch VOD categories
+- `getVodList()` - Get movies for category with pagination
+- `getSeriesCategories()` - Fetch series categories
+- `getSeriesList()` - Get series for category with pagination
+- `getVodLink()` - Generate streaming URLs for VOD content
+
+#### VOD Template (`templates/vods.html`)
+- **Modern Grid Layout**: Responsive category cards with type indicators
+- **Visual Distinction**: Blue border for VOD, Orange for Series
+- **Portal Information**: Shows which portal each category belongs to
+- **Statistics Display**: VOD count vs Series count
+- **Settings Integration**: Direct access to VOD configuration
+
+---
+
+### 3. **Real-Time Progress Tracking**
 
 #### EPG Refresh Progress (`/epg`)
 **Backend Changes (`app-docker.py`):**

@@ -616,3 +616,586 @@ def getM3UChannels(url, proxy=None):
         logger.error(f"Error fetching M3U playlist: {e}")
     
     return None
+
+
+# ============================================================================
+# VOD/Series API Functions
+# ============================================================================
+
+def getVodCategories(url, mac, token, proxy=None):
+    """Get VOD categories from portal.
+    
+    API Endpoint: portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml
+    """
+    proxies = {"http": proxy, "https": proxy}
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    params = {
+        "type": "vod",
+        "action": "get_categories",
+        "JsHttpRequest": "1-xml"
+    }
+    
+    try:
+        logger.debug(f"Getting VOD categories for MAC {mac}")
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if "js" in data:
+                categories = data["js"]
+                logger.info(f"Got {len(categories)} VOD categories for MAC {mac}")
+                return categories
+    except Exception as e:
+        logger.error(f"Error getting VOD categories: {e}")
+    
+    return None
+
+
+def getSeriesCategories(url, mac, token, proxy=None):
+    """Get Series categories from portal.
+    
+    API Endpoint: portal.php?type=series&action=get_categories&JsHttpRequest=1-xml
+    """
+    proxies = {"http": proxy, "https": proxy}
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    params = {
+        "type": "series",
+        "action": "get_categories",
+        "JsHttpRequest": "1-xml"
+    }
+    
+    try:
+        logger.debug(f"Getting Series categories for MAC {mac}")
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if "js" in data:
+                categories = data["js"]
+                logger.info(f"Got {len(categories)} Series categories for MAC {mac}")
+                return categories
+    except Exception as e:
+        logger.error(f"Error getting Series categories: {e}")
+    
+    return None
+
+
+def getVodItems(url, mac, token, category_id, page=1, proxy=None):
+    """Get VOD items for a category with pagination.
+    
+    API Endpoint: portal.php?type=vod&action=get_ordered_list&category={cat}&p={page}&JsHttpRequest=1-xml
+    Based on macvod.py implementation.
+    """
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    # Build URL with all required parameters (matching macvod.py exactly)
+    # macvod.py uses: type=vod&action=get_ordered_list&movie_id=0&season_id=0&episode_id=0&row=0&
+    #                 JsHttpRequest=1-xml&category={cat}&sortby=added&fav=0&hd=0&not_ended=0&abc=*&genre=*&years=*&search=&p={page}
+    params = {
+        "type": "vod",
+        "action": "get_ordered_list",
+        "movie_id": "0",
+        "season_id": "0",
+        "episode_id": "0",
+        "row": "0",
+        "JsHttpRequest": "1-xml",
+        "category": str(category_id),
+        "sortby": "added",
+        "fav": "0",
+        "hd": "0",
+        "not_ended": "0",
+        "abc": "*",
+        "genre": "*",
+        "years": "*",
+        "search": "",
+        "p": str(page)
+    }
+    
+    try:
+        logger.info(f"Getting VOD items for category {category_id}, page {page}, MAC {mac[:15]}...")
+        
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        
+        # Log full request URL for debugging
+        logger.info(f"VOD items request URL: {response.url}")
+        logger.info(f"VOD items response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            # Log raw response for debugging
+            raw_text = response.text[:1000] if len(response.text) > 1000 else response.text
+            logger.info(f"VOD items raw response: {raw_text}")
+            
+            try:
+                data = response.json()
+            except Exception as json_err:
+                logger.error(f"Failed to parse JSON response: {json_err}")
+                logger.error(f"Raw response: {response.text[:500]}")
+                return None
+            
+            logger.debug(f"VOD items response keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
+            
+            if "js" in data:
+                js_data = data["js"]
+                logger.debug(f"js_data type: {type(js_data)}")
+                
+                if isinstance(js_data, dict):
+                    logger.debug(f"js_data keys: {js_data.keys()}")
+                    
+                    # Try multiple possible data keys
+                    items = None
+                    for data_key in ["data", "items", "list", "movies", "vods"]:
+                        if data_key in js_data:
+                            items = js_data[data_key]
+                            logger.info(f"Found items under key '{data_key}'")
+                            break
+                    
+                    if items is not None:
+                        # Get total from various possible keys
+                        total = 0
+                        for total_key in ["total_items", "total", "count", "max_page_items"]:
+                            if total_key in js_data:
+                                try:
+                                    total = int(js_data[total_key])
+                                    break
+                                except (ValueError, TypeError):
+                                    pass
+                        if total == 0:
+                            total = len(items) if isinstance(items, list) else 0
+                        
+                        logger.info(f"Got {len(items) if isinstance(items, list) else 0} VOD items for category {category_id} (total: {total})")
+                        return {
+                            "items": items if isinstance(items, list) else [],
+                            "total": total,
+                            "page": page
+                        }
+                    else:
+                        logger.warning(f"No data key found in js_data. Available keys: {list(js_data.keys())}")
+                        logger.warning(f"js_data content: {str(js_data)[:500]}")
+                        
+                elif isinstance(js_data, list):
+                    # Some APIs return items directly as list
+                    logger.info(f"Got {len(js_data)} VOD items (list format) for category {category_id}")
+                    return {
+                        "items": js_data,
+                        "total": len(js_data),
+                        "page": page
+                    }
+                elif js_data is False or js_data is None:
+                    logger.warning(f"API returned js=false/null - category may be empty or access denied")
+                else:
+                    logger.warning(f"Unexpected js structure: {type(js_data)}, value: {str(js_data)[:200]}")
+            else:
+                logger.warning(f"No 'js' key in response. Available keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
+                logger.warning(f"Full response: {str(data)[:500]}")
+        else:
+            logger.warning(f"VOD items request failed with status {response.status_code}")
+            logger.warning(f"Response text: {response.text[:500]}")
+    except Exception as e:
+        logger.error(f"Error getting VOD items: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    return None
+
+
+def getSeriesItems(url, mac, token, category_id, page=1, proxy=None):
+    """Get Series items for a category with pagination.
+    
+    API Endpoint: portal.php?type=series&action=get_ordered_list&category={cat}&p={page}&JsHttpRequest=1-xml
+    Based on macvod.py implementation pattern.
+    """
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    # Build URL with all required parameters (matching macvod.py pattern)
+    params = {
+        "type": "series",
+        "action": "get_ordered_list",
+        "movie_id": "0",
+        "season_id": "0",
+        "episode_id": "0",
+        "row": "0",
+        "JsHttpRequest": "1-xml",
+        "category": str(category_id),
+        "sortby": "added",
+        "fav": "0",
+        "hd": "0",
+        "not_ended": "0",
+        "abc": "*",
+        "genre": "*",
+        "years": "*",
+        "search": "",
+        "p": str(page)
+    }
+    
+    try:
+        logger.info(f"Getting Series items for category {category_id}, page {page}, MAC {mac[:15]}...")
+        
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        
+        # Log full request URL for debugging
+        logger.info(f"Series items request URL: {response.url}")
+        logger.info(f"Series items response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            # Log raw response for debugging
+            raw_text = response.text[:1000] if len(response.text) > 1000 else response.text
+            logger.info(f"Series items raw response: {raw_text}")
+            
+            try:
+                data = response.json()
+            except Exception as json_err:
+                logger.error(f"Failed to parse JSON response: {json_err}")
+                logger.error(f"Raw response: {response.text[:500]}")
+                return None
+            
+            logger.debug(f"Series items response keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
+            
+            if "js" in data:
+                js_data = data["js"]
+                logger.debug(f"js_data type: {type(js_data)}")
+                
+                if isinstance(js_data, dict):
+                    logger.debug(f"js_data keys: {js_data.keys()}")
+                    
+                    # Try multiple possible data keys
+                    items = None
+                    for data_key in ["data", "items", "list", "series", "shows"]:
+                        if data_key in js_data:
+                            items = js_data[data_key]
+                            logger.info(f"Found items under key '{data_key}'")
+                            break
+                    
+                    if items is not None:
+                        # Get total from various possible keys
+                        total = 0
+                        for total_key in ["total_items", "total", "count", "max_page_items"]:
+                            if total_key in js_data:
+                                try:
+                                    total = int(js_data[total_key])
+                                    break
+                                except (ValueError, TypeError):
+                                    pass
+                        if total == 0:
+                            total = len(items) if isinstance(items, list) else 0
+                        
+                        logger.info(f"Got {len(items) if isinstance(items, list) else 0} Series items for category {category_id} (total: {total})")
+                        return {
+                            "items": items if isinstance(items, list) else [],
+                            "total": total,
+                            "page": page
+                        }
+                    else:
+                        logger.warning(f"No data key found in js_data. Available keys: {list(js_data.keys())}")
+                        logger.warning(f"js_data content: {str(js_data)[:500]}")
+                        
+                elif isinstance(js_data, list):
+                    # Some APIs return items directly as list
+                    logger.info(f"Got {len(js_data)} Series items (list format) for category {category_id}")
+                    return {
+                        "items": js_data,
+                        "total": len(js_data),
+                        "page": page
+                    }
+                elif js_data is False or js_data is None:
+                    logger.warning(f"API returned js=false/null - category may be empty or access denied")
+                else:
+                    logger.warning(f"Unexpected js structure: {type(js_data)}, value: {str(js_data)[:200]}")
+            else:
+                logger.warning(f"No 'js' key in response. Available keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
+                logger.warning(f"Full response: {str(data)[:500]}")
+        else:
+            logger.warning(f"Series items request failed with status {response.status_code}")
+            logger.warning(f"Response text: {response.text[:500]}")
+    except Exception as e:
+        logger.error(f"Error getting Series items: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    return None
+
+
+def getSeriesInfo(url, mac, token, series_id, proxy=None, category_id="*"):
+    """Get series details including seasons and episodes.
+    
+    API Endpoint: portal.php?type=series&action=get_ordered_list&movie_id={series_id}&JsHttpRequest=1-xml
+    Based on macshow.py implementation - returns seasons with episode lists.
+    """
+    from urllib.parse import quote
+    
+    proxies = {"http": proxy, "https": proxy}
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    # Full params matching macshow.py exactly
+    params = {
+        "type": "series",
+        "action": "get_ordered_list",
+        "movie_id": str(series_id),
+        "season_id": "0",
+        "episode_id": "0",
+        "row": "0",
+        "JsHttpRequest": "1-xml",
+        "category": str(category_id),
+        "sortby": "added",
+        "fav": "0",
+        "hd": "0",
+        "not_ended": "0",
+        "abc": "*",
+        "genre": "*",
+        "years": "*",
+        "search": "",
+        "p": "1"
+    }
+    
+    try:
+        logger.info(f"Getting Series info for series {series_id}, category {category_id}")
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        
+        logger.info(f"Series info request URL: {response.url}")
+        logger.info(f"Series info response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            raw_text = response.text[:1000] if len(response.text) > 1000 else response.text
+            logger.info(f"Series info raw response: {raw_text}")
+            
+            data = response.json()
+            if "js" in data:
+                js_data = data["js"]
+                logger.info(f"Series info js type: {type(js_data)}")
+                
+                if isinstance(js_data, dict):
+                    # Return the full js object which contains 'data' with seasons
+                    logger.info(f"Series info keys: {js_data.keys() if isinstance(js_data, dict) else 'N/A'}")
+                    return js_data
+                elif isinstance(js_data, list):
+                    # Some APIs return list directly
+                    return {"data": js_data}
+                    
+    except Exception as e:
+        logger.error(f"Error getting Series info: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    return None
+
+
+def getVodLink(url, mac, token, cmd, proxy=None):
+    """Get playback URL for VOD item.
+    
+    API Endpoint: portal.php?type=vod&action=create_link&cmd={cmd}&JsHttpRequest=1-xml
+    """
+    from urllib.parse import quote
+    
+    proxies = {"http": proxy, "https": proxy}
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    params = {
+        "type": "vod",
+        "action": "create_link",
+        "cmd": cmd,
+        "series": "0",
+        "forced_storage": "false",
+        "disable_ad": "false",
+        "download": "false",
+        "JsHttpRequest": "1-xml"
+    }
+    
+    try:
+        logger.debug(f"Getting VOD link for cmd: {cmd[:50]}...")
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=15,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if "js" in data and "cmd" in data["js"]:
+                # Extract URL from cmd (format: "ffmpeg http://...")
+                link = data["js"]["cmd"].split()[-1]
+                logger.debug(f"Got VOD link: {link[:50]}...")
+                return link
+    except Exception as e:
+        logger.error(f"Error getting VOD link: {e}")
+    
+    return None
+
+
+def getSeriesLink(url, mac, token, cmd, episode_num, season_id=None, episode_id=None, proxy=None):
+    """Get playback URL for Series episode.
+    
+    API Endpoint: portal.php?type=vod&action=create_link&cmd={cmd}&series={episode_num}&JsHttpRequest=1-xml
+    
+    Note: The 'series' parameter is the episode NUMBER, not the series ID!
+    Based on macshow.py: url = f"{base_url}/portal.php?type=vod&action=create_link&cmd={quote(cmd)}&series={episode_num}"
+    """
+    from urllib.parse import quote
+    
+    proxies = {"http": proxy, "https": proxy}
+    cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+        "Authorization": "Bearer " + token,
+    }
+    
+    # The 'series' parameter is the episode number, not series_id!
+    params = {
+        "type": "vod",
+        "action": "create_link",
+        "cmd": cmd,
+        "series": str(episode_num),  # This is the episode number!
+        "forced_storage": "false",
+        "disable_ad": "false",
+        "download": "false",
+        "JsHttpRequest": "1-xml"
+    }
+    
+    try:
+        logger.info(f"Getting Series link for episode {episode_num} (S{season_id}E{episode_id}) - series param: {episode_num}")
+        response = _get_session().get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=15,
+        )
+        
+        logger.info(f"Series link request URL: {response.url}")
+        logger.info(f"Series link response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            raw_text = response.text[:500] if len(response.text) > 500 else response.text
+            logger.info(f"Series link raw response: {raw_text}")
+            
+            data = response.json()
+            if "js" in data and "cmd" in data["js"]:
+                # Extract URL from cmd (format: "ffmpeg http://..." or just the URL)
+                cmd_value = data["js"]["cmd"]
+                link = cmd_value.split()[-1] if ' ' in cmd_value else cmd_value
+                logger.info(f"Got Series link: {link[:80]}...")
+                return link
+    except Exception as e:
+        logger.error(f"Error getting Series link: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    return None
+
+
+def testStreamLink(link, proxy=None, timeout=5):
+    """Test if a stream link is accessible.
+    
+    Makes a HEAD request to check if the stream URL is valid and accessible.
+    Returns True if the stream is accessible, False otherwise.
+    """
+    if not link:
+        return False
+    
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+    }
+    
+    try:
+        logger.debug(f"Testing stream link: {link[:80]}...")
+        
+        # Try HEAD request first (faster)
+        response = _get_session().head(
+            link,
+            headers=headers,
+            proxies=proxies,
+            timeout=timeout,
+            allow_redirects=True
+        )
+        
+        if response.status_code in [200, 206]:
+            logger.info(f"Stream link test passed (HEAD): {link[:50]}...")
+            return True
+        
+        # If HEAD fails, try GET with range header (some servers don't support HEAD)
+        headers["Range"] = "bytes=0-1024"
+        response = _get_session().get(
+            link,
+            headers=headers,
+            proxies=proxies,
+            timeout=timeout,
+            stream=True,
+            allow_redirects=True
+        )
+        
+        if response.status_code in [200, 206]:
+            # Read a small chunk to verify stream is working
+            chunk = next(response.iter_content(chunk_size=1024), None)
+            if chunk:
+                logger.info(f"Stream link test passed (GET): {link[:50]}...")
+                return True
+        
+        logger.warning(f"Stream link test failed with status {response.status_code}: {link[:50]}...")
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Stream link test failed: {e}")
+        return False

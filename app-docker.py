@@ -103,6 +103,10 @@ logger.info(f"Using config file: {configFile}")
 dbPath = os.path.join(log_dir, "channels.db")
 logger.info(f"Using database file: {dbPath}")
 
+# VOD Database path for VOD/Series caching
+vodsDbPath = os.path.join(log_dir, "vods.db")
+logger.info(f"Using VOD database file: {vodsDbPath}")
+
 occupied = {}
 config = {}
 cached_lineup = []
@@ -178,6 +182,8 @@ defaultSettings = {
     "epg fallback enabled": "false",
     "epg fallback countries": "",
     "xc api enabled": "false",
+    "xc vod proxy": "true",
+    "public playlist access": "true",
 }
 
 defaultXCUser = {
@@ -654,6 +660,123 @@ def init_db():
     logger.info("Database initialized successfully")
 
 
+def get_vod_db_connection():
+    """Get a VOD database connection."""
+    conn = sqlite3.connect(vodsDbPath)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_vod_db():
+    """Initialize the VOD database and create tables if they don't exist."""
+    conn = get_vod_db_connection()
+    cursor = conn.cursor()
+    
+    # VOD Categories table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vod_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portal_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            item_count INTEGER DEFAULT 0,
+            working_mac TEXT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(portal_id, category_id, content_type)
+        )
+    ''')
+    
+    # VOD Items table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vod_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portal_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            year TEXT,
+            description TEXT,
+            genre TEXT,
+            duration TEXT,
+            rating TEXT,
+            poster_url TEXT,
+            cmd TEXT NOT NULL,
+            working_macs TEXT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(portal_id, item_id, content_type)
+        )
+    ''')
+    
+    # Series Episodes table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS series_episodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portal_id TEXT NOT NULL,
+            series_id TEXT NOT NULL,
+            season_number INTEGER NOT NULL,
+            episode_number INTEGER NOT NULL,
+            title TEXT,
+            cmd TEXT NOT NULL,
+            working_macs TEXT,
+            UNIQUE(portal_id, series_id, season_number, episode_number)
+        )
+    ''')
+    
+    # User Selections table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vod_selections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portal_id TEXT NOT NULL,
+            category_key TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            UNIQUE(portal_id, category_key)
+        )
+    ''')
+    
+    # VOD Settings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vod_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    ''')
+    
+    # Create indexes for performance
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_vod_categories_portal 
+        ON vod_categories(portal_id)
+    ''')
+    
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_vod_items_portal_category 
+        ON vod_items(portal_id, category_id)
+    ''')
+    
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_vod_items_name 
+        ON vod_items(name)
+    ''')
+    
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_series_episodes_series 
+        ON series_episodes(portal_id, series_id)
+    ''')
+    
+    # Insert default settings if not exist
+    cursor.execute('''
+        INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('stream_type', 'ffmpeg')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('mac_rotation', 'true')
+    ''')
+    
+    conn.commit()
+    conn.close()
+    logger.info("VOD database initialized successfully")
+
+
 def refresh_channels_cache_with_progress():
     """Wrapper for refresh_channels_cache with progress tracking."""
     global editor_refresh_progress
@@ -887,7 +1010,6 @@ def checkXCConnectionLimit(user_id, device_id):
             cleaned_connections[dev_id] = conn
         else:
             modified = True
-            logger.info(f"XC API: Cleaned up inactive connection for device {dev_id}")
     
     # Save if we cleaned up any connections
     if modified:
@@ -962,7 +1084,6 @@ def cleanupOldXCConnections():
         for device_id in to_remove:
             del active_connections[device_id]
             modified = True
-            logger.info(f"XC API: Cleaned up inactive connection for device {device_id}")
     
     if modified:
         saveXCUsers(users)
@@ -994,43 +1115,20 @@ def xc_auth_only(f):
     def decorated(*args, **kwargs):
         settings = getSettings()
         
-        # Check if XC API is enabled
         if settings.get("xc api enabled") != "true":
-            logger.warning("XC API: API is disabled")
-            return flask.jsonify({
-                "user_info": {
-                    "auth": 0,
-                    "message": "XC API is disabled"
-                }
-            }), 403
+            return flask.jsonify({"user_info": {"auth": 0, "message": "XC API disabled"}}), 403
         
-        # Try XC API authentication (from URL params or path)
         xc_username = request.args.get("username") or kwargs.get("username")
         xc_password = request.args.get("password") or kwargs.get("password")
         
-        logger.info(f"XC API: Auth attempt - username={xc_username}, password={'*' * len(xc_password) if xc_password else 'None'}, path={request.path}")
-        
         if not xc_username or not xc_password:
-            logger.warning("XC API: Missing credentials")
-            return flask.jsonify({
-                "user_info": {
-                    "auth": 0,
-                    "message": "Missing credentials"
-                }
-            }), 401
+            return flask.jsonify({"user_info": {"auth": 0, "message": "Missing credentials"}}), 401
         
         user_id, user = validateXCUser(xc_username, xc_password)
         if not user:
-            logger.warning(f"XC API: Invalid credentials for user {xc_username}: {user_id}")
-            return flask.jsonify({
-                "user_info": {
-                    "auth": 0,
-                    "message": user_id  # user_id contains error message
-                }
-            }), 401
+            logger.debug(f"Auth failed: {xc_username}")
+            return flask.jsonify({"user_info": {"auth": 0, "message": user_id}}), 401
         
-        # XC API auth successful, allow access
-        logger.info(f"XC API: Auth successful for user {xc_username}")
         return f(*args, **kwargs)
     
     return decorated
@@ -1116,6 +1214,1267 @@ def logout():
     """Logout."""
     flask.session.clear()
     return redirect("/login", code=302)
+
+
+# ============================================================================
+# VOD/Series Routes
+# ============================================================================
+
+# Global VOD refresh state
+vod_refresh_state = {
+    "running": False,
+    "portals_total": 0,
+    "portals_done": 0,
+    "current_portal": "",
+    "current_step": ""
+}
+
+# MAC rotation state per portal
+vod_mac_rotation_state = {}
+
+
+def get_next_mac_for_portal(portal_id, macs):
+    """Get next MAC in rotation for a portal."""
+    global vod_mac_rotation_state
+    
+    if not macs:
+        return None
+    
+    if portal_id not in vod_mac_rotation_state:
+        vod_mac_rotation_state[portal_id] = 0
+    
+    current_index = vod_mac_rotation_state[portal_id]
+    mac = macs[current_index % len(macs)]
+    
+    # Advance to next MAC for next request
+    vod_mac_rotation_state[portal_id] = (current_index + 1) % len(macs)
+    
+    return mac
+
+
+def try_get_vod_link_with_fallback(url, macs, cmd, content_type, proxy, series_id=None, season_id=None, episode_id=None):
+    """Try to get VOD link with MAC fallback on failure."""
+    working_mac = None
+    link = None
+    
+    for mac in macs:
+        try:
+            token = stb.getToken(url, mac, proxy)
+            if not token:
+                continue
+            
+            if content_type == 'series' and series_id:
+                link = stb.getSeriesLink(url, mac, token, cmd, series_id, season_id, episode_id, proxy)
+            else:
+                link = stb.getVodLink(url, mac, token, cmd, proxy)
+            
+            if link:
+                working_mac = mac
+                break
+        except Exception as e:
+            logger.debug(f"MAC {mac} failed for VOD link: {e}")
+            continue
+    
+    return link, working_mac
+
+
+@app.route("/api/vods", methods=["GET"])
+@app.route("/vods", methods=["GET"])
+@authorise
+def vods_page():
+    """Render VOD page."""
+    return render_template("vods.html")
+
+
+@app.route("/vods/portals", methods=["GET"])
+@authorise
+def vods_portals():
+    """Get all portals with VOD/Series category counts."""
+    try:
+        portals = getPortals()
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        result = []
+        for portal_id, portal in portals.items():
+            if portal.get("enabled") != "true":
+                continue
+            
+            # Get cached category counts
+            cursor.execute('''
+                SELECT content_type, COUNT(*) as count 
+                FROM vod_categories 
+                WHERE portal_id = ? 
+                GROUP BY content_type
+            ''', (portal_id,))
+            
+            cached_counts = {row['content_type']: row['count'] for row in cursor.fetchall()}
+            
+            # Get selected categories count
+            cursor.execute('''
+                SELECT COUNT(*) as count 
+                FROM vod_selections 
+                WHERE portal_id = ? AND enabled = 1
+            ''', (portal_id,))
+            selected_count = cursor.fetchone()['count']
+            
+            result.append({
+                "id": portal_id,
+                "name": portal.get("name", portal_id),
+                "macs": len(portal.get("macs", {})),
+                "vod_categories": cached_counts.get("vod", 0),
+                "series_categories": cached_counts.get("series", 0),
+                "cached_vod_categories": cached_counts.get("vod", 0),
+                "cached_series_categories": cached_counts.get("series", 0),
+                "selected_categories": selected_count,
+                "has_cache": (cached_counts.get("vod", 0) + cached_counts.get("series", 0)) > 0
+            })
+        
+        conn.close()
+        return jsonify({"success": True, "portals": result})
+    except Exception as e:
+        logger.error(f"Error getting VOD portals: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/categories/<portal_id>", methods=["GET"])
+@authorise
+def vods_categories(portal_id):
+    """Get VOD/Series categories for a portal from cache."""
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT category_id, title, content_type, item_count, working_mac
+            FROM vod_categories
+            WHERE portal_id = ?
+            ORDER BY content_type, title
+        ''', (portal_id,))
+        
+        categories = []
+        for row in cursor.fetchall():
+            categories.append({
+                "category_id": row['category_id'],
+                "title": row['title'],
+                "type": row['content_type'],
+                "item_count": row['item_count'],
+                "working_mac": row['working_mac'] or "N/A"
+            })
+        
+        conn.close()
+        return jsonify({"success": True, "categories": categories})
+    except Exception as e:
+        logger.error(f"Error getting VOD categories: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/items/<portal_id>/<content_type>/<category_id>", methods=["GET"])
+@authorise
+def vods_items(portal_id, content_type, category_id):
+    """Get VOD/Series items for a category from cache."""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Get total count
+        cursor.execute('''
+            SELECT COUNT(*) as total
+            FROM vod_items
+            WHERE portal_id = ? AND category_id = ? AND content_type = ?
+        ''', (portal_id, category_id, content_type))
+        total = cursor.fetchone()['total']
+        
+        # Get items with pagination
+        offset = (page - 1) * per_page
+        cursor.execute('''
+            SELECT item_id, name, year, description, genre, duration, rating, poster_url, cmd, working_macs
+            FROM vod_items
+            WHERE portal_id = ? AND category_id = ? AND content_type = ?
+            ORDER BY name
+            LIMIT ? OFFSET ?
+        ''', (portal_id, category_id, content_type, per_page, offset))
+        
+        items = []
+        for row in cursor.fetchall():
+            items.append({
+                "id": row['item_id'],
+                "name": row['name'],
+                "year": row['year'],
+                "description": row['description'],
+                "genre": row['genre'],
+                "duration": row['duration'],
+                "rating": row['rating'],
+                "screenshot_uri": row['poster_url'],
+                "cmd": row['cmd'],
+                "working_mac": row['working_macs'].split(',')[0] if row['working_macs'] else None
+            })
+        
+        conn.close()
+        return jsonify({
+            "success": True, 
+            "items": items, 
+            "total": total,
+            "page": page,
+            "has_more": (page * per_page) < total
+        })
+    except Exception as e:
+        logger.error(f"Error getting VOD items: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/selection/<portal_id>", methods=["GET"])
+@authorise
+def vods_selection_get(portal_id):
+    """Get selected categories for a portal."""
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT category_key FROM vod_selections
+            WHERE portal_id = ? AND enabled = 1
+        ''', (portal_id,))
+        
+        selected = [row['category_key'] for row in cursor.fetchall()]
+        conn.close()
+        
+        return jsonify({"success": True, "selected_categories": selected})
+    except Exception as e:
+        logger.error(f"Error getting VOD selection: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+# Global state for VOD items loading progress
+vod_items_load_state = {
+    "running": False,
+    "portal_id": None,
+    "categories_total": 0,
+    "categories_done": 0,
+    "current_category": "",
+    "items_loaded": 0
+}
+
+
+@app.route("/vods/save-selection", methods=["POST"])
+@authorise
+def vods_selection_save():
+    """Save selected categories for a portal and start loading items in background."""
+    global vod_items_load_state
+    
+    try:
+        data = request.get_json()
+        portal_id = data.get('portal_id')
+        selected_categories = data.get('selected_categories', [])
+        load_items = data.get('load_items', True)  # Default to loading items
+        
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Clear existing selections
+        cursor.execute('DELETE FROM vod_selections WHERE portal_id = ?', (portal_id,))
+        
+        # Insert new selections
+        for category_key in selected_categories:
+            cursor.execute('''
+                INSERT INTO vod_selections (portal_id, category_key, enabled)
+                VALUES (?, ?, 1)
+            ''', (portal_id, category_key))
+        
+        conn.commit()
+        conn.close()
+        
+        # Start loading items in background if requested
+        if load_items and selected_categories and not vod_items_load_state["running"]:
+            def load_items_background():
+                global vod_items_load_state
+                try:
+                    vod_items_load_state["running"] = True
+                    vod_items_load_state["portal_id"] = portal_id
+                    vod_items_load_state["categories_total"] = len(selected_categories)
+                    vod_items_load_state["categories_done"] = 0
+                    vod_items_load_state["items_loaded"] = 0
+                    
+                    portals = getPortals()
+                    portal = portals.get(portal_id)
+                    
+                    if not portal:
+                        logger.error(f"Portal {portal_id} not found for items loading")
+                        return
+                    
+                    url = portal.get("url")
+                    macs = list(portal.get("macs", {}).keys())
+                    proxy = portal.get("proxy")
+                    
+                    if not macs:
+                        logger.error(f"No MACs for portal {portal_id}")
+                        return
+                    
+                    # Get working MACs for each category from database
+                    conn = get_vod_db_connection()
+                    cursor = conn.cursor()
+                    
+                    # Build a map of category -> working_macs
+                    category_macs = {}
+                    for category_key in selected_categories:
+                        parts = category_key.split('_', 1)
+                        if len(parts) != 2:
+                            continue
+                        content_type = parts[0]
+                        category_id = parts[1]
+                        
+                        cursor.execute('''
+                            SELECT working_mac FROM vod_categories 
+                            WHERE portal_id = ? AND category_id = ? AND content_type = ?
+                        ''', (portal_id, category_id, content_type))
+                        row = cursor.fetchone()
+                        if row and row['working_mac']:
+                            # working_mac can be comma-separated list
+                            category_macs[category_key] = row['working_mac'].split(',')
+                        else:
+                            category_macs[category_key] = macs  # Fallback to all MACs
+                    
+                    # Cache tokens for MACs
+                    mac_tokens = {}
+                    
+                    for category_key in selected_categories:
+                        # Parse category key (format: "vod_123" or "series_456")
+                        parts = category_key.split('_', 1)
+                        if len(parts) != 2:
+                            continue
+                        
+                        content_type = parts[0]
+                        category_id = parts[1]
+                        
+                        # Skip "all" category (category_id = "*")
+                        if category_id == "*":
+                            logger.debug(f"Skipping 'all' category: {category_key}")
+                            continue
+                        
+                        vod_items_load_state["current_category"] = f"{content_type}: {category_id}"
+                        
+                        # Get working MACs for this category
+                        cat_macs = category_macs.get(category_key, macs)
+                        
+                        # Try each MAC until we get items
+                        category_items = 0
+                        logger.info(f"Loading items for {category_key} (type={content_type}, id={category_id}), trying {len(cat_macs)} MACs")
+                        
+                        for mac in cat_macs:
+                            # Get or create token for this MAC
+                            if mac not in mac_tokens:
+                                try:
+                                    token = stb.getToken(url, mac, proxy)
+                                    if token:
+                                        mac_tokens[mac] = token
+                                        logger.info(f"Got token for MAC {mac[:15]}...")
+                                    else:
+                                        logger.warning(f"No token returned for MAC {mac[:15]}...")
+                                        continue
+                                except Exception as e:
+                                    logger.warning(f"Failed to get token for MAC {mac[:15]}...: {e}")
+                                    continue
+                            
+                            if mac not in mac_tokens:
+                                continue
+                            
+                            token = mac_tokens[mac]
+                            
+                            # Load items for this category with this MAC
+                            page = 1
+                            mac_items = 0
+                            
+                            while True:
+                                try:
+                                    logger.debug(f"Fetching {content_type} items for category {category_id}, page {page}, MAC {mac[:15]}...")
+                                    if content_type == 'series':
+                                        result = stb.getSeriesItems(url, mac, token, category_id, page, proxy)
+                                    else:
+                                        result = stb.getVodItems(url, mac, token, category_id, page, proxy)
+                                    
+                                    if not result:
+                                        logger.debug(f"No result returned for category {category_id}")
+                                        break
+                                    
+                                    items = result.get('items', [])
+                                    if not items:
+                                        logger.debug(f"Empty items list for category {category_id}")
+                                        break
+                                    
+                                    logger.info(f"Got {len(items)} items for category {category_id}, page {page}")
+                                    
+                                    # Save items to database
+                                    for item in items:
+                                        item_id = str(item.get('id', ''))
+                                        name = item.get('name', '')
+                                        year = item.get('year', '')
+                                        description = item.get('description', '')
+                                        genre = item.get('genre_str', '')
+                                        duration = item.get('time', '')
+                                        rating = item.get('rating_imdb', '')
+                                        poster_url = item.get('screenshot_uri', '')
+                                        cmd = item.get('cmd', '')
+                                        
+                                        cursor.execute('''
+                                            INSERT OR REPLACE INTO vod_items 
+                                            (portal_id, category_id, item_id, content_type, name, year, description, 
+                                             genre, duration, rating, poster_url, cmd, working_macs)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        ''', (portal_id, category_id, item_id, content_type, name, year, description,
+                                              genre, duration, rating, poster_url, cmd, mac))
+                                        
+                                        mac_items += 1
+                                        category_items += 1
+                                        vod_items_load_state["items_loaded"] += 1
+                                    
+                                    conn.commit()
+                                    
+                                    # Check if there are more pages
+                                    total = int(result.get('total', 0))
+                                    if mac_items >= total or len(items) < 14:
+                                        logger.debug(f"Finished loading category {category_id}: {mac_items} items (total: {total})")
+                                        break
+                                    
+                                    page += 1
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error loading items for category {category_key} with MAC {mac[:15]}...: {e}")
+                                    import traceback
+                                    logger.error(traceback.format_exc())
+                                    break
+                            
+                            # If we got items with this MAC, don't try other MACs
+                            if mac_items > 0:
+                                logger.info(f"Successfully loaded {mac_items} items for category {category_key} with MAC {mac[:15]}...")
+                                break
+                            else:
+                                logger.debug(f"No items found for category {category_key} with MAC {mac[:15]}..., trying next MAC")
+                        
+                        vod_items_load_state["categories_done"] += 1
+                        if category_items == 0:
+                            logger.warning(f"No items loaded for category {category_key} after trying all MACs")
+                        else:
+                            logger.info(f"Loaded {category_items} items for category {category_key}")
+                            # Update item_count in vod_categories table
+                            cursor.execute('''
+                                UPDATE vod_categories SET item_count = ?
+                                WHERE portal_id = ? AND category_id = ? AND content_type = ?
+                            ''', (category_items, portal_id, category_id, content_type))
+                            conn.commit()
+                    
+                    conn.close()
+                    logger.info(f"Finished loading {vod_items_load_state['items_loaded']} items for portal {portal_id}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in background items loading: {e}")
+                finally:
+                    vod_items_load_state["running"] = False
+            
+            # Start background thread
+            threading.Thread(target=load_items_background, daemon=True).start()
+        
+        return jsonify({
+            "success": True, 
+            "count": len(selected_categories),
+            "loading_items": load_items and len(selected_categories) > 0
+        })
+    except Exception as e:
+        logger.error(f"Error saving VOD selection: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/items-load/progress", methods=["GET"])
+@authorise
+def vods_items_load_progress():
+    """Get VOD items loading progress."""
+    return jsonify(vod_items_load_state)
+
+
+@app.route("/vods/settings", methods=["GET"])
+@authorise
+def vods_settings_get():
+    """Get VOD settings."""
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT key, value FROM vod_settings')
+        settings = {row['key']: row['value'] for row in cursor.fetchall()}
+        conn.close()
+        
+        return jsonify({"success": True, "settings": settings})
+    except Exception as e:
+        logger.error(f"Error getting VOD settings: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/settings", methods=["POST"])
+@authorise
+def vods_settings_save():
+    """Save VOD settings."""
+    try:
+        data = request.get_json()
+        
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        for key, value in data.items():
+            cursor.execute('''
+                INSERT OR REPLACE INTO vod_settings (key, value) VALUES (?, ?)
+            ''', (key, str(value)))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error saving VOD settings: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/refresh", methods=["POST"])
+@authorise
+def vods_refresh():
+    """Start VOD cache refresh in background - tests ALL MACs and merges categories."""
+    global vod_refresh_state
+    
+    if vod_refresh_state["running"]:
+        return jsonify({"success": False, "error": "Refresh already in progress"})
+    
+    def refresh_vod_cache():
+        global vod_refresh_state
+        try:
+            vod_refresh_state["running"] = True
+            portals = getPortals()
+            enabled_portals = {k: v for k, v in portals.items() if v.get("enabled") == "true"}
+            
+            vod_refresh_state["portals_total"] = len(enabled_portals)
+            vod_refresh_state["portals_done"] = 0
+            
+            for portal_id, portal in enabled_portals.items():
+                vod_refresh_state["current_portal"] = portal.get("name", portal_id)
+                vod_refresh_state["current_step"] = "Testing MACs..."
+                
+                url = portal.get("url")
+                macs = list(portal.get("macs", {}).keys())
+                proxy = portal.get("proxy")
+                
+                if not macs:
+                    vod_refresh_state["portals_done"] += 1
+                    continue
+                
+                conn = get_vod_db_connection()
+                cursor = conn.cursor()
+                
+                # Track all categories by key to merge from multiple MACs
+                all_vod_categories = {}
+                all_series_categories = {}
+                working_macs_count = 0
+                
+                # Helper function to extract item count from category
+                def get_item_count(cat):
+                    for field in ['censored', 'count', 'cnt', 'total', 'items_count', 'num', 'number']:
+                        val = cat.get(field)
+                        if val is not None:
+                            try:
+                                return int(val)
+                            except (ValueError, TypeError):
+                                pass
+                    return 0
+                
+                # Test ALL MACs and merge their categories
+                for mac_idx, mac in enumerate(macs):
+                    vod_refresh_state["current_step"] = f"Testing MAC {mac_idx + 1}/{len(macs)}..."
+                    try:
+                        token = stb.getToken(url, mac, proxy)
+                        if not token:
+                            continue
+                        
+                        working_macs_count += 1
+                        
+                        # Get VOD categories from this MAC
+                        vod_refresh_state["current_step"] = f"MAC {mac_idx + 1}: Loading VOD categories..."
+                        vod_cats = stb.getVodCategories(url, mac, token, proxy)
+                        if vod_cats:
+                            for cat in vod_cats:
+                                cat_id = str(cat.get('id', ''))
+                                title = cat.get('title', '')
+                                item_count = get_item_count(cat)
+                                
+                                # Skip "all" category (id = "*")
+                                if cat_id == "*" or not cat_id:
+                                    continue
+                                
+                                if cat_id not in all_vod_categories:
+                                    all_vod_categories[cat_id] = {
+                                        "title": title,
+                                        "item_count": item_count,
+                                        "working_macs": [mac]
+                                    }
+                                else:
+                                    if mac not in all_vod_categories[cat_id]["working_macs"]:
+                                        all_vod_categories[cat_id]["working_macs"].append(mac)
+                                    if item_count > all_vod_categories[cat_id]["item_count"]:
+                                        all_vod_categories[cat_id]["item_count"] = item_count
+                        
+                        # Get Series categories from this MAC
+                        vod_refresh_state["current_step"] = f"MAC {mac_idx + 1}: Loading Series categories..."
+                        series_cats = stb.getSeriesCategories(url, mac, token, proxy)
+                        if series_cats:
+                            for cat in series_cats:
+                                cat_id = str(cat.get('id', ''))
+                                title = cat.get('title', '')
+                                item_count = get_item_count(cat)
+                                
+                                # Skip "all" category (id = "*")
+                                if cat_id == "*" or not cat_id:
+                                    continue
+                                
+                                if cat_id not in all_series_categories:
+                                    all_series_categories[cat_id] = {
+                                        "title": title,
+                                        "item_count": item_count,
+                                        "working_macs": [mac]
+                                    }
+                                else:
+                                    if mac not in all_series_categories[cat_id]["working_macs"]:
+                                        all_series_categories[cat_id]["working_macs"].append(mac)
+                                    if item_count > all_series_categories[cat_id]["item_count"]:
+                                        all_series_categories[cat_id]["item_count"] = item_count
+                                        
+                    except Exception as e:
+                        logger.debug(f"MAC {mac} failed: {e}")
+                        continue
+                
+                if working_macs_count == 0:
+                    logger.warning(f"No working MAC for portal {portal_id}")
+                    conn.close()
+                    vod_refresh_state["portals_done"] += 1
+                    continue
+                
+                # Save merged VOD categories to database
+                vod_refresh_state["current_step"] = "Saving categories..."
+                for cat_id, cat_data in all_vod_categories.items():
+                    working_macs_str = ','.join(cat_data["working_macs"])
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO vod_categories 
+                        (portal_id, category_id, title, content_type, item_count, working_mac)
+                        VALUES (?, ?, ?, 'vod', ?, ?)
+                    ''', (portal_id, cat_id, cat_data["title"], cat_data["item_count"], working_macs_str))
+                
+                # Save merged Series categories to database
+                for cat_id, cat_data in all_series_categories.items():
+                    working_macs_str = ','.join(cat_data["working_macs"])
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO vod_categories 
+                        (portal_id, category_id, title, content_type, item_count, working_mac)
+                        VALUES (?, ?, ?, 'series', ?, ?)
+                    ''', (portal_id, cat_id, cat_data["title"], cat_data["item_count"], working_macs_str))
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"Portal {portal_id}: {len(all_vod_categories)} VOD, {len(all_series_categories)} Series categories from {working_macs_count} MACs")
+                vod_refresh_state["portals_done"] += 1
+            
+            vod_refresh_state["current_step"] = "Completed!"
+            
+        except Exception as e:
+            logger.error(f"Error in VOD refresh: {e}")
+        finally:
+            vod_refresh_state["running"] = False
+    
+    # Start refresh in background thread
+    threading.Thread(target=refresh_vod_cache, daemon=True).start()
+    
+    return jsonify({"success": True, "message": "VOD refresh started"})
+
+
+@app.route("/vods/refresh/progress", methods=["GET"])
+@authorise
+def vods_refresh_progress():
+    """Get VOD refresh progress."""
+    return jsonify(vod_refresh_state)
+
+
+@app.route("/vods/load-categories", methods=["POST"])
+@authorise
+def vods_load_categories():
+    """Load categories for a single portal on-demand - tests ALL MACs and merges categories."""
+    try:
+        data = request.get_json()
+        portal_id = data.get('portal_id')
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Track all categories by key (category_id + content_type) to merge from multiple MACs
+        all_vod_categories = {}  # key: category_id, value: {data, working_macs: []}
+        all_series_categories = {}
+        working_macs_count = 0
+        
+        # Helper function to extract item count from category - tries multiple field names
+        def get_item_count(cat):
+            # Try various possible field names for item count
+            for field in ['censored', 'count', 'cnt', 'total', 'items_count', 'num', 'number']:
+                val = cat.get(field)
+                if val is not None:
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        pass
+            return 0
+        
+        # Test ALL MACs and merge their categories
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if not token:
+                    continue
+                    
+                working_macs_count += 1
+                logger.info(f"Loading categories from MAC {mac} for portal {portal_id}")
+                
+                # Get VOD categories from this MAC
+                vod_cats = stb.getVodCategories(url, mac, token, proxy)
+                if vod_cats:
+                    for cat in vod_cats:
+                        cat_id = str(cat.get('id', ''))
+                        title = cat.get('title', '')
+                        item_count = get_item_count(cat)
+                        
+                        # Skip "all" category (id = "*")
+                        if cat_id == "*" or not cat_id:
+                            continue
+                        
+                        # Log first category to debug field names
+                        if cat_id and not all_vod_categories:
+                            logger.debug(f"VOD category fields: {list(cat.keys())}")
+                        
+                        if cat_id not in all_vod_categories:
+                            all_vod_categories[cat_id] = {
+                                "category_id": cat_id,
+                                "title": title,
+                                "item_count": item_count,
+                                "working_macs": [mac]
+                            }
+                        else:
+                            # Category exists, add this MAC to working_macs
+                            if mac not in all_vod_categories[cat_id]["working_macs"]:
+                                all_vod_categories[cat_id]["working_macs"].append(mac)
+                            # Update item_count if higher
+                            if item_count > all_vod_categories[cat_id]["item_count"]:
+                                all_vod_categories[cat_id]["item_count"] = item_count
+                
+                # Get Series categories from this MAC
+                series_cats = stb.getSeriesCategories(url, mac, token, proxy)
+                if series_cats:
+                    for cat in series_cats:
+                        cat_id = str(cat.get('id', ''))
+                        title = cat.get('title', '')
+                        item_count = get_item_count(cat)
+                        
+                        # Skip "all" category (id = "*")
+                        if cat_id == "*" or not cat_id:
+                            continue
+                        
+                        # Log first category to debug field names
+                        if cat_id and not all_series_categories:
+                            logger.debug(f"Series category fields: {list(cat.keys())}")
+                        
+                        if cat_id not in all_series_categories:
+                            all_series_categories[cat_id] = {
+                                "category_id": cat_id,
+                                "title": title,
+                                "item_count": item_count,
+                                "working_macs": [mac]
+                            }
+                        else:
+                            # Category exists, add this MAC to working_macs
+                            if mac not in all_series_categories[cat_id]["working_macs"]:
+                                all_series_categories[cat_id]["working_macs"].append(mac)
+                            # Update item_count if higher
+                            if item_count > all_series_categories[cat_id]["item_count"]:
+                                all_series_categories[cat_id]["item_count"] = item_count
+                                
+            except Exception as e:
+                logger.warning(f"Error loading categories from MAC {mac}: {e}")
+                continue
+        
+        if working_macs_count == 0:
+            return jsonify({"success": False, "error": "Could not authenticate with any MAC"})
+        
+        categories = []
+        
+        # Save VOD categories to database
+        for cat_id, cat_data in all_vod_categories.items():
+            working_macs_str = ','.join(cat_data["working_macs"])
+            cursor.execute('''
+                INSERT OR REPLACE INTO vod_categories 
+                (portal_id, category_id, title, content_type, item_count, working_mac)
+                VALUES (?, ?, ?, 'vod', ?, ?)
+            ''', (portal_id, cat_id, cat_data["title"], cat_data["item_count"], working_macs_str))
+            
+            categories.append({
+                "category_id": cat_id,
+                "title": cat_data["title"],
+                "type": "vod",
+                "item_count": cat_data["item_count"],
+                "working_mac": working_macs_str
+            })
+        
+        # Save Series categories to database
+        for cat_id, cat_data in all_series_categories.items():
+            working_macs_str = ','.join(cat_data["working_macs"])
+            cursor.execute('''
+                INSERT OR REPLACE INTO vod_categories 
+                (portal_id, category_id, title, content_type, item_count, working_mac)
+                VALUES (?, ?, ?, 'series', ?, ?)
+            ''', (portal_id, cat_id, cat_data["title"], cat_data["item_count"], working_macs_str))
+            
+            categories.append({
+                "category_id": cat_id,
+                "title": cat_data["title"],
+                "type": "series",
+                "item_count": cat_data["item_count"],
+                "working_mac": working_macs_str
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Loaded {len(all_vod_categories)} VOD and {len(all_series_categories)} Series categories from {working_macs_count} MACs for portal {portal_id}")
+        
+        return jsonify({
+            "success": True, 
+            "categories": categories,
+            "macs_tested": len(macs),
+            "macs_working": working_macs_count
+        })
+    except Exception as e:
+        logger.error(f"Error loading categories: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/stream", methods=["POST"])
+@authorise
+def vods_stream():
+    """Get stream URL for VOD item."""
+    try:
+        data = request.get_json()
+        portal_id = data.get('portal_id')
+        content_type = data.get('content_type', 'vod')
+        cmd = data.get('cmd')
+        series_id = data.get('series_id')
+        season_id = data.get('season_id')
+        episode_id = data.get('episode_id')
+        
+        if not portal_id or not cmd:
+            return jsonify({"success": False, "error": "Missing portal_id or cmd"})
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        # Get VOD settings
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT key, value FROM vod_settings')
+        settings = {row['key']: row['value'] for row in cursor.fetchall()}
+        conn.close()
+        
+        stream_type = settings.get('stream_type', 'ffmpeg')
+        mac_rotation = settings.get('mac_rotation', 'true') == 'true'
+        
+        # Select MAC based on rotation setting
+        if mac_rotation:
+            selected_mac = get_next_mac_for_portal(portal_id, macs)
+            macs_to_try = [selected_mac] + [m for m in macs if m != selected_mac]
+        else:
+            macs_to_try = macs
+        
+        # Get stream link with fallback
+        link, working_mac = try_get_vod_link_with_fallback(
+            url, macs_to_try, cmd, content_type, proxy,
+            series_id, season_id, episode_id
+        )
+        
+        if not link:
+            return jsonify({"success": False, "error": "Could not get stream URL"})
+        
+        # Return based on stream type
+        if stream_type == 'direct':
+            return jsonify({
+                "success": True,
+                "stream_url": link,
+                "stream_type": "direct",
+                "working_mac": working_mac
+            })
+        else:
+            # FFmpeg - return internal play URL
+            return jsonify({
+                "success": True,
+                "stream_url": link,
+                "stream_type": "ffmpeg",
+                "working_mac": working_mac
+            })
+    except Exception as e:
+        logger.error(f"Error getting VOD stream: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/items/load", methods=["POST"])
+@authorise
+def vods_load_items():
+    """Load items for a category on-demand and cache them."""
+    try:
+        data = request.get_json()
+        portal_id = data.get('portal_id')
+        category_id = data.get('category_id')
+        content_type = data.get('content_type', 'vod')
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        # Try each MAC until one works
+        working_mac = None
+        token = None
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if token:
+                    working_mac = mac
+                    break
+            except:
+                continue
+        
+        if not token:
+            return jsonify({"success": False, "error": "Could not authenticate"})
+        
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        all_items = []
+        page = 1
+        
+        while True:
+            if content_type == 'series':
+                result = stb.getSeriesItems(url, working_mac, token, category_id, page, proxy)
+            else:
+                result = stb.getVodItems(url, working_mac, token, category_id, page, proxy)
+            
+            if not result or not result.get('items'):
+                break
+            
+            items = result['items']
+            all_items.extend(items)
+            
+            # Save items to database
+            for item in items:
+                item_id = str(item.get('id', ''))
+                name = item.get('name', '')
+                year = item.get('year', '')
+                description = item.get('description', '')
+                genre = item.get('genre_str', '')
+                duration = item.get('time', '')
+                rating = item.get('rating_imdb', '')
+                poster_url = item.get('screenshot_uri', '')
+                cmd = item.get('cmd', '')
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO vod_items 
+                    (portal_id, category_id, item_id, content_type, name, year, description, 
+                     genre, duration, rating, poster_url, cmd, working_macs)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (portal_id, category_id, item_id, content_type, name, year, description,
+                      genre, duration, rating, poster_url, cmd, working_mac))
+            
+            # Check if there are more pages
+            total = result.get('total', 0)
+            if len(all_items) >= total or len(items) < 14:
+                break
+            
+            page += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "items_loaded": len(all_items),
+            "category_id": category_id
+        })
+    except Exception as e:
+        logger.error(f"Error loading VOD items: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/debug/test-api", methods=["POST"])
+@authorise
+def vods_debug_test_api():
+    """Debug endpoint to test VOD API directly and return raw response."""
+    try:
+        data = request.get_json()
+        portal_id = data.get('portal_id')
+        category_id = data.get('category_id')
+        content_type = data.get('content_type', 'vod')
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        # Try first MAC
+        mac = macs[0]
+        token = stb.getToken(url, mac, proxy)
+        
+        if not token:
+            return jsonify({"success": False, "error": f"Could not get token for MAC {mac}"})
+        
+        # Make direct API call
+        import requests as req
+        
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        cookies = {"mac": mac, "stb_lang": "en", "timezone": "Europe/London"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+            "Authorization": "Bearer " + token,
+        }
+        
+        # Build params matching macvod.py exactly
+        params = {
+            "type": content_type if content_type == "series" else "vod",
+            "action": "get_ordered_list",
+            "movie_id": "0",
+            "season_id": "0",
+            "episode_id": "0",
+            "row": "0",
+            "JsHttpRequest": "1-xml",
+            "category": str(category_id),
+            "sortby": "added",
+            "fav": "0",
+            "hd": "0",
+            "not_ended": "0",
+            "abc": "*",
+            "genre": "*",
+            "years": "*",
+            "search": "",
+            "p": "1"
+        }
+        
+        response = req.get(
+            url,
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            proxies=proxies,
+            timeout=30,
+        )
+        
+        return jsonify({
+            "success": True,
+            "portal_id": portal_id,
+            "portal_url": url,
+            "mac": mac,
+            "category_id": category_id,
+            "content_type": content_type,
+            "request_url": response.url,
+            "status_code": response.status_code,
+            "response_text": response.text[:2000] if len(response.text) > 2000 else response.text,
+            "response_json": response.json() if response.status_code == 200 else None
+        })
+    except Exception as e:
+        logger.error(f"Error in VOD debug: {e}")
+        import traceback
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()})
+
+
+@app.route("/vods/play/<portal_id>/<content_type>", methods=["POST"])
+@authorise
+def vods_play(portal_id, content_type):
+    """Get playback URL for VOD/Series item by calling create_link API.
+    
+    Tests each MAC to find one that has access to the content.
+    """
+    try:
+        data = request.get_json()
+        cmd = data.get('cmd')
+        episode_num = data.get('episode_num', '0')  # Episode number for series
+        season_num = data.get('season_num', '0')
+        test_stream = data.get('test_stream', True)  # Test stream by default
+        
+        if not cmd:
+            return jsonify({"success": False, "error": "No cmd provided"})
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        # Get VOD settings for stream testing
+        settings = getSettings()
+        should_test = settings.get("test streams", "true") == "true" and test_stream
+        
+        failed_macs = []
+        
+        # Try each MAC until we get a working link
+        for mac in macs:
+            try:
+                logger.info(f"Trying MAC {mac} for {content_type} content...")
+                token = stb.getToken(url, mac, proxy)
+                if not token:
+                    logger.warning(f"MAC {mac}: Failed to get token")
+                    failed_macs.append({"mac": mac, "reason": "No token"})
+                    continue
+                
+                # Call create_link API
+                if content_type == 'series':
+                    # For series, episode_num is passed as the 'series' parameter
+                    link = stb.getSeriesLink(url, mac, token, cmd, episode_num, season_num, episode_num, proxy)
+                else:
+                    link = stb.getVodLink(url, mac, token, cmd, proxy)
+                
+                if not link:
+                    logger.warning(f"MAC {mac}: No link returned from API")
+                    failed_macs.append({"mac": mac, "reason": "No link from API"})
+                    continue
+                
+                # Test if the stream is accessible
+                if should_test:
+                    logger.info(f"Testing stream link from MAC {mac}...")
+                    if stb.testStreamLink(link, proxy, timeout=5):
+                        logger.info(f"MAC {mac}: Stream test PASSED - {link[:50]}...")
+                        return jsonify({
+                            "success": True,
+                            "url": link,
+                            "mac": mac,
+                            "tested": True
+                        })
+                    else:
+                        logger.warning(f"MAC {mac}: Stream test FAILED - {link[:50]}...")
+                        failed_macs.append({"mac": mac, "reason": "Stream test failed"})
+                        continue
+                else:
+                    # Return without testing
+                    logger.info(f"Got play link for {content_type} (untested): {link[:50]}...")
+                    return jsonify({
+                        "success": True,
+                        "url": link,
+                        "mac": mac,
+                        "tested": False
+                    })
+                    
+            except Exception as e:
+                logger.warning(f"Error getting play link with MAC {mac}: {e}")
+                failed_macs.append({"mac": mac, "reason": str(e)})
+                continue
+        
+        # All MACs failed
+        error_msg = f"Could not get working stream from any MAC. Tried {len(macs)} MAC(s)."
+        if failed_macs:
+            reasons = [f"{m['mac'][:10]}...: {m['reason']}" for m in failed_macs[:3]]
+            error_msg += f" Reasons: {'; '.join(reasons)}"
+        
+        return jsonify({"success": False, "error": error_msg, "failed_macs": failed_macs})
+    except Exception as e:
+        logger.error(f"Error in VOD play: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/vods/series/<portal_id>/<series_id>/episodes", methods=["GET"])
+@authorise
+def vods_series_episodes(portal_id, series_id):
+    """Get episodes for a series."""
+    try:
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        
+        if not portal:
+            return jsonify({"success": False, "error": "Portal not found"})
+        
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        if not macs:
+            return jsonify({"success": False, "error": "No MACs configured"})
+        
+        # Try each MAC until we get episodes
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if not token:
+                    continue
+                
+                # Get series info with episodes
+                series_info = stb.getSeriesInfo(url, mac, token, series_id, proxy)
+                
+                if series_info:
+                    logger.info(f"Got series info for {series_id}")
+                    return jsonify({
+                        "success": True,
+                        "series_info": series_info,
+                        "mac": mac
+                    })
+            except Exception as e:
+                logger.warning(f"Error getting series info with MAC {mac}: {e}")
+                continue
+        
+        return jsonify({"success": False, "error": "Could not get series info from any MAC"})
+    except Exception as e:
+        logger.error(f"Error getting series episodes: {e}")
+        return jsonify({"success": False, "error": str(e)})
 
 
 @app.route("/", methods=["GET"])
@@ -2759,8 +4118,13 @@ def xc_users_kick():
 
 
 @app.route("/playlist.m3u", methods=["GET"])
-@authorise
 def playlist():
+    settings = getSettings()
+    if settings.get("public playlist access", "true") != "true":
+        return authorise(lambda: _playlist())()
+    return _playlist()
+
+def _playlist():
     global cached_playlist, last_playlist_host
     
     logger.info("Playlist Requested")
@@ -3405,8 +4769,13 @@ def refresh_xmltv():
     epg_refresh_progress["current_step"] = f"Completed! {programme_count} programmes from {portal_index} portals"
     
 @app.route("/xmltv", methods=["GET"])
-@authorise
 def xmltv():
+    settings = getSettings()
+    if settings.get("public playlist access", "true") != "true":
+        return authorise(lambda: _xmltv())()
+    return _xmltv()
+
+def _xmltv():
     global cached_xmltv, last_updated
     logger.info("Guide Requested")
     
@@ -3995,13 +5364,23 @@ def xc_api():
     elif action == "get_live_categories":
         return xc_get_live_categories(user)
     elif action == "get_vod_streams":
-        return flask.jsonify([])  # No VOD support
+        return xc_get_vod_streams(user)
     elif action == "get_series":
-        return flask.jsonify([])  # No series support
+        return xc_get_series(user)
     elif action == "get_vod_categories":
-        return flask.jsonify([])
+        return xc_get_vod_categories(user)
     elif action == "get_series_categories":
-        return flask.jsonify([])
+        return xc_get_series_categories(user)
+    elif action == "get_series_info":
+        series_id = request.args.get("series_id")
+        if series_id:
+            return xc_get_series_info(user, series_id)
+        return flask.jsonify({"info": {}, "episodes": {}})
+    elif action == "get_vod_info":
+        vod_id = request.args.get("vod_id")
+        if vod_id:
+            return xc_get_vod_info(user, vod_id)
+        return flask.jsonify({"info": {}, "movie_data": {}})
     else:
         # Default: return user info
         return xc_get_user_info(user_id, user)
@@ -4177,6 +5556,694 @@ def xc_get_live_streams(user):
     return flask.jsonify(streams)
 
 
+def xc_get_vod_categories(user):
+    """Get VOD categories from selected categories in vods.db."""
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    categories = []
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Get selected VOD categories
+        cursor.execute('''
+            SELECT vc.portal_id, vc.category_id, vc.title, vc.content_type, vc.item_count
+            FROM vod_categories vc
+            INNER JOIN vod_selections vs ON vc.portal_id = vs.portal_id 
+                AND (vs.category_key = 'vod_' || vc.category_id OR vs.category_key = vc.content_type || '_' || vc.category_id)
+            WHERE vc.content_type = 'vod' AND vs.enabled = 1
+            ORDER BY vc.portal_id, vc.title
+        ''')
+        
+        db_categories = cursor.fetchall()
+        conn.close()
+        
+        for cat in db_categories:
+            portal_id = cat['portal_id']
+            
+            # Check if portal is enabled and allowed
+            portal = portals.get(portal_id)
+            if not portal or portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            category_key = f"{portal_id}_vod_{cat['category_id']}"
+            
+            categories.append({
+                "category_id": category_key,
+                "category_name": cat['title'],
+                "parent_id": 0
+            })
+    except Exception as e:
+        logger.error(f"Error getting VOD categories for XC API: {e}")
+    
+    return flask.jsonify(categories)
+
+
+def xc_get_series_categories(user):
+    """Get Series categories from selected categories in vods.db."""
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    categories = []
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Get selected Series categories
+        cursor.execute('''
+            SELECT vc.portal_id, vc.category_id, vc.title, vc.content_type, vc.item_count
+            FROM vod_categories vc
+            INNER JOIN vod_selections vs ON vc.portal_id = vs.portal_id 
+                AND (vs.category_key = 'series_' || vc.category_id OR vs.category_key = vc.content_type || '_' || vc.category_id)
+            WHERE vc.content_type = 'series' AND vs.enabled = 1
+            ORDER BY vc.portal_id, vc.title
+        ''')
+        
+        db_categories = cursor.fetchall()
+        conn.close()
+        
+        for cat in db_categories:
+            portal_id = cat['portal_id']
+            
+            # Check if portal is enabled and allowed
+            portal = portals.get(portal_id)
+            if not portal or portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            category_key = f"{portal_id}_series_{cat['category_id']}"
+            
+            categories.append({
+                "category_id": category_key,
+                "category_name": cat['title'],
+                "parent_id": 0
+            })
+    except Exception as e:
+        logger.error(f"Error getting Series categories for XC API: {e}")
+    
+    return flask.jsonify(categories)
+
+
+def xc_get_vod_streams(user):
+    """Get VOD streams from selected categories in vods.db."""
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    streams = []
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Get VOD items from selected categories
+        cursor.execute('''
+            SELECT vi.portal_id, vi.category_id, vi.item_id, vi.name, vi.year, 
+                   vi.description, vi.genre, vi.duration, vi.rating, vi.poster_url, vi.cmd
+            FROM vod_items vi
+            INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                AND (vs.category_key = 'vod_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+            WHERE vi.content_type = 'vod' AND vs.enabled = 1
+            ORDER BY vi.portal_id, vi.name
+        ''')
+        
+        db_items = cursor.fetchall()
+        conn.close()
+        
+        import hashlib
+        
+        for item in db_items:
+            portal_id = item['portal_id']
+            
+            # Check if portal is enabled and allowed
+            portal = portals.get(portal_id)
+            if not portal or portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            internal_id = f"{portal_id}_vod_{item['item_id']}"
+            numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+            category_key = f"{portal_id}_vod_{item['category_id']}"
+            
+            streams.append({
+                "num": numeric_id,
+                "name": item['name'],
+                "stream_type": "movie",
+                "stream_id": numeric_id,
+                "stream_icon": item['poster_url'] or "",
+                "rating": item['rating'] or "",
+                "added": "",
+                "category_id": category_key,
+                "container_extension": "mp4",
+                "custom_sid": internal_id,
+                "direct_source": ""
+            })
+    except Exception as e:
+        logger.error(f"Error getting VOD streams for XC API: {e}")
+    
+    return flask.jsonify(streams)
+
+
+def xc_get_vod_info(user, vod_id):
+    """Get VOD/Movie info for XC API.
+    
+    The vod_id can be either:
+    - A numeric hash (from get_vod_streams response)
+    - A custom_sid string (portalId_vod_itemId)
+    """
+    import hashlib
+    
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    # Find the VOD by ID
+    portal_id = None
+    item_id = None
+    vod_data = None
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Try to find by custom_sid first (string format)
+        if '_vod_' in str(vod_id):
+            logger.debug(f"XC API: Parsing custom VOD ID format: {vod_id}")
+            parts = str(vod_id).split('_vod_')
+            if len(parts) == 2:
+                portal_id = parts[0]
+                item_id = parts[1]
+                logger.debug(f"XC API: Parsed - Portal: {portal_id}, Item: {item_id}")
+        else:
+            # Numeric format - search through all VODs to find matching hash
+            logger.debug(f"XC API: Searching for numeric VOD ID: {vod_id}")
+            numeric_id = int(vod_id)
+            
+            cursor.execute('''
+                SELECT vi.portal_id, vi.item_id, vi.name, vi.year, 
+                       vi.description, vi.genre, vi.duration, vi.rating, vi.poster_url, vi.cmd
+                FROM vod_items vi
+                INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                    AND (vs.category_key = 'vod_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+                WHERE vi.content_type = 'vod' AND vs.enabled = 1
+            ''')
+            
+            for item in cursor.fetchall():
+                internal_id = f"{item['portal_id']}_vod_{item['item_id']}"
+                check_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+                if check_id == numeric_id:
+                    portal_id = item['portal_id']
+                    item_id = item['item_id']
+                    vod_data = dict(item)
+                    break
+        
+        if not portal_id or not item_id:
+            conn.close()
+            logger.warning(f"XC API: VOD not found - ID: {vod_id}")
+            return flask.jsonify({
+                "info": {},
+                "movie_data": {},
+                "error": "VOD not found"
+            })
+        
+        # Get VOD data if not already fetched
+        if not vod_data:
+            cursor.execute('''
+                SELECT portal_id, item_id, name, year, description, genre, duration, rating, poster_url, cmd
+                FROM vod_items
+                WHERE portal_id = ? AND item_id = ? AND content_type = 'vod'
+            ''', (portal_id, item_id))
+            row = cursor.fetchone()
+            if row:
+                vod_data = dict(row)
+        
+        conn.close()
+        
+        if not vod_data:
+            return flask.jsonify({"info": {}, "movie_data": {}, "error": "VOD not found"})
+        
+        portal = portals.get(portal_id)
+        if not portal or portal.get("enabled") != "true":
+            return flask.jsonify({"info": {}, "movie_data": {}, "error": "Portal unavailable"})
+        if allowed_portals and portal_id not in allowed_portals:
+            return flask.jsonify({"info": {}, "movie_data": {}, "error": "Access denied"})
+        
+        # Generate consistent stream ID
+        internal_id = f"{portal_id}_vod_{item_id}"
+        stream_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+        
+        # Determine container extension from cmd
+        container_ext = "mp4"  # Default
+        if vod_data.get("cmd"):
+            cmd_lower = vod_data["cmd"].lower()
+            if ".mkv" in cmd_lower:
+                container_ext = "mkv"
+            elif ".avi" in cmd_lower:
+                container_ext = "avi"
+            elif ".ts" in cmd_lower:
+                container_ext = "ts"
+        
+        # Build XC API compliant response
+        response = {
+            "info": {
+                "movie_image": vod_data.get('poster_url') or "",
+                "tmdb_id": "",
+                "backdrop_path": [],
+                "youtube_trailer": "",
+                "genre": vod_data.get('genre') or "",
+                "plot": vod_data.get('description') or "",
+                "cast": "",
+                "rating": vod_data.get('rating') or "",
+                "director": "",
+                "releasedate": vod_data.get('year') or "",
+                "duration_secs": 0,
+                "duration": vod_data.get('duration') or "",
+                "video": {},
+                "audio": {},
+                "bitrate": 0,
+                "name": vod_data.get('name') or ""
+            },
+            "movie_data": {
+                "stream_id": stream_id,
+                "name": vod_data.get('name') or "",
+                "added": "",
+                "category_id": "",
+                "container_extension": container_ext,
+                "custom_sid": internal_id,
+                "direct_source": ""
+            }
+        }
+        
+        return flask.jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"VOD info error: {e}")
+        return flask.jsonify({"info": {}, "movie_data": {}})
+
+
+def xc_get_series(user):
+    """Get Series from selected categories in vods.db."""
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    series_list = []
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Get Series items from selected categories
+        cursor.execute('''
+            SELECT vi.portal_id, vi.category_id, vi.item_id, vi.name, vi.year, 
+                   vi.description, vi.genre, vi.rating, vi.poster_url, vi.cmd
+            FROM vod_items vi
+            INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                AND (vs.category_key = 'series_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+            WHERE vi.content_type = 'series' AND vs.enabled = 1
+            ORDER BY vi.portal_id, vi.name
+        ''')
+        
+        db_items = cursor.fetchall()
+        conn.close()
+        
+        import hashlib
+        
+        for item in db_items:
+            portal_id = item['portal_id']
+            
+            # Check if portal is enabled and allowed
+            portal = portals.get(portal_id)
+            if not portal or portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            internal_id = f"{portal_id}_series_{item['item_id']}"
+            numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+            category_key = f"{portal_id}_series_{item['category_id']}"
+            
+            series_list.append({
+                "num": numeric_id,
+                "name": item['name'],
+                "series_id": numeric_id,
+                "cover": item['poster_url'] or "",
+                "plot": item['description'] or "",
+                "cast": "",
+                "director": "",
+                "genre": item['genre'] or "",
+                "release_date": item['year'] or "",
+                "rating": item['rating'] or "",
+                "category_id": category_key,
+                "custom_sid": internal_id
+            })
+    except Exception as e:
+        logger.error(f"Error getting Series for XC API: {e}")
+    
+    return flask.jsonify(series_list)
+
+
+def generate_episode_id(portal_id, series_id, season_num, episode_num):
+    """Generate consistent episode ID for XC API.
+    
+    Format: MD5 hash of "portalId_series_seriesId_sSeasonNum_eEpisodeNum"
+    Returns: Numeric ID as string
+    """
+    import hashlib
+    internal_id = f"{portal_id}_series_{series_id}_s{season_num}_e{episode_num}"
+    return str(int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16))
+
+
+def parse_episode_id(episode_id):
+    """Parse episode ID back to components.
+    
+    Args:
+        episode_id: Either custom_sid string or numeric hash
+        
+    Returns:
+        tuple: (portal_id, series_id, season_num, episode_num) or (None, None, None, None)
+    """
+    if not episode_id:
+        return None, None, None, None
+    
+    episode_str = str(episode_id).strip()
+    
+    # Handle custom format: portalId_series_itemId_sX_eY
+    if '_series_' in episode_str and '_s' in episode_str and '_e' in episode_str:
+        try:
+            # Split by _series_ first
+            parts = episode_str.split('_series_')
+            if len(parts) != 2:
+                return None, None, None, None
+            
+            portal_id = parts[0].strip()
+            rest = parts[1].strip()
+            
+            # Split by _s to separate series_id from season/episode
+            if '_s' not in rest:
+                return None, None, None, None
+            
+            item_parts = rest.split('_s')
+            if len(item_parts) != 2:
+                return None, None, None, None
+            
+            series_id = item_parts[0].strip()
+            season_ep = item_parts[1].strip()  # X_eY format
+            
+            # Split season and episode
+            if '_e' not in season_ep:
+                return None, None, None, None
+            
+            season_ep_parts = season_ep.split('_e')
+            if len(season_ep_parts) != 2:
+                return None, None, None, None
+            
+            season_num = season_ep_parts[0].strip()
+            ep_part = season_ep_parts[1].strip()
+            
+            # Validate season and episode numbers
+            if not season_num.isdigit() or not ep_part.isdigit():
+                return None, None, None, None
+            
+            episode_num = int(ep_part)
+            
+            # Validate all components are non-empty
+            if not portal_id or not series_id or not season_num:
+                return None, None, None, None
+            
+            return portal_id, series_id, season_num, episode_num
+            
+        except (ValueError, IndexError, AttributeError) as e:
+            logger.warning(f"Error parsing episode ID '{episode_id}': {e}")
+            return None, None, None, None
+    
+    # Handle alternative formats if needed (future extensibility)
+    # Could add support for other ID formats here
+    
+    return None, None, None, None
+
+
+def xc_get_series_info(user, series_id):
+    """Get Series info with seasons and episodes for XC API.
+    
+    The series_id can be either:
+    - A numeric hash (from get_series response)
+    - A custom_sid string (portalId_series_itemId)
+    """
+    import hashlib
+    
+    portals = getPortals()
+    allowed_portals = user.get("allowed_portals", [])
+    
+    # Find the series by ID
+    portal_id = None
+    item_id = None
+    series_data = None
+    
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # Try to find by custom_sid first (string format)
+        if '_series_' in str(series_id):
+            logger.debug(f"XC API: Parsing custom series ID format: {series_id}")
+            parts = str(series_id).split('_series_')
+            if len(parts) == 2:
+                portal_id = parts[0]
+                item_id = parts[1]
+                logger.debug(f"XC API: Parsed - Portal: {portal_id}, Item: {item_id}")
+        else:
+            # Numeric format - search through all series to find matching hash
+            logger.debug(f"XC API: Searching for numeric series ID: {series_id}")
+            numeric_id = int(series_id)
+            
+            cursor.execute('''
+                SELECT vi.portal_id, vi.item_id, vi.name, vi.year, 
+                       vi.description, vi.genre, vi.rating, vi.poster_url, vi.cmd
+                FROM vod_items vi
+                INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                    AND (vs.category_key = 'series_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+                WHERE vi.content_type = 'series' AND vs.enabled = 1
+            ''')
+            
+            for item in cursor.fetchall():
+                internal_id = f"{item['portal_id']}_series_{item['item_id']}"
+                check_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+                if check_id == numeric_id:
+                    portal_id = item['portal_id']
+                    item_id = item['item_id']
+                    series_data = dict(item)
+                    break
+        
+        if not portal_id or not item_id:
+            conn.close()
+            return flask.jsonify({"info": {}, "episodes": {}, "error": "Series not found"})
+        
+        if not series_data:
+            cursor.execute('''
+                SELECT portal_id, item_id, name, year, description, genre, rating, poster_url, cmd
+                FROM vod_items WHERE portal_id = ? AND item_id = ? AND content_type = 'series'
+            ''', (portal_id, item_id))
+            row = cursor.fetchone()
+            if row:
+                series_data = dict(row)
+        
+        conn.close()
+        
+        if not series_data:
+            return flask.jsonify({"info": {}, "episodes": {}, "error": "Series data not found"})
+        
+        # Check portal access
+        portal = portals.get(portal_id)
+        if not portal or portal.get("enabled") != "true":
+            return flask.jsonify({"info": {}, "episodes": {}, "error": "Portal unavailable"})
+        if allowed_portals and portal_id not in allowed_portals:
+            return flask.jsonify({"info": {}, "episodes": {}, "error": "Access denied"})
+        
+        # Get series info with episodes from portal
+        url = portal.get("url")
+        macs = list(portal.get("macs", {}).keys())
+        proxy = portal.get("proxy")
+        
+        episodes_by_season = {}
+        
+        # Try to get episodes from portal
+        series_info = None
+        working_mac = None
+        
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if not token:
+                    continue
+                
+                series_info = stb.getSeriesInfo(url, mac, token, item_id, proxy)
+                
+                if series_info and series_info.get("data"):
+                    working_mac = mac
+                    
+                    for season_data in series_info.get("data", []):
+                        season_id = season_data.get("id", "")
+                        season_num = str(season_id).split(":")[1] if ":" in str(season_id) else "1"
+                        episode_nums = season_data.get("series", [])
+                        
+                        if episode_nums:
+                            episodes_by_season[season_num] = []
+                            
+                            for ep_num in episode_nums:
+                                # Create episode entry with consistent ID generation
+                                internal_ep_id = f"{portal_id}_series_{item_id}_s{season_num}_e{ep_num}"
+                                ep_numeric_id = generate_episode_id(portal_id, item_id, season_num, ep_num)
+                                
+                                # Determine container extension from series data
+                                container_ext = "mkv"  # Default to mkv for series
+                                if series_data.get("cmd"):
+                                    # Try to extract extension from cmd or use common video extensions
+                                    cmd_lower = series_data["cmd"].lower()
+                                    if ".ts" in cmd_lower:
+                                        container_ext = "ts"
+                                    elif ".mp4" in cmd_lower:
+                                        container_ext = "mp4"
+                                    elif ".avi" in cmd_lower:
+                                        container_ext = "avi"
+                                
+                                # Build episode title - use episode number format
+                                episode_title = f"Episode {ep_num}"
+                                
+                                # Try to get more detailed episode info if available
+                                season_name = season_data.get("name", f"Season {season_num}")
+                                
+                                episodes_by_season[season_num].append({
+                                    "id": str(ep_numeric_id),  # String format for compatibility
+                                    "episode_num": int(ep_num),
+                                    "title": episode_title,
+                                    "container_extension": container_ext,
+                                    "info": {
+                                        "name": episode_title,
+                                        "season": int(season_num),
+                                        "episode": int(ep_num),
+                                        "duration": season_data.get("time", ""),
+                                        "plot": season_data.get("description", ""),
+                                        "rating": series_data.get("rating", ""),
+                                        "genre": series_data.get("genre", ""),
+                                        "movie_image": series_data.get("poster_url", ""),
+                                        "duration_secs": 0,
+                                        "bitrate": 0,
+                                        "releasedate": series_data.get("year", ""),
+                                        "air_date": ""
+                                    },
+                                    "custom_sid": internal_ep_id,
+                                    "added": "",
+                                    "season": int(season_num),
+                                    "direct_source": ""
+                                })
+                    
+                    break  # Got episodes, stop trying MACs
+                    
+            except Exception as e:
+                logger.debug(f"Series info MAC error: {e}")
+                continue
+        
+        internal_id = f"{portal_id}_series_{item_id}"
+        numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+        
+        if not episodes_by_season:
+            # Still return series info even if no episodes found
+            response = {
+                "info": {
+                    "name": series_data.get("name", ""),
+                    "cover": series_data.get("poster_url", ""),
+                    "plot": series_data.get("description", ""),
+                    "cast": "",
+                    "director": "",
+                    "genre": series_data.get("genre", ""),
+                    "release_date": series_data.get("year", ""),
+                    "rating": series_data.get("rating", ""),
+                    "series_id": numeric_id,
+                    "category_id": series_data.get("category_id", ""),
+                    "backdrop_path": series_data.get("poster_url", ""),
+                    "tmdb_id": "",
+                    "last_modified": "",
+                    "episode_run_time": "",
+                    "youtube_trailer": "",
+                    "seasons_count": 0,
+                    "episodes_count": 0
+                },
+                "episodes": {},
+                "seasons": [],
+                "error": "No episodes available from portal"
+            }
+            return flask.jsonify(response)
+        
+        # Extract additional metadata from series info if available
+        cast = ""
+        director = ""
+        if episodes_by_season:
+            # Try to get cast/director from first season data
+            for season_data in series_info.get("data", []):
+                if season_data.get("actors"):
+                    cast = season_data["actors"]
+                if season_data.get("director"):
+                    director = season_data["director"]
+                break
+        
+        # Calculate total episodes count
+        total_episodes = sum(len(eps) for eps in episodes_by_season.values())
+        
+        # Sort episodes by season number (ascending) for proper display in IPTV apps
+        sorted_seasons = sorted(episodes_by_season.keys(), key=lambda x: int(x))
+        sorted_episodes = {str(s): episodes_by_season[s] for s in sorted_seasons}
+        
+        # Build seasons array with proper structure for XC API
+        seasons_array = []
+        for season_key in sorted_seasons:
+            season_eps = episodes_by_season[season_key]
+            seasons_array.append({
+                "season_number": int(season_key),
+                "name": f"Season {season_key}",
+                "episode_count": len(season_eps),
+                "air_date": series_data.get("year", ""),
+                "cover": series_data.get("poster_url", ""),
+                "cover_big": series_data.get("poster_url", "")
+            })
+        
+        response = {
+            "info": {
+                "name": series_data.get("name", ""),
+                "cover": series_data.get("poster_url", ""),
+                "plot": series_data.get("description", ""),
+                "cast": cast,
+                "director": director,
+                "genre": series_data.get("genre", ""),
+                "release_date": series_data.get("year", ""),
+                "rating": series_data.get("rating", ""),
+                "series_id": numeric_id,
+                "category_id": series_data.get("category_id", ""),
+                "backdrop_path": series_data.get("poster_url", ""),
+                "tmdb_id": "",
+                "last_modified": "",
+                "episode_run_time": "",
+                "youtube_trailer": "",
+                "seasons_count": len(episodes_by_season),
+                "episodes_count": total_episodes
+            },
+            "episodes": sorted_episodes,
+            "seasons": seasons_array
+        }
+        
+        logger.debug(f"Series: {series_data.get('name')} - {len(sorted_seasons)} seasons, {total_episodes} eps")
+        
+        return flask.jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Series info error: {e}")
+        return flask.jsonify({"info": {}, "episodes": {}})
+
+
 @app.route("/xc/<username>/<password>/", methods=["GET"])
 @app.route("/<username>/<password>/", methods=["GET"])
 @xc_auth_only
@@ -4261,23 +6328,16 @@ def xc_stream(username, password, stream_id, extension=None):
     device_id = f"{get_client_ip(request)}_{request.headers.get('User-Agent', 'unknown')}"
     device_id = str(hash(device_id))
     
-    # Check connection limit
     can_connect, message = checkXCConnectionLimit(user_id, device_id)
     if not can_connect:
-        logger.warning(f"XC API: Connection limit reached for user {username}: {message}")
         return message, 429
     
-    # Register connection
     registerXCConnection(user_id, device_id, portal_id, channel_id, get_client_ip(request))
-    logger.info(f"XC API: User {username} connected to {portal_id}/{channel_id} from {get_client_ip(request)}")
     
-    # Stream with cleanup wrapper
     try:
         response = stream_channel(portal_id, channel_id, xc_user=username)
         
-        # Wrap the response to cleanup connection when stream ends
         if hasattr(response, 'response') and hasattr(response.response, '__iter__'):
-            # It's a streaming response, wrap it
             original_iter = response.response
             
             def cleanup_wrapper():
@@ -4285,18 +6345,568 @@ def xc_stream(username, password, stream_id, extension=None):
                     for chunk in original_iter:
                         yield chunk
                 finally:
-                    # Cleanup connection when stream ends
                     unregisterXCConnection(user_id, device_id)
-                    logger.info(f"XC API: User {username} disconnected from {portal_id}/{channel_id}")
             
             response.response = cleanup_wrapper()
         
         return response
     except Exception as e:
-        # Cleanup on error
         unregisterXCConnection(user_id, device_id)
-        logger.error(f"XC API: Stream error for user {username}: {e}")
+        logger.error(f"Stream error: {username} - {e}")
         raise
+
+
+def test_vod_stream_quick(stream_url, proxy=None):
+    """Quick test if VOD stream is accessible (without consuming the full token).
+    
+    Returns True if stream is accessible, False otherwise.
+    Uses Range header to only fetch first few bytes.
+    """
+    import requests
+    
+    try:
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        headers = {
+            "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+            "Range": "bytes=0-1023"  # Only request first 1KB
+        }
+        
+        response = requests.get(
+            stream_url, 
+            headers=headers, 
+            proxies=proxies, 
+            timeout=10,
+            stream=True
+        )
+        
+        # 200 or 206 (Partial Content) means success
+        if response.status_code in [200, 206]:
+            chunk = next(response.iter_content(chunk_size=1024), None)
+            response.close()
+            return chunk and len(chunk) > 0
+        
+        return False
+        
+    except Exception as e:
+        logger.debug(f"Stream test error: {e}")
+        return False
+
+
+def get_vod_stream_settings():
+    """Get VOD streaming settings from database."""
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT key, value FROM vod_settings')
+        settings = {row['key']: row['value'] for row in cursor.fetchall()}
+        conn.close()
+        return settings
+    except:
+        return {'stream_type': 'ffmpeg', 'mac_rotation': 'true'}
+
+
+def ffmpeg_vod_stream(stream_url, proxy=None):
+    """Stream VOD through FFmpeg for better compatibility."""
+    
+    # Build FFmpeg command
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+    ]
+    
+    if proxy:
+        ffmpeg_cmd.extend(["-http_proxy", proxy])
+    
+    ffmpeg_cmd.extend([
+        "-i", stream_url,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-f", "mpegts",
+        "-mpegts_flags", "resend_headers",
+        "pipe:1"
+    ])
+    
+    def generate():
+        process = None
+        try:
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=65536
+            )
+            
+            while True:
+                chunk = process.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+                
+        except GeneratorExit:
+            logger.info("VOD FFmpeg: Client disconnected")
+        except Exception as e:
+            logger.error(f"VOD FFmpeg stream error: {e}")
+        finally:
+            if process:
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except:
+                    process.kill()
+                logger.debug("VOD FFmpeg: Process terminated")
+    
+    return Response(
+        generate(),
+        mimetype="video/mp2t",
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "no-cache",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+def proxy_vod_stream(stream_url, proxy=None):
+    """Proxy a VOD stream through our server.
+    
+    This is needed for IPTV apps that don't follow HTTP redirects properly.
+    """
+    import requests
+    
+    # Check if this is a HEAD request (iOS apps often do HEAD first)
+    is_head_request = request.method == 'HEAD'
+    
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    req_headers = {
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C)",
+    }
+    
+    # Determine content type from URL
+    content_type = "video/mp4"
+    if ".mkv" in stream_url.lower():
+        content_type = "video/x-matroska"
+    elif ".ts" in stream_url.lower():
+        content_type = "video/mp2t"
+    elif ".avi" in stream_url.lower():
+        content_type = "video/x-msvideo"
+    
+    # Build response headers - don't set Content-Length for streaming
+    resp_headers = {
+        "Content-Disposition": "inline",
+        "Cache-Control": "no-cache",
+        "Access-Control-Allow-Origin": "*",
+    }
+    
+    # For HEAD requests, try to get content info
+    if is_head_request:
+        try:
+            head_resp = requests.head(stream_url, headers=req_headers, proxies=proxies, 
+                                      timeout=10, allow_redirects=True)
+            if head_resp.headers.get('Content-Length'):
+                resp_headers["Content-Length"] = head_resp.headers.get('Content-Length')
+            if head_resp.headers.get('Content-Type'):
+                content_type = head_resp.headers.get('Content-Type')
+        except:
+            pass
+        
+        logger.debug(f"VOD proxy: Responding to HEAD request")
+        return Response('', status=200, mimetype=content_type, headers=resp_headers)
+    
+    # For GET requests, stream the content
+    def generate():
+        try:
+            with requests.get(stream_url, headers=req_headers, proxies=proxies, 
+                            stream=True, timeout=60) as r:
+                r.raise_for_status()
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
+        except GeneratorExit:
+            logger.debug("VOD proxy: Client disconnected")
+        except Exception as e:
+            logger.error(f"VOD proxy stream error: {e}")
+    
+    return Response(
+        generate(),
+        mimetype=content_type,
+        headers=resp_headers
+    )
+
+
+@app.route("/movie/<username>/<password>/<stream_id>", methods=["GET", "HEAD"])
+@app.route("/movie/<username>/<password>/<stream_id>.<extension>", methods=["GET", "HEAD"])
+@xc_auth_only
+def xc_movie_stream(username, password, stream_id, extension=None):
+    """XC API movie/VOD stream endpoint."""
+    import hashlib
+    
+    settings = getSettings()
+    if settings.get("xc api enabled") != "true":
+        return flask.jsonify({"user_info": {"auth": 0, "message": "XC API disabled"}}), 403
+    
+    user_id, user = validateXCUser(username, password)
+    if not user:
+        return flask.jsonify({"user_info": {"auth": 0, "message": user_id}}), 401
+    
+    # Parse stream_id to find the VOD
+    portal_id = None
+    item_id = None
+    
+    if '_vod_' in str(stream_id):
+        parts = str(stream_id).split('_vod_')
+        if len(parts) == 2:
+            portal_id = parts[0]
+            item_id = parts[1]
+    elif str(stream_id).isdigit():
+        # Numeric format - search through all VODs
+        numeric_id = int(stream_id)
+        portals = getPortals()
+        allowed_portals = user.get("allowed_portals", [])
+        
+        try:
+            conn = get_vod_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT vi.portal_id, vi.item_id FROM vod_items vi
+                INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                    AND (vs.category_key = 'vod_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+                WHERE vi.content_type = 'vod' AND vs.enabled = 1
+            ''')
+            
+            for item in cursor.fetchall():
+                p_id = item['portal_id']
+                i_id = item['item_id']
+                
+                portal = portals.get(p_id)
+                if not portal or portal.get("enabled") != "true":
+                    continue
+                if allowed_portals and p_id not in allowed_portals:
+                    continue
+                
+                internal_id = f"{p_id}_vod_{i_id}"
+                check_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
+                if check_id == numeric_id:
+                    portal_id = p_id
+                    item_id = i_id
+                    break
+            
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error finding VOD: {e}")
+            return flask.jsonify({
+                "error": "VOD not found",
+                "details": str(e)
+            }), 404
+    else:
+        logger.error(f"XC API: Invalid VOD ID format: {stream_id}")
+        return flask.jsonify({
+            "error": "Invalid VOD ID format",
+            "details": f"Could not parse VOD ID: {stream_id}"
+        }), 400
+    
+    if not portal_id or not item_id:
+        logger.error(f"XC API: VOD not found - stream_id: {stream_id}")
+        return flask.jsonify({
+            "error": "VOD not found",
+            "details": f"Could not find VOD with ID: {stream_id}"
+        }), 404
+    
+    # Get the stream URL for this VOD
+    portals = getPortals()
+    portal = portals.get(portal_id)
+    if not portal:
+        logger.error(f"XC API: Portal {portal_id} not found")
+        return flask.jsonify({
+            "error": "Portal not found",
+            "details": f"Portal {portal_id} is not configured"
+        }), 404
+    
+    url = portal.get("url")
+    macs = list(portal.get("macs", {}).keys())
+    proxy = portal.get("proxy")
+    
+    if not macs:
+        logger.error(f"XC API: No MACs configured for portal {portal_id}")
+        return flask.jsonify({
+            "error": "No MACs configured",
+            "details": f"Portal {portal_id} has no MAC addresses"
+        }), 500
+    
+    # Get the VOD cmd and cached working_macs from database
+    cached_mac = None
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cmd, working_macs FROM vod_items 
+            WHERE portal_id = ? AND item_id = ? AND content_type = 'vod'
+        ''', (portal_id, item_id))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            logger.warning(f"VOD: {item_id} not in DB")
+            return flask.jsonify({"error": "VOD data not found"}), 404
+        
+        vod_cmd = row['cmd']
+        if row['working_macs']:
+            cached_mac = row['working_macs'].split(',')[0]
+    except Exception as e:
+        logger.error(f"VOD DB error: {e}")
+        return flask.jsonify({"error": "Database error"}), 500
+    
+    # Sort MACs to try cached MAC first
+    if cached_mac and cached_mac in macs:
+        macs = [cached_mac] + [m for m in macs if m != cached_mac]
+    
+    failed_macs = []
+    
+    for mac_index, mac in enumerate(macs, 1):
+        try:
+            token = stb.getToken(url, mac, proxy)
+            if not token:
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "No token"})
+                continue
+            
+            link = stb.getVodLink(url, mac, token, vod_cmd, proxy)
+            if not link or not link.startswith(('http://', 'https://')):
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "No link"})
+                continue
+            
+            # Test stream accessibility
+            if not test_vod_stream_quick(link, proxy):
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "458/403"})
+                continue
+            
+            logger.info(f"VOD: {item_id} → MAC {mac_index}/{len(macs)} OK")
+            
+            # Cache working MAC
+            try:
+                cache_conn = get_vod_db_connection()
+                cache_cursor = cache_conn.cursor()
+                cache_cursor.execute('UPDATE vod_items SET working_macs = ? WHERE portal_id = ? AND item_id = ? AND content_type = ?', 
+                    (mac, portal_id, item_id, 'vod'))
+                cache_conn.commit()
+                cache_conn.close()
+            except:
+                pass
+            
+            # Get fresh link for playback
+            fresh_link = stb.getVodLink(url, mac, token, vod_cmd, proxy) or link
+            
+            # Check VOD settings for stream type
+            vod_settings = get_vod_stream_settings()
+            stream_type = vod_settings.get('stream_type', 'ffmpeg')
+            settings = getSettings()
+            
+            if stream_type == 'ffmpeg':
+                return ffmpeg_vod_stream(fresh_link, proxy)
+            elif settings.get("xc vod proxy", "false") == "true":
+                return proxy_vod_stream(fresh_link, proxy)
+            else:
+                return redirect(fresh_link, code=302)
+                    
+        except Exception as e:
+            failed_macs.append({"mac": mac[:15] + "...", "reason": str(e)[:30]})
+            continue
+    
+    # All MACs failed
+    logger.warning(f"VOD: {item_id} FAILED - {len(failed_macs)} MACs tried")
+    return flask.jsonify({"error": "Stream not available", "failed_macs": failed_macs}), 500
+
+
+@app.route("/series/<username>/<password>/<stream_id>", methods=["GET", "HEAD"])
+@app.route("/series/<username>/<password>/<stream_id>.<extension>", methods=["GET", "HEAD"])
+@xc_auth_only
+def xc_series_stream(username, password, stream_id, extension=None):
+    """XC API series stream endpoint for episodes."""
+    import hashlib
+    
+    settings = getSettings()
+    if settings.get("xc api enabled") != "true":
+        return flask.jsonify({"user_info": {"auth": 0, "message": "XC API disabled"}}), 403
+    
+    user_id, user = validateXCUser(username, password)
+    if not user:
+        return flask.jsonify({"user_info": {"auth": 0, "message": user_id}}), 401
+    
+    # Parse stream_id to find the episode
+    portal_id = None
+    series_id = None
+    season_num = None
+    episode_num = None
+    
+    portal_id, series_id, season_num, episode_num = parse_episode_id(stream_id)
+    
+    if not (portal_id and series_id and season_num and episode_num) and str(stream_id).isdigit():
+        # Numeric format - search through all episodes
+        numeric_id = int(stream_id)
+        portals = getPortals()
+        allowed_portals = user.get("allowed_portals", [])
+        
+        try:
+            conn = get_vod_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT vi.portal_id, vi.item_id FROM vod_items vi
+                INNER JOIN vod_selections vs ON vi.portal_id = vs.portal_id 
+                    AND (vs.category_key = 'series_' || vi.category_id OR vs.category_key = vi.content_type || '_' || vi.category_id)
+                WHERE vi.content_type = 'series' AND vs.enabled = 1
+            ''')
+            
+            found = False
+            for item in cursor.fetchall():
+                p_id = item['portal_id']
+                i_id = item['item_id']
+                
+                portal = portals.get(p_id)
+                if not portal or portal.get("enabled") != "true":
+                    continue
+                if allowed_portals and p_id not in allowed_portals:
+                    continue
+                
+                url = portal.get("url")
+                macs = list(portal.get("macs", {}).keys())
+                proxy = portal.get("proxy")
+                
+                for mac in macs:
+                    try:
+                        token = stb.getToken(url, mac, proxy)
+                        if not token:
+                            continue
+                        
+                        series_info = stb.getSeriesInfo(url, mac, token, i_id, proxy)
+                        if series_info and series_info.get("data"):
+                            for season_data in series_info.get("data", []):
+                                s_id = season_data.get("id", "")
+                                s_num = str(s_id).split(":")[1] if ":" in str(s_id) else "1"
+                                
+                                for ep_num in season_data.get("series", []):
+                                    check_id = int(generate_episode_id(p_id, i_id, s_num, ep_num))
+                                    if check_id == numeric_id:
+                                        portal_id, series_id, season_num, episode_num = p_id, i_id, s_num, ep_num
+                                        found = True
+                                        break
+                                if found:
+                                    break
+                        if found:
+                            break
+                    except:
+                        continue
+                    if found:
+                        break
+                if found:
+                    break
+            conn.close()
+        except Exception as e:
+            logger.error(f"Series search error: {e}")
+            return "Episode not found", 404
+    elif not (portal_id and series_id and season_num and episode_num):
+        return "Invalid episode ID", 400
+    
+    if not portal_id or not series_id or episode_num is None:
+        return flask.jsonify({"error": "Episode not found"}), 404
+    
+    portals = getPortals()
+    portal = portals.get(portal_id)
+    if not portal:
+        return flask.jsonify({"error": "Portal not found"}), 404
+    
+    url = portal.get("url")
+    macs = list(portal.get("macs", {}).keys())
+    proxy = portal.get("proxy")
+    
+    if not macs:
+        return flask.jsonify({"error": "No MACs configured"}), 500
+    
+    # Get cached working MAC from database
+    cached_mac = None
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        base_id = str(series_id).split(':')[0] if ':' in str(series_id) else str(series_id)
+        
+        cursor.execute('SELECT working_macs FROM vod_items WHERE portal_id = ? AND item_id LIKE ? AND content_type = ?', 
+            (portal_id, f"%{base_id}%", 'series'))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row['working_macs']:
+            cached_mac = row['working_macs'].split(',')[0]
+    except:
+        pass
+    
+    # Sort MACs to try cached MAC first
+    if cached_mac and cached_mac in macs:
+        macs = [cached_mac] + [m for m in macs if m != cached_mac]
+    
+    failed_macs = []
+    
+    for mac_index, mac in enumerate(macs, 1):
+        try:
+            token = stb.getToken(url, mac, proxy)
+            if not token:
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "No token"})
+                continue
+            
+            # Build series cmd (Base64-encoded JSON)
+            import base64
+            import json as json_module
+            
+            base_series_id = str(series_id).split(':')[0] if ':' in str(series_id) else str(series_id)
+            cmd_data = {"series_id": base_series_id, "season_num": int(season_num), "type": "series"}
+            current_cmd = base64.b64encode(json_module.dumps(cmd_data).encode()).decode()
+            
+            link = stb.getSeriesLink(url, mac, token, current_cmd, episode_num, season_num, episode_num, proxy)
+            if not link or not link.startswith(('http://', 'https://')):
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "No link"})
+                continue
+            
+            # Test stream accessibility
+            if not test_vod_stream_quick(link, proxy):
+                failed_macs.append({"mac": mac[:15] + "...", "reason": "458/403"})
+                continue
+            
+            logger.info(f"Series: S{season_num}E{episode_num} → MAC {mac_index}/{len(macs)} OK")
+            
+            # Cache working MAC
+            try:
+                cache_conn = get_vod_db_connection()
+                cache_cursor = cache_conn.cursor()
+                cache_cursor.execute('UPDATE vod_items SET working_macs = ? WHERE portal_id = ? AND item_id LIKE ? AND content_type = ?', 
+                    (mac, portal_id, f"%{base_series_id}%", 'series'))
+                cache_conn.commit()
+                cache_conn.close()
+            except:
+                pass
+            
+            # Get fresh link for playback
+            fresh_link = stb.getSeriesLink(url, mac, token, current_cmd, episode_num, season_num, episode_num, proxy) or link
+            
+            # Check VOD settings for stream type
+            vod_settings = get_vod_stream_settings()
+            stream_type = vod_settings.get('stream_type', 'ffmpeg')
+            
+            if stream_type == 'ffmpeg':
+                return ffmpeg_vod_stream(fresh_link, proxy)
+            elif settings.get("xc vod proxy", "false") == "true":
+                return proxy_vod_stream(fresh_link, proxy)
+            else:
+                return redirect(fresh_link, code=302)
+                    
+        except Exception as e:
+            failed_macs.append({"mac": mac[:15] + "...", "reason": str(e)[:30]})
+            continue
+    
+    # All MACs failed
+    logger.warning(f"Series: S{season_num}E{episode_num} FAILED - {len(failed_macs)} MACs tried")
+    return flask.jsonify({"error": "Stream not available", "failed_macs": failed_macs}), 500
 
 
 @app.route("/xmltv.php", methods=["GET"])
@@ -4304,7 +6914,6 @@ def xc_stream(username, password, stream_id, extension=None):
 def xc_xmltv():
     """XC API XMLTV endpoint."""
     global cached_xmltv, last_updated
-    logger.info("XC API: XMLTV Guide Requested")
     
     # Refresh cache if needed
     if cached_xmltv is None or (time.time() - last_updated) > 900:
@@ -4834,6 +7443,53 @@ def refresh_lineup_endpoint():
         logger.error(f"Error refreshing lineup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/logs/recent", methods=["GET"])
+@authorise
+def get_recent_logs():
+    """Get recent log entries for live log display."""
+    try:
+        # Use existing log() function to get log content
+        log_content = log()
+        
+        # Split into lines and get last 50
+        lines = log_content.split('\n')
+        recent_lines = lines[-50:] if len(lines) > 50 else lines
+        
+        logs = []
+        for line in recent_lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Parse log format: "2024-01-01 12:00:00,123 [LEVEL] message"
+            try:
+                if ' [' in line and '] ' in line:
+                    timestamp_part = line.split(' [')[0]
+                    level_part = line.split(' [')[1].split('] ')[0]
+                    message_part = '] '.join(line.split(' [')[1].split('] ')[1:])
+                    
+                    logs.append({
+                        'timestamp': timestamp_part,
+                        'level': level_part,
+                        'message': message_part
+                    })
+                else:
+                    # Fallback for lines that don't match format
+                    logs.append({
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'INFO',
+                        'message': line
+                    })
+            except:
+                # Skip malformed lines
+                continue
+        
+        return jsonify(logs)
+        
+    except Exception as e:
+        logger.error(f"Error reading recent logs: {e}")
+        return jsonify([])
+
 def start_refresh():
     threading.Thread(target=refresh_lineup, daemon=True).start()
     threading.Thread(target=refresh_xmltv, daemon=True).start()
@@ -4843,6 +7499,9 @@ if __name__ == "__main__":
     
     # Initialize the database
     init_db()
+    
+    # Initialize the VOD database
+    init_vod_db()
     
     # Check if database has any channels
     conn = get_db_connection()
