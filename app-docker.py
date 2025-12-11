@@ -4132,7 +4132,7 @@ def _playlist(portal_id=None):
     
     current_host = request.host or "0.0.0.0:8001"
     
-    # If no portal_id is specified,    # Only cache the full playlist, not portal-specific ones
+    # If no portal_id is specified, use the cached playlist (all portals)
     if portal_id is None:
         if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
             logger.info(f"Regenerating full playlist due to host change: {last_playlist_host} -> {current_host}")
@@ -4141,7 +4141,10 @@ def _playlist(portal_id=None):
         return Response(cached_playlist, mimetype="text/plain")
     else:
         # Generate a playlist for the specific portal
-        return Response(generate_playlist(portal_id), mimetype="text/plain")
+        playlist_content = generate_playlist(portal_id)
+        if not playlist_content or len(playlist_content.strip()) <= len("#EXTM3U\n"):
+            logger.warning(f"No channels found for portal {portal_id} or playlist generation failed")
+        return Response(playlist_content, mimetype="text/plain")
 
 @app.route("/update_playlistm3u", methods=["POST"])
 @authorise
@@ -4204,7 +4207,7 @@ def generate_playlist(portal_id=None):
     # Build the SQL query
     query = '''
         SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id
+               number, custom_number, custom_epg_id, epg_id
         FROM channels 
         WHERE enabled = 1
     '''
@@ -4239,7 +4242,11 @@ def generate_playlist(portal_id=None):
         channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
         genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
-        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else (channel.get('epg_id') or channel_name)
+        
+        # Skip if we don't have a valid channel name
+        if not channel_name or channel_name == "Unknown Channel":
+            continue
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
