@@ -4120,23 +4120,28 @@ def xc_users_kick():
 @app.route("/playlist.m3u", methods=["GET"])
 def playlist():
     settings = getSettings()
+    portal_id = request.args.get('portal_id')
     if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _playlist())()
-    return _playlist()
+        return authorise(lambda: _playlist(portal_id))()
+    return _playlist(portal_id)
 
-def _playlist():
+def _playlist(portal_id=None):
     global cached_playlist, last_playlist_host
     
-    logger.info("Playlist Requested")
+    logger.info(f"Playlist Requested for portal: {portal_id or 'all'}")
     
     current_host = request.host or "0.0.0.0:8001"
     
-    if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
-        logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
-        last_playlist_host = current_host
-        generate_playlist()
-
-    return Response(cached_playlist, mimetype="text/plain")
+    # If no portal_id is specified,    # Only cache the full playlist, not portal-specific ones
+    if portal_id is None:
+        if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
+            logger.info(f"Regenerating full playlist due to host change: {last_playlist_host} -> {current_host}")
+            last_playlist_host = current_host
+            generate_playlist()
+        return Response(cached_playlist, mimetype="text/plain")
+    else:
+        # Generate a playlist for the specific portal
+        return Response(generate_playlist(portal_id), mimetype="text/plain")
 
 @app.route("/update_playlistm3u", methods=["POST"])
 @authorise
@@ -4145,7 +4150,14 @@ def update_playlistm3u():
         # First, clean up orphaned channels from deleted portals
         cleanup_orphaned_channels()
         
-        # Then generate the playlist
+        # Get portal_id from request if provided
+        portal_id = request.args.get('portal_id')
+        
+        # If portal_id is provided, generate and return the specific playlist
+        if portal_id:
+            return Response(generate_playlist(portal_id), mimetype="text/plain")
+        
+        # Otherwise, update the main playlist
         generate_playlist()
         logger.info("Playlist updated via dashboard")
         return Response("Playlist updated successfully", status=200)
@@ -4181,24 +4193,34 @@ def cleanup_orphaned_channels():
     except Exception as e:
         logger.error(f"Error cleaning up orphaned channels: {e}")
 
-def generate_playlist():
+def generate_playlist(portal_id=None):
     global cached_playlist
-    logger.info("Generating playlist.m3u from database...")
+    logger.info(f"Generating playlist.m3u for portal: {portal_id or 'all'}")
 
     playlist_host = request.host or "0.0.0.0:8001"
     
     channels = []
     
-    # Get enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
+    # Build the SQL query
+    query = '''
         SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
                number, custom_number, custom_epg_id
         FROM channels 
         WHERE enabled = 1
-        ORDER BY portal, channel_id
-    ''')
+    '''
+    
+    # Add portal filter if specified
+    params = []
+    if portal_id:
+        query += ' AND portal = ?'
+        params.append(portal_id)
+    
+    query += ' ORDER BY portal, channel_id'
+    
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
     db_channels = cursor.fetchall()
     conn.close()
     
