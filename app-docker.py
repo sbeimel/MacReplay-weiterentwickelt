@@ -4207,7 +4207,7 @@ def generate_playlist(portal_id=None):
     # Build the SQL query
     query = '''
         SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id, epg_id
+               number, custom_number, custom_epg_id
         FROM channels 
         WHERE enabled = 1
     '''
