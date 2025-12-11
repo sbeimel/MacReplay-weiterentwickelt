@@ -4120,31 +4120,23 @@ def xc_users_kick():
 @app.route("/playlist.m3u", methods=["GET"])
 def playlist():
     settings = getSettings()
-    portal_id = request.args.get('portal_id')
     if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _playlist(portal_id))()
-    return _playlist(portal_id)
+        return authorise(lambda: _playlist())()
+    return _playlist()
 
-def _playlist(portal_id=None):
+def _playlist():
     global cached_playlist, last_playlist_host
     
-    logger.info(f"Playlist Requested for portal: {portal_id or 'all'}")
+    logger.info("Playlist Requested")
     
     current_host = request.host or "0.0.0.0:8001"
     
-    # If no portal_id is specified, use the cached playlist (all portals)
-    if portal_id is None:
-        if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
-            logger.info(f"Regenerating full playlist due to host change: {last_playlist_host} -> {current_host}")
-            last_playlist_host = current_host
-            generate_playlist()
-        return Response(cached_playlist, mimetype="text/plain")
-    else:
-        # Generate a playlist for the specific portal
-        playlist_content = generate_playlist(portal_id)
-        if not playlist_content or len(playlist_content.strip()) <= len("#EXTM3U\n"):
-            logger.warning(f"No channels found for portal {portal_id} or playlist generation failed")
-        return Response(playlist_content, mimetype="text/plain")
+    if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
+        logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
+        last_playlist_host = current_host
+        generate_playlist()
+
+    return Response(cached_playlist, mimetype="text/plain")
 
 @app.route("/update_playlistm3u", methods=["POST"])
 @authorise
@@ -4153,14 +4145,7 @@ def update_playlistm3u():
         # First, clean up orphaned channels from deleted portals
         cleanup_orphaned_channels()
         
-        # Get portal_id from request if provided
-        portal_id = request.args.get('portal_id')
-        
-        # If portal_id is provided, generate and return the specific playlist
-        if portal_id:
-            return Response(generate_playlist(portal_id), mimetype="text/plain")
-        
-        # Otherwise, update the main playlist
+        # Then generate the playlist
         generate_playlist()
         logger.info("Playlist updated via dashboard")
         return Response("Playlist updated successfully", status=200)
@@ -4196,34 +4181,24 @@ def cleanup_orphaned_channels():
     except Exception as e:
         logger.error(f"Error cleaning up orphaned channels: {e}")
 
-def generate_playlist(portal_id=None):
+def generate_playlist():
     global cached_playlist
-    logger.info(f"Generating playlist.m3u for portal: {portal_id or 'all'}")
+    logger.info("Generating playlist.m3u from database...")
 
     playlist_host = request.host or "0.0.0.0:8001"
     
     channels = []
     
-    # Build the SQL query
-    query = '''
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
         SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
                number, custom_number, custom_epg_id
         FROM channels 
         WHERE enabled = 1
-    '''
-    
-    # Add portal filter if specified
-    params = []
-    if portal_id:
-        query += ' AND portal = ?'
-        params.append(portal_id)
-    
-    query += ' ORDER BY portal, channel_id'
-    
-    # Get enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(query, params)
+        ORDER BY portal, channel_id
+    ''')
     db_channels = cursor.fetchall()
     conn.close()
     
@@ -4242,11 +4217,7 @@ def generate_playlist(portal_id=None):
         channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
         genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
-        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else (channel.get('epg_id') or channel_name)
-        
-        # Skip if we don't have a valid channel name
-        if not channel_name or channel_name == "Unknown Channel":
-            continue
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -4293,13 +4264,9 @@ def generate_playlist(portal_id=None):
     playlist = "#EXTM3U \n"
     playlist = playlist + "\n".join(channels)
 
-    # Only cache the full playlist, not portal-specific ones
-    if portal_id is None:
-        cached_playlist = playlist
+    cached_playlist = playlist
+    logger.info("Playlist generated and cached.")
     
-    logger.info(f"Generated playlist with {len(channels)} channels")
-    return playlist
-
 def normalize_channel_name(name):
     """Normalize channel name for better matching."""
     import re
