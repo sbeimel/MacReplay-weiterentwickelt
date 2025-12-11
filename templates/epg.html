@@ -207,6 +207,11 @@
         border-color: #10b981;
     }
     
+    .category-card-active {
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+    }
+    
     .category-name {
         font-weight: 600;
         font-size: 0.9rem;
@@ -252,12 +257,15 @@
         
         <!-- EPG Refresh Progress -->
         <div id="epgRefreshProgress" class="alert alert-info mt-3" style="display: none;">
-            <div class="d-flex align-items-center">
-                <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+            <div class="d-flex align-items-start">
+                <div class="spinner-border spinner-border-sm me-3 mt-1" role="status"></div>
                 <div class="flex-fill">
-                    <strong id="epgProgressTitle">Refreshing EPG...</strong>
-                    <div class="text-muted small" id="epgProgressDetails">Starting...</div>
-                    <div class="progress mt-2" style="height: 4px;">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong id="epgProgressTitle">Refreshing EPG...</strong>
+                        <span class="badge bg-info-lt" id="epgProgressPercent">0%</span>
+                    </div>
+                    <div class="text-muted small mb-2" id="epgProgressDetails">Starting...</div>
+                    <div class="progress" style="height: 6px;">
                         <div class="progress-bar progress-bar-striped progress-bar-animated" id="epgProgressBar" style="width: 0%"></div>
                     </div>
                 </div>
@@ -566,8 +574,17 @@ function showCategoriesView() {
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
     `;
     
-    // Build content
-    const sortedGenres = Object.keys(categoriesData).sort();
+    // Build content - sort genres with EPG channels first
+    const allGenres = Object.keys(categoriesData);
+    const sortedGenres = allGenres.sort((a, b) => {
+        // Count channels with EPG in each genre
+        const aWithEPG = categoriesData[a].filter(ch => ch.has_portal_epg || (ch.epg_id && ch.epg_id.trim() !== '')).length;
+        const bWithEPG = categoriesData[b].filter(ch => ch.has_portal_epg || (ch.epg_id && ch.epg_id.trim() !== '')).length;
+        // Sort by EPG count descending, then alphabetically
+        if (aWithEPG !== bWithEPG) return bWithEPG - aWithEPG;
+        return a.localeCompare(b);
+    });
+    
     let html = `
         <div class="channel-filter-sticky">
             <div class="row g-3 align-items-center">
@@ -590,10 +607,12 @@ function showCategoriesView() {
     sortedGenres.forEach(genre => {
         const genreChannels = categoriesData[genre];
         const totalCount = genreChannels.length;
+        const genreWithEPG = genreChannels.filter(ch => ch.has_portal_epg || (ch.epg_id && ch.epg_id.trim() !== '')).length;
+        const hasEPGClass = genreWithEPG > 0 ? 'category-card-active' : '';
         html += `
-            <div class="category-card" onclick="showChannelsView('${escapeHtml(genre).replace(/'/g, "\\'")}')">
+            <div class="category-card ${hasEPGClass}" onclick="showChannelsView('${escapeHtml(genre).replace(/'/g, "\\'")}')">
                 <div class="category-name" title="${escapeHtml(genre)}">${escapeHtml(genre)}</div>
-                <div class="category-count">${totalCount}/${totalCount}</div>
+                <div class="category-count">${genreWithEPG}/${totalCount} EPG</div>
             </div>
         `;
     });
@@ -861,6 +880,18 @@ function startEPGProgressPolling() {
     document.getElementById('epgRefreshProgress').style.display = 'block';
     document.getElementById('refreshEPGBtn').disabled = true;
     
+    // Reset progress display
+    document.getElementById('epgProgressTitle').textContent = 'Refreshing EPG...';
+    document.getElementById('epgProgressDetails').textContent = 'Starting...';
+    document.getElementById('epgProgressBar').style.width = '0%';
+    document.getElementById('epgProgressPercent').textContent = '0%';
+    document.getElementById('epgProgressBar').classList.remove('bg-success');
+    document.getElementById('epgProgressBar').classList.add('progress-bar-animated');
+    
+    // Show spinner
+    const spinner = document.querySelector('#epgRefreshProgress .spinner-border');
+    if (spinner) spinner.style.display = 'block';
+    
     if (epgProgressInterval) clearInterval(epgProgressInterval);
     
     epgProgressInterval = setInterval(pollEPGProgress, 1000);
@@ -877,22 +908,38 @@ function pollEPGProgress() {
                 epgProgressInterval = null;
                 
                 document.getElementById('epgProgressTitle').textContent = 'EPG Refresh Complete!';
-                document.getElementById('epgProgressDetails').textContent = 'Reloading portals...';
+                document.getElementById('epgProgressDetails').textContent = data.current_step || 'Reloading portals...';
                 document.getElementById('epgProgressBar').style.width = '100%';
+                document.getElementById('epgProgressPercent').textContent = '100%';
                 document.getElementById('epgProgressBar').classList.remove('progress-bar-animated');
+                document.getElementById('epgProgressBar').classList.add('bg-success');
+                
+                // Hide spinner
+                const spinner = document.querySelector('#epgRefreshProgress .spinner-border');
+                if (spinner) spinner.style.display = 'none';
                 
                 setTimeout(() => {
                     document.getElementById('epgRefreshProgress').style.display = 'none';
                     document.getElementById('refreshEPGBtn').disabled = false;
                     document.getElementById('epgProgressBar').classList.add('progress-bar-animated');
+                    document.getElementById('epgProgressBar').classList.remove('bg-success');
+                    if (spinner) spinner.style.display = 'block';
                     loadPortals();
-                }, 2000);
+                }, 3000);
             } else {
                 // Update progress
                 const percent = data.portals_total > 0 ? Math.round((data.portals_done / data.portals_total) * 100) : 0;
-                document.getElementById('epgProgressTitle').textContent = `Refreshing EPG... (${data.portals_done}/${data.portals_total})`;
+                
+                // Show portal name if available
+                let titleText = `Refreshing EPG... (${data.portals_done}/${data.portals_total} portals)`;
+                if (data.current_portal) {
+                    titleText = `Refreshing EPG: ${data.current_portal} (${data.portals_done}/${data.portals_total})`;
+                }
+                
+                document.getElementById('epgProgressTitle').textContent = titleText;
                 document.getElementById('epgProgressDetails').textContent = data.current_step || 'Processing...';
                 document.getElementById('epgProgressBar').style.width = percent + '%';
+                document.getElementById('epgProgressPercent').textContent = percent + '%';
             }
         })
         .catch(err => {

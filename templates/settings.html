@@ -225,7 +225,14 @@
                                     <input class="form-check-input" type="checkbox" name="enable security" value="true" {{ 'checked' if settings['enable security'] == 'true' }}>
                                     <span class="form-check-label">Require login for web interface</span>
                                 </label>
-                                <small class="form-hint text-muted">XC API is not affected by this setting</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="public playlist access" value="true" {{ 'checked' if settings.get('public playlist access', 'true') == 'true' }}>
+                                    <span class="form-check-label">Allow public access to /playlist.m3u and /xmltv</span>
+                                </label>
+                                <small class="form-hint">When enabled, playlist and EPG can be accessed without login</small>
                             </div>
                             
                             <div class="mb-3">

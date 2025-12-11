@@ -243,9 +243,29 @@
             </div>
             <div class="col-auto">
                 <div class="btn-list">
+                    <button class="btn btn-outline-secondary" onclick="openBulkEditModal()">
+                        <i class="ti ti-replace me-2"></i>Bulk Edit
+                    </button>
                     <button class="btn btn-primary" onclick="refreshChannels()" id="refreshBtn">
                         <i class="ti ti-refresh me-2"></i>Refresh
                     </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Channel Refresh Progress -->
+        <div id="channelRefreshProgress" class="alert alert-info mt-3" style="display: none;">
+            <div class="d-flex align-items-start">
+                <div class="spinner-border spinner-border-sm me-3 mt-1" role="status"></div>
+                <div class="flex-fill">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong id="channelProgressTitle">Refreshing Channels...</strong>
+                        <span class="badge bg-info-lt" id="channelProgressPercent">0%</span>
+                    </div>
+                    <div class="text-muted small mb-2" id="channelProgressDetails">Starting...</div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="channelProgressBar" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -309,6 +329,158 @@
     </div>
 </div>
 
+<!-- Bulk Edit Modal -->
+<div class="modal modal-blur fade" id="bulkEditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title"><i class="ti ti-replace me-2"></i>Bulk Search & Replace</h3>
+                    <div class="text-muted small">Clean up channel names and genres across all portals</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Quick Presets -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Quick Presets</label>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('vip')">
+                                Remove "VIP"
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('emoji')">
+                                Remove Emojis
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('country')">
+                                Remove Country Codes
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('brackets')">
+                                Remove [Brackets]
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('separators')">
+                                Clean Separators
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('whitespace')">
+                                Fix Spacing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Rules -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="card-title mb-0"><i class="ti ti-list me-2"></i>Custom Rules</h4>
+                        <small class="text-muted" id="rulesInfo">Rules are automatically saved</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="bulkRulesList">
+                            <!-- Rules will be added here -->
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-8">
+                                <button type="button" class="btn btn-outline-primary btn-sm w-100" onclick="addBulkRule()">
+                                    <i class="ti ti-plus me-1"></i>Add Rule
+                                </button>
+                            </div>
+                            <div class="col-4">
+                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="clearSavedRules()" title="Clear saved rules from database">
+                                    <i class="ti ti-trash me-1"></i>Clear Saved
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title"><i class="ti ti-settings me-2"></i>Options</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bulkEditNames" checked>
+                                    <span class="form-check-label">Apply to Channel Names</span>
+                                </label>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bulkEditGenres">
+                                    <span class="form-check-label">Apply to Genres</span>
+                                </label>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bulkCaseSensitive">
+                                    <span class="form-check-label">Case Sensitive</span>
+                                </label>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bulkUseRegex">
+                                    <span class="form-check-label">Use Regular Expressions</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="alert alert-info mt-3" id="bulkPreview" style="display: none;">
+                    <div class="d-flex align-items-center">
+                        <i class="ti ti-info-circle me-2"></i>
+                        <div>
+                            <strong>Preview:</strong>
+                            <div id="bulkPreviewText" class="small mt-1"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- History Info -->
+                <div class="alert alert-warning mt-3" id="bulkHistoryInfo" style="display: none;">
+                    <div class="d-flex align-items-center">
+                        <i class="ti ti-history me-2"></i>
+                        <div class="flex-fill">
+                            <strong>Edit History:</strong>
+                            <div id="bulkHistoryText" class="small mt-1"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="btn-group me-auto">
+                    <button type="button" class="btn btn-outline-warning" onclick="undoBulkEdit()" id="undoBtn" disabled>
+                        <i class="ti ti-arrow-back-up me-1"></i>Undo Last
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" onclick="resetAllCustomizations()">
+                        <i class="ti ti-refresh me-1"></i>Reset All
+                    </button>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" onclick="previewBulkEdit()">
+                    <i class="ti ti-eye me-1"></i>Preview
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="applyBulkEdit()">
+                    <i class="ti ti-check me-1"></i>Apply Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Video Modal -->
 <div class="modal modal-blur fade" id="videoModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -341,9 +513,11 @@ let currentCategoryChannels = [];
 let currentCategoryName = '';
 let showAllCategories = false; // Toggle for showing all vs active only
 let edits = { enabled: [], name: [], number: [], epgId: [] };
+let channelRefreshInterval = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadPortals();
+    checkChannelRefreshProgress(); // Check if refresh is already running
 });
 
 function loadPortals() {
@@ -469,6 +643,14 @@ function showCategoriesView(portalChannels) {
     // Decide which genres to show based on toggle
     const genresToShow = showAllCategories ? allGenres : activeGenres;
     
+    // Sort genres: active ones first, then alphabetically
+    const sortedGenres = [...genresToShow].sort((a, b) => {
+        const aActive = categoriesData[a].some(ch => ch.enabled) ? 1 : 0;
+        const bActive = categoriesData[b].some(ch => ch.enabled) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive; // Active first
+        return a.localeCompare(b); // Then alphabetically
+    });
+    
     document.getElementById('modalTitle').textContent = `${currentPortalName} - Channel Editor`;
     document.getElementById('modalStats').textContent = `${enabledCount} channels enabled • ${activeGenres.length} active categories`;
     
@@ -500,7 +682,7 @@ function showCategoriesView(portalChannels) {
         <div class="category-grid">
     `;
     
-    genresToShow.forEach(genre => {
+    sortedGenres.forEach(genre => {
         const genreChannels = categoriesData[genre];
         const enabled = genreChannels.filter(c => c.enabled).length;
         const isActive = enabled > 0;
@@ -731,20 +913,117 @@ function saveChannelChanges() {
 function refreshChannels() {
     showConfirm('Refresh channel list from portals? This may take a few minutes.', 'Refresh Channels', function() {
         const btn = document.getElementById('refreshBtn');
-        const origHtml = btn.innerHTML;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Refreshing...';
         btn.disabled = true;
         
         fetch('/editor/refresh', { method: 'POST', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
-                showAlert('Refreshed ' + data.total + ' channels!', 'Success', 'success');
-                loadPortals();
+                if (data.success) {
+                    startChannelRefreshPolling();
+                } else {
+                    showAlert(data.error || 'Failed to start channel refresh', 'Error', 'danger');
+                    btn.disabled = false;
+                }
             })
-            .catch(err => showAlert('Error: ' + err, 'Error', 'danger'))
-            .finally(() => { btn.innerHTML = origHtml; btn.disabled = false; });
+            .catch(err => {
+                showAlert('Error starting channel refresh: ' + err, 'Error', 'danger');
+                btn.disabled = false;
+            });
     });
 }
+
+function checkChannelRefreshProgress() {
+    fetch('/editor/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.running) {
+                startChannelRefreshPolling();
+            }
+        })
+        .catch(err => console.error('Error checking channel refresh progress:', err));
+}
+
+function startChannelRefreshPolling() {
+    document.getElementById('channelRefreshProgress').style.display = 'block';
+    document.getElementById('refreshBtn').disabled = true;
+    
+    // Reset progress display
+    document.getElementById('channelProgressTitle').textContent = 'Refreshing Channels...';
+    document.getElementById('channelProgressDetails').textContent = 'Starting...';
+    document.getElementById('channelProgressBar').style.width = '0%';
+    document.getElementById('channelProgressPercent').textContent = '0%';
+    document.getElementById('channelProgressBar').classList.remove('bg-success');
+    document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
+    
+    // Show spinner
+    const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
+    if (spinner) spinner.style.display = 'block';
+    
+    if (channelRefreshInterval) clearInterval(channelRefreshInterval);
+    
+    channelRefreshInterval = setInterval(pollChannelRefreshProgress, 1000);
+    pollChannelRefreshProgress(); // Call immediately
+}
+
+function pollChannelRefreshProgress() {
+    fetch('/editor/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (!data.running) {
+                // Refresh completed
+                clearInterval(channelRefreshInterval);
+                channelRefreshInterval = null;
+                
+                document.getElementById('channelProgressTitle').textContent = 'Channel Refresh Complete!';
+                document.getElementById('channelProgressDetails').textContent = data.current_step || 'Reloading portals...';
+                document.getElementById('channelProgressBar').style.width = '100%';
+                document.getElementById('channelProgressPercent').textContent = '100%';
+                document.getElementById('channelProgressBar').classList.remove('progress-bar-animated');
+                document.getElementById('channelProgressBar').classList.add('bg-success');
+                
+                // Hide spinner
+                const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
+                if (spinner) spinner.style.display = 'none';
+                
+                setTimeout(() => {
+                    document.getElementById('channelRefreshProgress').style.display = 'none';
+                    document.getElementById('refreshBtn').disabled = false;
+                    document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
+                    document.getElementById('channelProgressBar').classList.remove('bg-success');
+                    if (spinner) spinner.style.display = 'block';
+                    loadPortals();
+                }, 3000);
+            } else {
+                // Update progress
+                const percent = data.portals_total > 0 ? Math.round((data.portals_done / data.portals_total) * 100) : 0;
+                
+                // Show portal name if available
+                let titleText = `Refreshing Channels... (${data.portals_done}/${data.portals_total} portals)`;
+                if (data.current_portal) {
+                    titleText = `Refreshing: ${data.current_portal} (${data.portals_done}/${data.portals_total})`;
+                }
+                
+                document.getElementById('channelProgressTitle').textContent = titleText;
+                document.getElementById('channelProgressDetails').textContent = data.current_step || 'Processing...';
+                document.getElementById('channelProgressBar').style.width = percent + '%';
+                document.getElementById('channelProgressPercent').textContent = percent + '%';
+            }
+        })
+        .catch(err => {
+            console.error('Error polling channel refresh progress:', err);
+            clearInterval(channelRefreshInterval);
+            channelRefreshInterval = null;
+            document.getElementById('channelRefreshProgress').style.display = 'none';
+            document.getElementById('refreshBtn').disabled = false;
+        });
+}
+
+// Cleanup interval on page unload
+window.addEventListener('beforeunload', function() {
+    if (channelRefreshInterval) {
+        clearInterval(channelRefreshInterval);
+    }
+});
 
 // Video player
 let plyrPlayer = null;
@@ -799,6 +1078,442 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Bulk Edit Functions
+let bulkRules = [];
+let bulkEditSettings = {
+    applyToNames: true,
+    applyToGenres: false,
+    caseSensitive: false,
+    useRegex: false
+};
+
+function openBulkEditModal() {
+    // Only clear preview
+    document.getElementById('bulkPreview').style.display = 'none';
+    
+    // Restore saved settings
+    document.getElementById('bulkEditNames').checked = bulkEditSettings.applyToNames;
+    document.getElementById('bulkEditGenres').checked = bulkEditSettings.applyToGenres;
+    document.getElementById('bulkCaseSensitive').checked = bulkEditSettings.caseSensitive;
+    document.getElementById('bulkUseRegex').checked = bulkEditSettings.useRegex;
+    
+    // Load saved rules if no rules are currently loaded
+    if (bulkRules.length === 0) {
+        loadSavedBulkRules();
+    }
+    
+    // Load history and update UI
+    loadBulkEditHistory();
+    
+    const modal = new bootstrap.Modal(document.getElementById('bulkEditModal'));
+    modal.show();
+}
+
+function clearBulkRules() {
+    bulkRules.forEach(id => document.getElementById(`rule-${id}`)?.remove());
+    bulkRules = [];
+}
+
+function loadSavedBulkRules() {
+    fetch('/editor/bulk-edit/saved-rules', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.rules && data.rules.length > 0) {
+                // Load the most recent rules (limit to 10 to avoid clutter)
+                const recentRules = data.rules.slice(0, 10);
+                recentRules.forEach(rule => {
+                    addBulkRule(rule.search, rule.replace);
+                });
+                
+                // Update info display
+                const rulesInfo = document.getElementById('rulesInfo');
+                if (rulesInfo) {
+                    rulesInfo.textContent = `Loaded ${recentRules.length} saved rules`;
+                }
+                
+                console.log(`Loaded ${recentRules.length} saved rules`);
+            } else {
+                const rulesInfo = document.getElementById('rulesInfo');
+                if (rulesInfo) {
+                    rulesInfo.textContent = 'No saved rules found';
+                }
+            }
+        })
+        .catch(err => {
+            console.error('Error loading saved rules:', err);
+            const rulesInfo = document.getElementById('rulesInfo');
+            if (rulesInfo) {
+                rulesInfo.textContent = 'Error loading saved rules';
+            }
+        });
+}
+
+function clearSavedRules() {
+    showConfirm(
+        'Clear all saved rules from database? This will remove your rule history permanently.',
+        'Clear Saved Rules',
+        function() {
+            fetch('/editor/bulk-edit/clear-saved-rules', {
+                method: 'POST',
+                credentials: 'same-origin'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('All saved rules cleared successfully!', 'Success', 'success');
+                    clearBulkRules(); // Also clear current rules
+                } else {
+                    showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                }
+            })
+            .catch(err => {
+                showAlert('Error clearing saved rules: ' + err, 'Error', 'danger');
+            });
+        }
+    );
+}
+
+function loadBulkEditHistory() {
+    fetch('/editor/bulk-edit/history', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.history && data.history.length > 0) {
+                const undoBtn = document.getElementById('undoBtn');
+                undoBtn.disabled = false;
+                
+                const historyInfo = document.getElementById('bulkHistoryInfo');
+                const historyText = document.getElementById('bulkHistoryText');
+                
+                const lastEdit = data.history[0];
+                const ruleCount = lastEdit.rules.length;
+                const timestamp = new Date(lastEdit.timestamp).toLocaleString();
+                
+                historyText.textContent = `Last edit: ${ruleCount} rule(s) applied at ${timestamp}`;
+                historyInfo.style.display = 'block';
+            } else {
+                document.getElementById('undoBtn').disabled = true;
+                document.getElementById('bulkHistoryInfo').style.display = 'none';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading history:', err);
+            document.getElementById('undoBtn').disabled = true;
+        });
+}
+
+function undoBulkEdit() {
+    showConfirm('Undo the last bulk edit? This will restore all channels to their previous state.', 'Undo Bulk Edit', function() {
+        const undoBtn = document.getElementById('undoBtn');
+        const originalText = undoBtn.innerHTML;
+        undoBtn.disabled = true;
+        undoBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Undoing...';
+        
+        fetch('/editor/bulk-edit/undo', {
+            method: 'POST',
+            credentials: 'same-origin'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Successfully undone last bulk edit!', 'Success', 'success');
+                loadBulkEditHistory(); // Refresh history
+                loadPortals(); // Refresh portal list
+            } else {
+                showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                undoBtn.disabled = false;
+                undoBtn.innerHTML = originalText;
+            }
+        })
+        .catch(err => {
+            showAlert('Error undoing bulk edit: ' + err, 'Error', 'danger');
+            undoBtn.disabled = false;
+            undoBtn.innerHTML = originalText;
+        });
+    });
+}
+
+function resetAllCustomizations() {
+    showConfirm(
+        'Reset ALL custom names and genres to original values? This will affect all channels across all portals and cannot be undone!', 
+        'Reset All Customizations', 
+        function() {
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Resetting...';
+            
+            fetch('/editor/reset-all', {
+                method: 'POST',
+                credentials: 'same-origin'
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                
+                if (data.success) {
+                    showAlert('All customizations reset successfully!', 'Success', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
+                    loadPortals(); // Refresh portal list
+                } else {
+                    showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                showAlert('Error resetting customizations: ' + err, 'Error', 'danger');
+            });
+        }
+    );
+}
+
+function addBulkRule(search = '', replace = '') {
+    const ruleId = Date.now();
+    const ruleHtml = `
+        <div class="row g-2 mb-3 align-items-center" id="rule-${ruleId}">
+            <div class="col-5">
+                <input type="text" class="form-control" placeholder="Search for..." value="${escapeHtml(search)}" id="search-${ruleId}">
+            </div>
+            <div class="col-1 text-center">
+                <i class="ti ti-arrow-right"></i>
+            </div>
+            <div class="col-5">
+                <input type="text" class="form-control" placeholder="Replace with..." value="${escapeHtml(replace)}" id="replace-${ruleId}">
+            </div>
+            <div class="col-1">
+                <button type="button" class="btn btn-icon btn-outline-danger" onclick="removeBulkRule(${ruleId})">
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    document.getElementById('bulkRulesList').insertAdjacentHTML('beforeend', ruleHtml);
+    bulkRules.push(ruleId);
+}
+
+function removeBulkRule(ruleId) {
+    document.getElementById(`rule-${ruleId}`).remove();
+    bulkRules = bulkRules.filter(id => id !== ruleId);
+}
+
+function applyPreset(preset) {
+    // Ask if user wants to clear existing rules or add to them
+    if (bulkRules.length > 0) {
+        showConfirm(
+            'Clear existing rules and apply preset, or add preset to existing rules?',
+            'Apply Preset',
+            function() {
+                // Clear and apply
+                clearBulkRules();
+                addPresetRules(preset);
+            },
+            function() {
+                // Just add
+                addPresetRules(preset);
+            },
+            'info',
+            'Clear & Apply',
+            'Add to Existing'
+        );
+    } else {
+        addPresetRules(preset);
+    }
+}
+
+function addPresetRules(preset) {
+    switch(preset) {
+        case 'vip':
+            addBulkRule('VIP', '');
+            addBulkRule('★VIP★', '');
+            addBulkRule('[VIP]', '');
+            addBulkRule('(VIP)', '');
+            break;
+        case 'emoji':
+            document.getElementById('bulkUseRegex').checked = true;
+            addBulkRule('[\\u{1F300}-\\u{1F9FF}]', '');
+            addBulkRule('[\\u{2600}-\\u{26FF}]', '');
+            addBulkRule('[\\u{2700}-\\u{27BF}]', '');
+            break;
+        case 'country':
+            // Enable regex for country codes
+            document.getElementById('bulkUseRegex').checked = true;
+            // Match country codes with any separator (: | - _ space) at the beginning
+            addBulkRule('^(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)[:|\\-_\\s]+', '');
+            // Also match country codes in brackets or parentheses
+            addBulkRule('\\[(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\]\\s*', '');
+            addBulkRule('\\((DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\)\\s*', '');
+            break;
+        case 'brackets':
+            document.getElementById('bulkUseRegex').checked = true;
+            addBulkRule('\\[.*?\\]', '');
+            addBulkRule('\\(.*?\\)', '');
+            break;
+        case 'separators':
+            document.getElementById('bulkUseRegex').checked = true;
+            // Remove multiple pipes, dashes, underscores
+            addBulkRule('\\|+', '');
+            addBulkRule('\\-{2,}', '');
+            addBulkRule('_{2,}', '');
+            addBulkRule(':{2,}', '');
+            // Remove trailing separators
+            addBulkRule('[\\|\\-_:]+$', '');
+            // Remove leading separators
+            addBulkRule('^[\\|\\-_:]+', '');
+            break;
+        case 'whitespace':
+            document.getElementById('bulkUseRegex').checked = true;
+            // Remove multiple spaces
+            addBulkRule('\\s{2,}', ' ');
+            // Remove leading/trailing spaces (handled by backend)
+            // Remove spaces before/after separators
+            addBulkRule('\\s+([\\|\\-_:])\\s+', '$1 ');
+            break;
+    }
+}
+
+function getBulkRules() {
+    const rules = [];
+    bulkRules.forEach(id => {
+        const search = document.getElementById(`search-${id}`)?.value;
+        const replace = document.getElementById(`replace-${id}`)?.value;
+        if (search !== undefined) {
+            rules.push({ search, replace });
+        }
+    });
+    return rules;
+}
+
+function previewBulkEdit() {
+    const rules = getBulkRules();
+    if (rules.length === 0) {
+        showToast('Please add at least one rule', 'warning');
+        return;
+    }
+    
+    const applyToNames = document.getElementById('bulkEditNames').checked;
+    const applyToGenres = document.getElementById('bulkEditGenres').checked;
+    const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
+    const useRegex = document.getElementById('bulkUseRegex').checked;
+    
+    // Get sample channels
+    const sampleChannels = Object.values(categoriesData).flat().slice(0, 5);
+    let changes = 0;
+    let examples = [];
+    
+    sampleChannels.forEach(ch => {
+        let originalName = ch.customChannelName || ch.channelName;
+        let newName = originalName;
+        
+        if (applyToNames) {
+            rules.forEach(rule => {
+                if (useRegex) {
+                    const flags = caseSensitive ? 'gu' : 'giu';
+                    const regex = new RegExp(rule.search, flags);
+                    newName = newName.replace(regex, rule.replace);
+                } else {
+                    const flags = caseSensitive ? 'g' : 'gi';
+                    const regex = new RegExp(rule.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+                    newName = newName.replace(regex, rule.replace);
+                }
+            });
+        }
+        
+        if (newName !== originalName) {
+            changes++;
+            if (examples.length < 3) {
+                examples.push(`"${originalName}" → "${newName}"`);
+            }
+        }
+    });
+    
+    const previewDiv = document.getElementById('bulkPreview');
+    const previewText = document.getElementById('bulkPreviewText');
+    
+    if (changes > 0) {
+        previewText.innerHTML = `Found ${changes} changes in sample:<br>${examples.join('<br>')}`;
+        previewDiv.style.display = 'block';
+    } else {
+        previewText.innerHTML = 'No changes detected in sample channels';
+        previewDiv.style.display = 'block';
+    }
+}
+
+function applyBulkEdit() {
+    const rules = getBulkRules();
+    if (rules.length === 0) {
+        showToast('Please add at least one rule', 'warning');
+        return;
+    }
+    
+    const applyToNames = document.getElementById('bulkEditNames').checked;
+    const applyToGenres = document.getElementById('bulkEditGenres').checked;
+    const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
+    const useRegex = document.getElementById('bulkUseRegex').checked;
+    
+    if (!applyToNames && !applyToGenres) {
+        showToast('Please select at least one option (Names or Genres)', 'warning');
+        return;
+    }
+    
+    showConfirm(
+        `Apply ${rules.length} rule(s) to all channels?`,
+        'Bulk Edit',
+        function() {
+            performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex);
+        }
+    );
+}
+
+function performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex) {
+    // Save settings for next time
+    bulkEditSettings = {
+        applyToNames: applyToNames,
+        applyToGenres: applyToGenres,
+        caseSensitive: caseSensitive,
+        useRegex: useRegex
+    };
+    
+    const btn = event?.target;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Applying...';
+    }
+    
+    fetch('/editor/bulk-edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            rules: rules,
+            apply_to_names: applyToNames,
+            apply_to_genres: applyToGenres,
+            case_sensitive: caseSensitive,
+            use_regex: useRegex
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`Successfully updated ${data.updated} channels!`, 'Success', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
+            loadBulkEditHistory(); // Refresh history for next time
+            loadPortals();
+        } else {
+            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+        }
+    })
+    .catch(err => {
+        showAlert('Error applying bulk edit: ' + err, 'Error', 'danger');
+    })
+    .finally(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ti ti-check me-1"></i>Apply Changes';
+        }
+    });
 }
 </script>
 {% endblock %}

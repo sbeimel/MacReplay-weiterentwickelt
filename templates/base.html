@@ -30,6 +30,17 @@
             }
         })();
     </script>
+    <style>
+        /* Footer theme colors */
+        [data-bs-theme="light"] .footer {
+            background: #f8f9fa;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        [data-bs-theme="dark"] .footer {
+            background: #1a1a1a;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -74,6 +85,12 @@
                                 <a class="nav-link {% if request.path == '/epg' %}active{% endif %}" href="/epg">
                                     <i class="ti ti-calendar me-1"></i>
                                     EPG
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/vods' %}active{% endif %}" href="/vods">
+                                    <i class="ti ti-movie me-1"></i>
+                                    VODs
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -139,13 +156,13 @@
 
             {% block content %}{% endblock %}
             
-            <footer class="footer footer-transparent d-print-none" style="border-top: none;">
+            <footer class="footer footer-transparent d-print-none py-2 mt-4">
                 <div class="container-xl">
                     <div class="row align-items-center">
-                        <div class="col-12 col-lg-auto mt-3 mt-lg-0">
+                        <div class="col-12 col-lg-auto">
                             <ul class="list-inline list-inline-dots mb-0">
                                 <li class="list-inline-item">
-                                    <strong>MacReplayXC</strong> - IPTV Portal Proxy
+                                    <strong>MacReplayXC v2.2</strong> - IPTV Portal Proxy
                                 </li>
                                 <li class="list-inline-item">
                                     Fork by <strong>Un1x</strong>
@@ -155,6 +172,7 @@
                     </div>
                 </div>
             </footer>
+            
         </div>
     </div>
 
@@ -314,14 +332,18 @@
             modal.show();
         }
         
-        function showConfirm(message, title = 'Confirm', onConfirm, onCancel, type = 'warning') {
+        function showConfirm(message, title = 'Confirm', onConfirm, onCancel, type = 'warning', confirmText = null, cancelText = null) {
             const modalId = 'confirmModal_' + Date.now();
             
             const config = {
                 'success': { icon: 'ti-check', color: 'success', btnClass: 'btn-success', btnText: 'Continue' },
                 'warning': { icon: 'ti-alert-triangle', color: 'warning', btnClass: 'btn-warning', btnText: 'Confirm' },
-                'danger': { icon: 'ti-alert-triangle', color: 'danger', btnClass: 'btn-danger', btnText: 'Confirm' }
+                'danger': { icon: 'ti-alert-triangle', color: 'danger', btnClass: 'btn-danger', btnText: 'Confirm' },
+                'info': { icon: 'ti-info-circle', color: 'info', btnClass: 'btn-info', btnText: 'Confirm' }
             }[type] || { icon: 'ti-alert-triangle', color: 'warning', btnClass: 'btn-warning', btnText: 'Confirm' };
+            
+            const confirmBtnText = confirmText || 'Yes';
+            const cancelBtnText = cancelText || 'No';
             
             const modalHtml = `
                 <div class="modal modal-blur fade" id="${modalId}" tabindex="-1" style="display: none;" aria-hidden="true">
@@ -338,10 +360,10 @@
                                 <div class="w-100">
                                     <div class="row">
                                         <div class="col">
-                                            <button type="button" class="btn w-100" data-bs-dismiss="modal">No</button>
+                                            <button type="button" class="btn w-100" data-bs-dismiss="modal" id="${modalId}_cancel">${cancelBtnText}</button>
                                         </div>
                                         <div class="col">
-                                            <button type="button" class="btn ${config.btnClass} w-100" id="${modalId}_confirm">Yes</button>
+                                            <button type="button" class="btn ${config.btnClass} w-100" id="${modalId}_confirm">${confirmBtnText}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -359,6 +381,13 @@
                 modal.hide();
                 if (onConfirm) onConfirm();
             });
+            
+            if (onCancel) {
+                document.getElementById(modalId + '_cancel').addEventListener('click', function() {
+                    modal.hide();
+                    if (onCancel) onCancel();
+                });
+            }
             
             modalEl.addEventListener('hidden.bs.modal', function() {
                 modalEl.remove();

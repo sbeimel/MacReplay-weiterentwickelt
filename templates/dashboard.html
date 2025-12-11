@@ -2,6 +2,210 @@
 
 {% block title %}Dashboard - MacReplayXC{% endblock %}
 
+{% block head %}
+<style>
+    /* URL Input Fields Dark Mode Support */
+    [data-bs-theme="dark"] .bg-light {
+        background-color: #2a2a2a !important;
+        color: #e5e5e5 !important;
+        border-color: #404040 !important;
+    }
+    
+    [data-bs-theme="dark"] .input-group-text.bg-primary-lt {
+        background-color: #1e3a8a !important;
+        color: #93c5fd !important;
+        border-color: #404040 !important;
+    }
+    
+    [data-bs-theme="dark"] .input-group-text.bg-secondary-lt {
+        background-color: #374151 !important;
+        color: #d1d5db !important;
+        border-color: #404040 !important;
+    }
+    
+    /* Log Refresh Controls */
+    #refreshCountdown {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        min-width: 60px;
+        text-align: center;
+    }
+    
+    .dropdown-item.active {
+        background-color: var(--tblr-primary);
+        color: white;
+    }
+    
+    [data-bs-theme="dark"] .dropdown-item.active {
+        background-color: var(--tblr-primary);
+        color: white;
+    }
+    
+    /* Animate countdown */
+    #countdownText {
+        transition: all 0.3s ease;
+    }
+    
+    #refreshCountdown.updating #countdownText {
+        transform: scale(1.1);
+        color: var(--tblr-success);
+    }
+    
+    /* Card Actions Badges */
+    .card-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+    }
+    
+    .card-actions .badge.cursor-pointer {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+    }
+    
+    .card-actions .badge.cursor-pointer:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .card-actions .badge.badge-outline {
+        background: transparent;
+        border: 1px solid var(--tblr-border-color);
+        color: var(--tblr-body-color);
+    }
+    
+    .card-actions .badge.badge-outline:hover {
+        background: var(--tblr-primary);
+        border-color: var(--tblr-primary);
+        color: white;
+    }
+    
+    [data-bs-theme="dark"] .card-actions .badge.badge-outline {
+        border-color: #404040;
+        color: #e5e5e5;
+    }
+    
+    [data-bs-theme="dark"] .card-actions .badge.badge-outline:hover {
+        background: var(--tblr-primary);
+        border-color: var(--tblr-primary);
+        color: white;
+    }
+    
+    /* Auto-scroll active state */
+    .card-actions .badge.auto-scroll-active {
+        background: var(--tblr-success) !important;
+        color: white !important;
+        border-color: var(--tblr-success) !important;
+    }
+    
+    .card-actions .dropdown {
+        display: inline-block;
+    }
+    
+    /* Log Container Styling */
+    .log-container {
+        height: 500px;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        border-radius: 0 0 0.375rem 0.375rem;
+    }
+    
+    /* Light Mode Log */
+    [data-bs-theme="light"] .log-container {
+        background: #f8f9fa;
+        color: #495057;
+        border: 1px solid #dee2e6;
+        border-top: none;
+    }
+    
+    /* Dark Mode Log */
+    [data-bs-theme="dark"] .log-container {
+        background: #1a1a1a;
+        color: #e5e5e5;
+        border: 1px solid #404040;
+        border-top: none;
+    }
+    
+    /* Log Entry Styling */
+    .log-entry {
+        padding: 2px 12px;
+        margin-bottom: 1px;
+        border-left: 3px solid;
+        word-wrap: break-word;
+    }
+    
+    /* Light Mode Log Entries */
+    [data-bs-theme="light"] .log-entry.error {
+        border-left-color: #dc3545;
+        background: rgba(220, 53, 69, 0.1);
+    }
+    
+    [data-bs-theme="light"] .log-entry.warning {
+        border-left-color: #fd7e14;
+        background: rgba(253, 126, 20, 0.1);
+    }
+    
+    [data-bs-theme="light"] .log-entry.info {
+        border-left-color: #0d6efd;
+        background: rgba(13, 110, 253, 0.1);
+    }
+    
+    [data-bs-theme="light"] .log-entry.debug {
+        border-left-color: #198754;
+        background: rgba(25, 135, 84, 0.1);
+    }
+    
+    /* Dark Mode Log Entries */
+    [data-bs-theme="dark"] .log-entry.error {
+        border-left-color: #ff6b6b;
+        background: rgba(255, 107, 107, 0.1);
+    }
+    
+    [data-bs-theme="dark"] .log-entry.warning {
+        border-left-color: #ffa726;
+        background: rgba(255, 167, 38, 0.1);
+    }
+    
+    [data-bs-theme="dark"] .log-entry.info {
+        border-left-color: #42a5f5;
+        background: rgba(66, 165, 245, 0.1);
+    }
+    
+    [data-bs-theme="dark"] .log-entry.debug {
+        border-left-color: #66bb6a;
+        background: rgba(102, 187, 106, 0.1);
+    }
+    
+    /* Log Timestamp */
+    .log-timestamp {
+        color: #6c757d;
+        font-size: 0.8rem;
+    }
+    
+    [data-bs-theme="dark"] .log-timestamp {
+        color: #888;
+    }
+    
+    /* Log Level */
+    .log-level {
+        font-weight: bold;
+        margin: 0 8px;
+    }
+    
+    .log-level.error { color: #dc3545; }
+    .log-level.warning { color: #fd7e14; }
+    .log-level.info { color: #0d6efd; }
+    .log-level.debug { color: #198754; }
+    
+    [data-bs-theme="dark"] .log-level.error { color: #ff6b6b; }
+    [data-bs-theme="dark"] .log-level.warning { color: #ffa726; }
+    [data-bs-theme="dark"] .log-level.info { color: #42a5f5; }
+    [data-bs-theme="dark"] .log-level.debug { color: #66bb6a; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header d-print-none">
     <div class="container-xl">
@@ -86,43 +290,61 @@
         </div>
 
         <div class="row row-cards mt-3">
-            <!-- Quick Actions & URLs -->
-            <div class="col-lg-6">
+            <!-- Live Log -->
+            <div class="col-lg-8">
                 <div class="card h-100">
                     <div class="card-header">
-                        <h3 class="card-title"><i class="ti ti-link me-2"></i>Playlist & EPG URLs</h3>
+                        <h3 class="card-title"><i class="ti ti-terminal me-2"></i>Live Log</h3>
+                        <div class="card-actions">
+                            <span class="badge badge-outline cursor-pointer" onclick="clearLog()" title="Clear Log">
+                                <i class="ti ti-trash me-1"></i>Clear
+                            </span>
+                            <span class="badge badge-outline cursor-pointer" onclick="toggleAutoScroll()" id="autoScrollBadge" title="Toggle Auto-scroll">
+                                <i class="ti ti-arrow-down me-1"></i>Auto-scroll
+                            </span>
+                            <div class="dropdown">
+                                <span class="badge bg-info-lt dropdown-toggle cursor-pointer" data-bs-toggle="dropdown" title="Refresh Interval">
+                                    <i class="ti ti-clock me-1"></i>
+                                    <span id="refreshIntervalText">2s</span>
+                                </span>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <h6 class="dropdown-header">Refresh Interval</h6>
+                                    <a class="dropdown-item" href="#" onclick="setRefreshInterval(1000)">
+                                        <i class="ti ti-zap me-2"></i>1 second
+                                    </a>
+                                    <a class="dropdown-item active" href="#" onclick="setRefreshInterval(2000)">
+                                        <i class="ti ti-clock me-2"></i>2 seconds
+                                    </a>
+                                    <a class="dropdown-item" href="#" onclick="setRefreshInterval(5000)">
+                                        <i class="ti ti-clock-hour-3 me-2"></i>5 seconds
+                                    </a>
+                                    <a class="dropdown-item" href="#" onclick="setRefreshInterval(10000)">
+                                        <i class="ti ti-clock-hour-6 me-2"></i>10 seconds
+                                    </a>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="#" onclick="setRefreshInterval(0)">
+                                        <i class="ti ti-player-pause me-2"></i>Paused
+                                    </a>
+                                </div>
+                            </div>
+                            <span class="badge bg-success-lt" id="refreshCountdown">
+                                <i class="ti ti-refresh me-1"></i>
+                                <span id="countdownText">2</span>s
+                            </span>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label class="form-label">M3U Playlist URL</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control font-monospace" id="playlistUrl" readonly>
-                                <button class="btn btn-icon" onclick="copyToClipboard('playlistUrl')" title="Copy to clipboard">
-                                    <i class="ti ti-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">XMLTV Guide URL</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control font-monospace" id="xmltvUrl" readonly>
-                                <button class="btn btn-icon" onclick="copyToClipboard('xmltvUrl')" title="Copy to clipboard">
-                                    <i class="ti ti-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mb-0">
-                            <label class="form-label">Server URL</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control font-monospace" id="serverUrl" readonly>
+                    <div class="card-body p-0">
+                        <div id="liveLogContainer" class="log-container">
+                            <div class="p-3">
+                                <div class="text-muted">Connecting to live log...</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Quick Actions -->
-            <div class="col-lg-6">
+            <!-- Quick Actions & URLs -->
+            <div class="col-lg-4">
                 <div class="card h-100">
                     <div class="card-header">
                         <h3 class="card-title"><i class="ti ti-bolt me-2"></i>Quick Actions</h3>
@@ -137,6 +359,37 @@
                                 <i class="ti ti-list me-2"></i>
                                 Update Playlist
                             </button>
+                            
+                            <hr class="my-3">
+                            
+                            <div class="mb-3">
+                                <label class="form-label small text-muted fw-bold">M3U Playlist</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-primary-lt text-primary">
+                                        <i class="ti ti-list"></i>
+                                    </span>
+                                    <input type="text" class="form-control font-monospace bg-light" id="playlistUrl" readonly>
+                                    <button class="btn btn-primary" onclick="copyToClipboard('playlistUrl')" title="Copy URL">
+                                        <i class="ti ti-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small text-muted fw-bold">XMLTV Guide</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-secondary-lt text-secondary">
+                                        <i class="ti ti-calendar"></i>
+                                    </span>
+                                    <input type="text" class="form-control font-monospace bg-light" id="xmltvUrl" readonly>
+                                    <button class="btn btn-secondary" onclick="copyToClipboard('xmltvUrl')" title="Copy URL">
+                                        <i class="ti ti-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-3">
+                            
                             <a href="/playlist.m3u" target="_blank" class="btn btn-outline-primary btn-lg">
                                 <i class="ti ti-download me-2"></i>
                                 Download M3U
@@ -185,7 +438,8 @@ function displayStreams(streams) {
     // Update statistics
     document.getElementById('activeStreamsCount').textContent = streamCount;
     
-    if (!streams || Object.keys(streams).length === 0) {
+    // Show empty state if no streams
+    if (!streams || Object.keys(streams).length === 0 || streamCount === 0) {
         container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-player-play icon"></i></div><p class="empty-title">No active streams</p><p class="empty-subtitle text-muted">Streams will appear here when clients are watching</p></div>';
         return;
     }
@@ -356,13 +610,13 @@ function copyToClipboard(elementId) {
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     const baseUrl = window.location.origin;
-    document.getElementById('serverUrl').value = baseUrl;
     document.getElementById('xmltvUrl').value = `${baseUrl}/xmltv`;
     document.getElementById('playlistUrl').value = `${baseUrl}/playlist.m3u`;
     
     // Initial load
     loadDashboardStats();
     refreshStreams();
+    initLiveLog();
     
     // Auto-refresh streams and stats every 30 seconds
     streamsRefreshInterval = setInterval(function() {
@@ -410,10 +664,257 @@ function formatUptime(seconds) {
     }
 }
 
+// Live Log functionality
+let liveLogSocket = null;
+let autoScroll = true;
+let logBuffer = [];
+const maxLogLines = 500;
+let refreshInterval = 2000; // Default 2 seconds
+let refreshTimer = null;
+let countdownTimer = null;
+let countdownSeconds = 0;
+
+function initLiveLog() {
+    connectLiveLog();
+}
+
+function connectLiveLog() {
+    const container = document.getElementById('liveLogContainer');
+    
+    // Skip WebSocket and go directly to polling
+    container.innerHTML = '<div class="p-3"><div class="text-info"><i class="ti ti-refresh me-2"></i>Loading live log...</div></div>';
+    startLogPolling();
+}
+
+let logCache = new Set(); // Track seen log entries
+let isFirstLoad = true;
+
+function startLogPolling() {
+    console.log('Starting log polling...');
+    
+    // Initial load
+    pollLogs();
+    
+    // Start the refresh cycle
+    startRefreshCycle();
+}
+
+function pollLogs() {
+    console.log('Polling logs...');
+    
+    fetch('/api/logs/recent')
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(logs => {
+            console.log(`Received ${logs.length} log entries`);
+            
+            if (isFirstLoad) {
+                // Clear loading message and reset cache
+                document.getElementById('liveLogContainer').innerHTML = '';
+                logCache.clear();
+                isFirstLoad = false;
+            }
+            
+            if (logs && logs.length > 0) {
+                // Process all logs and add new ones
+                logs.forEach(log => {
+                    const logKey = `${log.timestamp}-${log.level}-${log.message}`;
+                    if (!logCache.has(logKey)) {
+                        logCache.add(logKey);
+                        addLogEntry(log);
+                    }
+                });
+                
+                // Keep cache size manageable
+                if (logCache.size > 1000) {
+                    const cacheArray = Array.from(logCache);
+                    logCache = new Set(cacheArray.slice(-500));
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching logs:', error);
+            if (isFirstLoad) {
+                document.getElementById('liveLogContainer').innerHTML = 
+                    '<div class="p-3"><div class="text-danger"><i class="ti ti-alert-triangle me-2"></i>Error loading logs: ' + error.message + '</div></div>';
+            }
+        });
+}
+
+function startRefreshCycle() {
+    // Clear existing timers
+    if (refreshTimer) clearInterval(refreshTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
+    
+    if (refreshInterval === 0) {
+        // Paused
+        document.getElementById('refreshCountdown').innerHTML = 
+            '<i class="ti ti-player-pause me-1"></i>Paused';
+        return;
+    }
+    
+    // Set countdown
+    countdownSeconds = refreshInterval / 1000;
+    updateCountdown();
+    
+    // Start countdown timer (every second)
+    countdownTimer = setInterval(() => {
+        countdownSeconds--;
+        updateCountdown();
+        
+        if (countdownSeconds <= 0) {
+            countdownSeconds = refreshInterval / 1000;
+        }
+    }, 1000);
+    
+    // Start refresh timer
+    refreshTimer = setInterval(() => {
+        console.log('Refreshing logs...'); // Debug log
+        pollLogs();
+        countdownSeconds = refreshInterval / 1000; // Reset countdown
+    }, refreshInterval);
+}
+
+function updateCountdown() {
+    const countdownElement = document.getElementById('countdownText');
+    if (countdownElement) {
+        countdownElement.textContent = countdownSeconds;
+    }
+}
+
+function setRefreshInterval(newInterval) {
+    refreshInterval = newInterval;
+    
+    // Update dropdown active state
+    document.querySelectorAll('.dropdown-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Update button text
+    const intervalText = newInterval === 0 ? 'Paused' : 
+                        newInterval === 1000 ? '1s' :
+                        newInterval === 2000 ? '2s' :
+                        newInterval === 5000 ? '5s' :
+                        newInterval === 10000 ? '10s' : `${newInterval/1000}s`;
+    
+    document.getElementById('refreshIntervalText').textContent = intervalText;
+    
+    // Restart the refresh cycle with new interval
+    startRefreshCycle();
+}
+
+function addLogEntry(logEntry) {
+    const container = document.getElementById('liveLogContainer');
+    
+    // Add to buffer
+    logBuffer.push(logEntry);
+    
+    // Keep buffer size manageable
+    if (logBuffer.length > maxLogLines) {
+        logBuffer = logBuffer.slice(-maxLogLines);
+    }
+    
+    // Format log entry with better date handling
+    let timestamp = 'Unknown';
+    if (logEntry.timestamp) {
+        try {
+            const date = new Date(logEntry.timestamp);
+            if (!isNaN(date.getTime())) {
+                timestamp = date.toLocaleTimeString();
+            } else {
+                // Try parsing as different format
+                const parsedDate = new Date(logEntry.timestamp.replace(/,/g, '.'));
+                if (!isNaN(parsedDate.getTime())) {
+                    timestamp = parsedDate.toLocaleTimeString();
+                } else {
+                    timestamp = new Date().toLocaleTimeString();
+                }
+            }
+        } catch (e) {
+            timestamp = new Date().toLocaleTimeString();
+        }
+    } else {
+        timestamp = new Date().toLocaleTimeString();
+    }
+    
+    const level = (logEntry.level || 'INFO').toUpperCase();
+    const message = logEntry.message || '';
+    const levelClass = level.toLowerCase();
+    
+    const logLine = `<div class="log-entry ${levelClass}">
+        <span class="log-timestamp">[${timestamp}]</span>
+        <span class="log-level ${levelClass}">[${level}]</span>
+        <span class="log-message">${escapeHtml(message)}</span>
+    </div>`;
+    
+    // Update display
+    if (logBuffer.length === 1) {
+        container.innerHTML = logLine;
+    } else {
+        container.innerHTML += logLine;
+    }
+    
+    // Auto-scroll to bottom
+    if (autoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function clearLog() {
+    logBuffer = [];
+    logCache.clear();
+    document.getElementById('liveLogContainer').innerHTML = '<div class="p-3"><div class="text-muted"><i class="ti ti-trash me-2"></i>Log cleared</div></div>';
+    
+    // Force refresh after clear
+    setTimeout(() => {
+        isFirstLoad = true;
+        pollLogs();
+    }, 500);
+}
+
+function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    const badge = document.getElementById('autoScrollBadge');
+    
+    if (autoScroll) {
+        badge.innerHTML = '<i class="ti ti-arrow-down me-1"></i>Auto-scroll';
+        badge.classList.remove('badge-outline');
+        badge.classList.add('auto-scroll-active');
+        
+        // Scroll to bottom
+        const container = document.getElementById('liveLogContainer');
+        container.scrollTop = container.scrollHeight;
+    } else {
+        badge.innerHTML = '<i class="ti ti-arrow-down-off me-1"></i>Manual';
+        badge.classList.remove('auto-scroll-active');
+        badge.classList.add('badge-outline');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Cleanup interval on page unload
 window.addEventListener('beforeunload', function() {
     if (streamsRefreshInterval) {
         clearInterval(streamsRefreshInterval);
+    }
+    if (liveLogSocket) {
+        liveLogSocket.close();
+    }
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+    }
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
     }
 });
 </script>

@@ -556,6 +556,30 @@
     color: #334155;
 }
 
+/* Fix scrolling in Edit Portal Modal */
+#editPortalModal .modal-dialog {
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#editPortalModal .modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+#editPortalModal .modal-body {
+    max-height: calc(90vh - 200px);
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+
+#editPortalModal .modal-header,
+#editPortalModal .modal-footer {
+    flex-shrink: 0;
+}
+
 .genre-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

@@ -1,0 +1,1829 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+        padding: 20px 0;
+    }
+    
+    .category-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        padding: 20px;
+        cursor: pointer;
+        text-align: center;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+    
+    [data-bs-theme="light"] .category-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .category-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .category-card:hover {
+        border-color: #10b981;
+        transform: translateY(-2px);
+    }
+    
+    .category-card.vod-category {
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .category-card.series-category {
+        border-left: 4px solid #f59e0b;
+    }
+    
+    .category-icon {
+        font-size: 2rem;
+        margin-bottom: 12px;
+        opacity: 0.7;
+    }
+    
+    .category-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 8px;
+        word-break: break-word;
+        line-height: 1.2;
+    }
+    
+    .category-portal {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin-bottom: 4px;
+    }
+    
+    .category-type {
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 500;
+    }
+    
+    .category-type.vod {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+    
+    [data-bs-theme="dark"] .category-type.vod {
+        background: #1e3a8a;
+        color: #93c5fd;
+    }
+    
+    .category-type.series {
+        background: #fef3c7;
+        color: #d97706;
+    }
+    
+    [data-bs-theme="dark"] .category-type.series {
+        background: #92400e;
+        color: #fbbf24;
+    }
+    
+    /* Sticky search bar - glass effect for VOD modal */
+    #vodModal .category-filter-sticky {
+        position: sticky;
+        top: -2rem;
+        z-index: 10;
+    }
+    
+    [data-bs-theme="light"] #vodModal .category-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(255, 255, 255, 0.98) 0%, 
+            rgba(255, 255, 255, 0.95) 40%, 
+            rgba(255, 255, 255, 0.5) 70%,
+            rgba(255, 255, 255, 0) 100%) !important;
+    }
+    
+    [data-bs-theme="dark"] #vodModal .category-filter-sticky {
+        background: linear-gradient(to bottom, 
+            rgba(42, 42, 42, 0.98) 0%, 
+            rgba(42, 42, 42, 0.95) 40%, 
+            rgba(42, 42, 42, 0.5) 70%,
+            rgba(42, 42, 42, 0) 100%) !important;
+    }
+    
+    /* VOD Detail Styles */
+    .vod-detail-poster {
+        width: 100%;
+        aspect-ratio: 2/3;
+        background: #f1f5f9;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    
+    [data-bs-theme="dark"] .vod-detail-poster {
+        background: #1f1f1f;
+    }
+    
+    .vod-detail-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .vod-detail-poster .placeholder-icon {
+        font-size: 4rem;
+        opacity: 0.3;
+    }
+    
+    .episode-item {
+        padding: 10px 15px;
+        border-bottom: 1px solid #e2e8f0;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    [data-bs-theme="dark"] .episode-item {
+        border-color: #404040;
+    }
+    
+    .episode-item:hover {
+        background: #f1f5f9;
+    }
+    
+    [data-bs-theme="dark"] .episode-item:hover {
+        background: #2a2a2a;
+    }
+    
+    .episode-item:last-child {
+        border-bottom: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title">
+                    <i class="ti ti-movie me-2"></i>
+                    VOD & Series
+                </h2>
+            </div>
+            <div class="col-auto">
+                <div class="btn-list">
+                    <button class="btn btn-outline-secondary" onclick="openVodSettings()">
+                        <i class="ti ti-settings me-2"></i>Settings
+                    </button>
+                    <button class="btn btn-primary" onclick="refreshCategories()" id="refreshBtn">
+                        <i class="ti ti-refresh me-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- VOD Refresh Progress -->
+        <div id="vodRefreshProgress" class="alert alert-info mt-3" style="display: none;">
+            <div class="d-flex align-items-start">
+                <div class="spinner-border spinner-border-sm me-3 mt-1" role="status"></div>
+                <div class="flex-fill">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong id="vodProgressTitle">Refreshing VOD Cache...</strong>
+                        <span class="badge bg-info-lt" id="vodProgressPercent">0%</span>
+                    </div>
+                    <div class="text-muted small mb-2" id="vodProgressDetails">Starting...</div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="vodProgressBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <div class="row g-3 align-items-center mb-4">
+            <div class="col-md-6">
+                <label class="form-label mb-1">Search Portals</label>
+                <input type="text" class="form-control" id="portalSearch" placeholder="Type to filter portals..." oninput="filterPortals()">
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="mt-4">
+                    <span class="badge bg-primary-lt me-2">
+                        <i class="ti ti-antenna me-1"></i>
+                        <span id="totalPortals">0</span> Portals
+                    </span>
+                    <span class="badge bg-blue-lt me-2">
+                        <i class="ti ti-movie me-1"></i>
+                        <span id="totalVodCategories">0</span> VOD
+                    </span>
+                    <span class="badge bg-yellow-lt">
+                        <i class="ti ti-device-tv me-1"></i>
+                        <span id="totalSeriesCategories">0</span> Series
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div id="portalsContainer">
+            <div class="category-grid" id="portalGrid"></div>
+        </div>
+
+        <div id="loadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3">Loading portals...</p>
+        </div>
+    </div>
+</div>
+
+<!-- VOD Modal - Dynamic content for categories and items -->
+<div class="modal modal-blur fade" id="vodModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="vodModalTitle">VOD</h3>
+                    <div class="text-muted small" id="vodModalStats"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body vod-modal">
+                <div class="container-fluid">
+                    <div id="vodModalContent"></div>
+                </div>
+            </div>
+            <div class="modal-footer" id="vodModalFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VOD Items Grid Styles -->
+<style>
+    .vod-items-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+        padding: 10px 0;
+    }
+    
+    .vod-item-card {
+        border: 2px solid;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+    
+    [data-bs-theme="light"] .vod-item-card {
+        border-color: #cbd5e1;
+        background: #ffffff;
+    }
+    
+    [data-bs-theme="dark"] .vod-item-card {
+        border-color: #404040;
+        background: #2a2a2a;
+    }
+    
+    .vod-item-card:hover {
+        border-color: #10b981;
+        transform: translateY(-2px);
+    }
+    
+    .vod-poster {
+        width: 100%;
+        height: 240px;
+        background: #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    [data-bs-theme="dark"] .vod-poster {
+        background: #1f1f1f;
+    }
+    
+    .vod-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .vod-poster .placeholder-icon {
+        font-size: 3rem;
+        opacity: 0.3;
+    }
+    
+    .vod-info {
+        padding: 12px;
+    }
+    
+    .vod-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        line-height: 1.2;
+        margin-bottom: 6px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    
+    .vod-year {
+        font-size: 0.75rem;
+        opacity: 0.6;
+    }
+    
+    /* Category Selection Styles */
+    .category-selection-card {
+        transition: all 0.2s ease;
+        border: 2px solid transparent;
+    }
+    
+    .category-selection-card:hover {
+        border-color: #10b981;
+    }
+    
+    .category-selection-card .form-check-input:checked ~ .flex-fill {
+        opacity: 1;
+    }
+    
+    .category-selection-card .form-check-input:not(:checked) ~ .flex-fill {
+        opacity: 0.7;
+    }
+    
+    [data-bs-theme="light"] .category-selection-card {
+        background: #ffffff;
+        border-color: #e2e8f0;
+    }
+    
+    [data-bs-theme="dark"] .category-selection-card {
+        background: #2a2a2a;
+        border-color: #404040;
+    }
+    
+    .category-selection-card .form-check-input {
+        width: 1.25rem;
+        height: 1.25rem;
+        margin-top: 0.125rem;
+    }
+    
+    /* Custom checkbox colors for theme consistency */
+    .form-check-input:checked {
+        background-color: #10b981;
+        border-color: #10b981;
+    }
+    
+    .form-check-input:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.25);
+    }
+    
+    /* Form selectgroup (radio buttons) theme colors */
+    .form-selectgroup-input:checked + .form-selectgroup-label {
+        background-color: rgba(16, 185, 129, 0.1);
+        border-color: #10b981;
+        color: #10b981;
+    }
+    
+    [data-bs-theme="dark"] .form-selectgroup-input:checked + .form-selectgroup-label {
+        background-color: rgba(16, 185, 129, 0.15);
+        border-color: #10b981;
+        color: #34d399;
+    }
+    
+    .form-selectgroup-label {
+        transition: all 0.2s ease;
+    }
+    
+    [data-bs-theme="light"] .form-selectgroup-label {
+        background: #ffffff;
+        border-color: #e2e8f0;
+    }
+    
+    [data-bs-theme="dark"] .form-selectgroup-label {
+        background: #2a2a2a;
+        border-color: #404040;
+    }
+    
+    /* Badge colors for selected count */
+    .badge.bg-success-lt {
+        background-color: rgba(16, 185, 129, 0.1) !important;
+        color: #10b981 !important;
+    }
+    
+    [data-bs-theme="dark"] .badge.bg-success-lt {
+        background-color: rgba(16, 185, 129, 0.2) !important;
+        color: #34d399 !important;
+    }
+    
+    /* Modal content theme */
+    [data-bs-theme="dark"] .modal-content {
+        background: #1a1a1a;
+    }
+    
+    [data-bs-theme="dark"] .card {
+        background: #242424;
+        border-color: #404040;
+    }
+    
+    [data-bs-theme="dark"] .card-header {
+        background: #2a2a2a;
+        border-color: #404040;
+    }
+    
+    /* Alert info theme */
+    [data-bs-theme="dark"] .alert-info {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+    }
+    
+    /* Form switch (toggle) colors */
+    .form-switch .form-check-input:checked {
+        background-color: #10b981;
+        border-color: #10b981;
+    }
+</style>
+
+        <!-- VOD Settings Modal -->
+<div class="modal modal-blur fade" id="vodSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title"><i class="ti ti-settings me-2"></i>VOD Settings</h3>
+                    <div class="text-muted small">Configure VOD streaming options</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title"><i class="ti ti-video me-2"></i>Streaming Method</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Stream Type</label>
+                                <div class="form-selectgroup">
+                                    <label class="form-selectgroup-item">
+                                        <input type="radio" name="stream_type" value="ffmpeg" class="form-selectgroup-input" id="streamTypeFFmpeg">
+                                        <span class="form-selectgroup-label">
+                                            <i class="ti ti-brand-github me-2"></i>
+                                            FFmpeg Processing
+                                            <small class="d-block text-muted">Process streams through FFmpeg (recommended)</small>
+                                        </span>
+                                    </label>
+                                    <label class="form-selectgroup-item">
+                                        <input type="radio" name="stream_type" value="direct" class="form-selectgroup-input" id="streamTypeDirect">
+                                        <span class="form-selectgroup-label">
+                                            <i class="ti ti-link me-2"></i>
+                                            Direct URL
+                                            <small class="d-block text-muted">Direct portal URLs (faster but less compatible)</small>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h4 class="card-title"><i class="ti ti-refresh me-2"></i>MAC Rotation</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="macRotation">
+                                    <span class="form-check-label">Enable MAC Rotation</span>
+                                </label>
+                                <div class="form-hint">
+                                    Automatically rotate between available MAC addresses for better load distribution
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveVodSettings()">
+                    <i class="ti ti-device-floppy me-2"></i>Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VOD Detail Modal -->
+<div class="modal modal-blur fade" id="vodDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="vodDetailTitle">Film Details</h3>
+                    <div class="text-muted small" id="vodDetailSubtitle"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="vod-detail-poster" id="vodDetailPoster">
+                            <div class="placeholder-icon"><i class="ti ti-movie"></i></div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="mb-3">
+                            <span class="badge bg-blue-lt me-2" id="vodDetailType">VOD</span>
+                            <span class="badge bg-secondary-lt" id="vodDetailYear"></span>
+                            <span class="badge bg-yellow-lt ms-2" id="vodDetailRating"></span>
+                        </div>
+                        <h2 class="mb-3" id="vodDetailName">Title</h2>
+                        <div class="mb-3" id="vodDetailGenre">
+                            <i class="ti ti-tag me-1"></i><span></span>
+                        </div>
+                        <div class="mb-3" id="vodDetailDuration">
+                            <i class="ti ti-clock me-1"></i><span></span>
+                        </div>
+                        <p class="text-muted" id="vodDetailDescription">No description available.</p>
+                        
+                        <!-- Series Episodes Section (hidden for films) -->
+                        <div id="vodDetailEpisodes" style="display: none;">
+                            <h4 class="mb-3"><i class="ti ti-list me-2"></i>Episodes</h4>
+                            <div class="accordion" id="seasonsAccordion"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="vodDetailPlayBtn" onclick="playCurrentVod()">
+                    <i class="ti ti-player-play me-2"></i>Play
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allPortals = [];
+let currentView = 'portals'; // 'portals', 'categories', 'items'
+let currentPortalId = null;
+let currentPortalName = '';
+let currentCategoryData = null;
+let vodRefreshInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('VOD page loaded');
+    console.log('DOM elements check:', {
+        loadingIndicator: !!document.getElementById('loadingIndicator'),
+        portalGrid: !!document.getElementById('portalGrid'),
+        portalsContainer: !!document.getElementById('portalsContainer'),
+        refreshBtn: !!document.getElementById('refreshBtn')
+    });
+    
+    try {
+        loadPortals();
+        loadVodSettings();
+        checkVodRefreshProgress(); // Check if refresh is already running
+    } catch (error) {
+        console.error('Error during initialization:', error);
+        showError('Error initializing VOD page: ' + error.message);
+    }
+});
+
+function loadPortals() {
+    const loadingEl = document.getElementById('loadingIndicator');
+    const gridEl = document.getElementById('portalGrid');
+    const container = document.getElementById('portalsContainer');
+    
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (gridEl) gridEl.innerHTML = '';
+    
+    // Add timeout for fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    
+    fetch('/vods/portals', {
+        credentials: 'same-origin',
+        signal: controller.signal
+    })
+        .then(res => {
+            clearTimeout(timeoutId);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            console.log('VOD Portals Response:', data);
+            if (data.success) {
+                allPortals = data.portals || [];
+                renderPortals();
+                updateStats();
+            } else {
+                console.error('API Error:', data.error);
+                if (container) {
+                    container.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading portals: ${data.error || 'Unknown error'}</div>`;
+                }
+            }
+            if (loadingEl) loadingEl.style.display = 'none';
+        })
+        .catch(err => {
+            clearTimeout(timeoutId);
+            console.error('Fetch Error:', err);
+            const errorMsg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message;
+            if (container) {
+                container.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading portals: ${errorMsg}<br><button class="btn btn-sm btn-primary mt-2" onclick="loadPortals()"><i class="ti ti-refresh me-1"></i>Retry</button></div>`;
+            }
+            if (loadingEl) loadingEl.style.display = 'none';
+        });
+}
+
+function renderPortals() {
+    const grid = document.getElementById('portalGrid');
+    const container = document.getElementById('portalsContainer');
+    
+    if (!grid || !container) {
+        console.error('Required DOM elements not found');
+        return;
+    }
+    
+    grid.innerHTML = '';
+    
+    if (!allPortals || allPortals.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-antenna icon"></i></div><p class="empty-title">No portals found</p><p class="empty-subtitle text-muted">Check your portal configuration</p></div>';
+        return;
+    }
+    
+    console.log('Rendering', allPortals.length, 'portals');
+    
+    allPortals.forEach(portal => {
+        const card = document.createElement('div');
+        card.className = 'category-card';
+        card.onclick = () => openPortalModal(portal);
+        
+        const cacheStatus = portal.has_cache ? 
+            `<span class="badge bg-success-lt">Cached</span>` : 
+            `<span class="badge bg-secondary-lt">Not Cached</span>`;
+        
+        const totalCategories = portal.cached_vod_categories + portal.cached_series_categories;
+        const selectedCategories = portal.selected_categories || 0;
+        
+        card.innerHTML = `
+            <div class="category-icon">
+                <i class="ti ti-antenna"></i>
+            </div>
+            <div class="category-name">${escapeHtml(portal.name)}</div>
+            <div class="category-portal">
+                <span class="badge bg-primary-lt me-1">${portal.macs} MAC(s)</span>
+                ${cacheStatus}
+            </div>
+            <div class="category-type">
+                ${selectedCategories}/${totalCategories} Categories Selected
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function filterPortals() {
+    const search = document.getElementById('portalSearch').value.toLowerCase();
+    
+    document.querySelectorAll('.category-card').forEach((card, index) => {
+        const portal = allPortals[index];
+        const matchesSearch = card.textContent.toLowerCase().includes(search);
+        
+        card.style.display = matchesSearch ? 'flex' : 'none';
+    });
+}
+
+function updateStats() {
+    const totalPortals = allPortals.length;
+    const totalVodCategories = allPortals.reduce((sum, p) => sum + p.vod_categories, 0);
+    const totalSeriesCategories = allPortals.reduce((sum, p) => sum + p.series_categories, 0);
+    
+    document.getElementById('totalPortals').textContent = totalPortals;
+    document.getElementById('totalVodCategories').textContent = totalVodCategories;
+    document.getElementById('totalSeriesCategories').textContent = totalSeriesCategories;
+}
+
+function openPortalModal(portal) {
+    currentPortalId = portal.id;
+    currentPortalName = portal.name;
+    currentView = 'categories';
+    
+    const modal = new bootstrap.Modal(document.getElementById('vodModal'));
+    modal.show();
+    
+    // Show loading state
+    document.getElementById('vodModalTitle').textContent = `${portal.name} - Loading...`;
+    document.getElementById('vodModalStats').textContent = `${portal.cached_vod_categories} VOD • ${portal.cached_series_categories} Series`;
+    document.getElementById('vodModalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading categories...</p></div>';
+    
+    // Check if portal has cached categories
+    if (!portal.has_cache) {
+        // No cache - show option to load categories
+        document.getElementById('vodModalTitle').textContent = `${portal.name} - No Categories Cached`;
+        document.getElementById('vodModalStats').textContent = 'Categories need to be loaded first';
+        document.getElementById('vodModalContent').innerHTML = `
+            <div class="text-center py-5">
+                <div class="empty">
+                    <div class="empty-icon">
+                        <i class="ti ti-movie icon"></i>
+                    </div>
+                    <p class="empty-title">No VOD categories cached</p>
+                    <p class="empty-subtitle text-muted">
+                        Load categories from this portal to start selecting VOD content
+                    </p>
+                    <div class="empty-action">
+                        <button class="btn btn-primary" onclick="loadCategoriesFromPortal()">
+                            <i class="ti ti-download me-2"></i>Load Categories Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('vodModalFooter').innerHTML = `
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        `;
+    } else {
+        // Has cache - load categories
+        loadPortalCategories(portal.id);
+    }
+}
+
+function loadPortalCategories(portalId) {
+    fetch(`/vods/categories/${portalId}`, {credentials: 'same-origin'})
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            console.log('Portal Categories Response:', data);
+            if (data.success) {
+                showCategoriesView(data.categories);
+            } else {
+                document.getElementById('vodModalContent').innerHTML = '<div class="alert alert-danger">Error loading categories: ' + (data.error || 'Unknown error') + '</div>';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading portal categories:', err);
+            document.getElementById('vodModalContent').innerHTML = '<div class="alert alert-danger">Error loading categories: ' + err.message + '</div>';
+        });
+}
+
+function showCategoriesView(categories) {
+    currentView = 'categories';
+    
+    // Store categories globally for filtering
+    window.currentCategories = categories;
+    
+    const vodCount = categories.filter(c => c.type === 'vod').length;
+    const seriesCount = categories.filter(c => c.type === 'series').length;
+    
+    document.getElementById('vodModalTitle').textContent = `${currentPortalName} - VOD Categories`;
+    document.getElementById('vodModalStats').textContent = `${categories.length} categories available`;
+    
+    document.getElementById('vodModalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-success" onclick="saveVodSelection()">
+            <i class="ti ti-device-floppy me-2"></i>Save Selection
+        </button>
+    `;
+    
+    let html = `
+        <div class="category-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="categorySearch" placeholder="Search categories..." oninput="filterModalCategories()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt me-2"><i class="ti ti-folder me-1"></i>${categories.length} Categories</span>
+                    <span class="badge bg-success-lt me-2" id="selectedCount">0 Selected</span>
+                    <span class="badge bg-primary" style="cursor: pointer;" onclick="selectAllCategories()"><i class="ti ti-check me-1"></i>All</span>
+                    <span class="badge bg-secondary-lt" style="cursor: pointer;" onclick="deselectAllCategories()"><i class="ti ti-x me-1"></i>None</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-info mb-3">
+            <div class="d-flex align-items-center">
+                <i class="ti ti-info-circle me-2"></i>
+                <div>
+                    <strong>Select VOD Categories:</strong> Choose which categories to activate for this portal. 
+                    Selected categories will be available in your IPTV player and XC API.
+                </div>
+            </div>
+        </div>
+        
+        <div class="row g-3" id="categoriesGrid">
+    `;
+    
+    categories.forEach((category, index) => {
+        const icon = category.type === 'vod' ? 'ti-movie' : 'ti-device-tv';
+        const typeLabel = category.type === 'vod' ? 'VOD' : 'Series';
+        const typeClass = category.type === 'vod' ? 'vod-category' : 'series-category';
+        const categoryKey = `${category.type}_${category.category_id}`;
+        const itemCount = category.item_count || 0;
+        
+        html += `
+            <div class="col-md-6 col-lg-4" data-category-key="${categoryKey}">
+                <div class="card category-selection-card" data-category="${categoryKey}">
+                    <div class="card-body p-3">
+                        <div class="d-flex align-items-start">
+                            <div class="form-check me-3" onclick="event.stopPropagation();">
+                                <input class="form-check-input category-checkbox" type="checkbox" 
+                                       id="cat_${index}" data-category="${categoryKey}"
+                                       onchange="updateSelectedCount(); sortCategoriesBySelection();">
+                            </div>
+                            <div class="flex-fill category-clickable" style="cursor: pointer;" 
+                                 onclick="previewCategoryItems('${category.category_id}', '${category.type}', '${escapeHtml(category.title).replace(/'/g, "\\'")}')">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="ti ${icon} me-2 text-primary"></i>
+                                    <span class="badge bg-${category.type === 'vod' ? 'blue' : 'yellow'}-lt">${typeLabel}</span>
+                                </div>
+                                <h4 class="card-title mb-1" style="font-size: 0.9rem;">${escapeHtml(category.title)}</h4>
+                                <div class="text-muted small">
+                                    <i class="ti ti-movie me-1"></i><span class="item-count">${itemCount}</span> items
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    document.getElementById('vodModalContent').innerHTML = html;
+    
+    // Load current selection and sort
+    loadCurrentVodSelection();
+}
+
+// Sort categories: checked ones first
+function sortCategoriesBySelection() {
+    const grid = document.getElementById('categoriesGrid');
+    if (!grid) return;
+    
+    const items = Array.from(grid.children);
+    items.sort((a, b) => {
+        const aChecked = a.querySelector('.category-checkbox')?.checked ? 1 : 0;
+        const bChecked = b.querySelector('.category-checkbox')?.checked ? 1 : 0;
+        return bChecked - aChecked; // Checked first
+    });
+    
+    items.forEach(item => grid.appendChild(item));
+}
+
+function filterModalCategories() {
+    const search = document.getElementById('categorySearch').value.toLowerCase();
+    // Filter the category selection cards (col-md-6 containers)
+    document.querySelectorAll('#categoriesGrid > .col-md-6').forEach(col => {
+        const card = col.querySelector('.category-selection-card');
+        if (card) {
+            const matchesSearch = card.textContent.toLowerCase().includes(search);
+            col.style.display = matchesSearch ? 'block' : 'none';
+        }
+    });
+}
+
+function openCategoryItems(categoryId, categoryType, categoryTitle) {
+    currentCategoryData = {
+        id: categoryId,
+        type: categoryType,
+        title: categoryTitle
+    };
+    currentView = 'items';
+    
+    // Show loading state
+    document.getElementById('vodModalTitle').textContent = `${categoryTitle} - Loading...`;
+    document.getElementById('vodModalStats').textContent = `${currentPortalName} • Loading items...`;
+    document.getElementById('vodModalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading items...</p></div>';
+    
+    // Load items for this category
+    loadCategoryItems(categoryId, categoryType, categoryTitle);
+}
+
+function loadCategoryItems(categoryId, categoryType, categoryTitle) {
+    fetch(`/vods/items/${currentPortalId}/${categoryType}/${categoryId}`, {credentials: 'same-origin'})
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            console.log('Category Items Response:', data);
+            if (data.success) {
+                showItemsView(data.items, categoryTitle, categoryType, data.total, data.has_more);
+            } else {
+                document.getElementById('vodModalContent').innerHTML = '<div class="alert alert-danger">Error loading items: ' + (data.error || 'Unknown error') + '</div>';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading category items:', err);
+            document.getElementById('vodModalContent').innerHTML = '<div class="alert alert-danger">Error loading items: ' + err.message + '</div>';
+        });
+}
+
+function showItemsView(items, categoryTitle, categoryType, total, hasMore) {
+    currentView = 'items';
+    
+    document.getElementById('vodModalTitle').textContent = categoryTitle;
+    document.getElementById('vodModalStats').textContent = `${currentPortalName} • ${total} items`;
+    
+    document.getElementById('vodModalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="backToCategories()">
+            <i class="ti ti-arrow-left me-2"></i>Back to Categories
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    `;
+    
+    let html = `
+        <div class="category-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="itemSearch" placeholder="Search items..." oninput="filterItems()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt"><i class="ti ti-movie me-1"></i>${items.length} Items</span>
+                    <span class="badge bg-${categoryType === 'vod' ? 'blue' : 'yellow'}-lt">${categoryType === 'vod' ? 'VOD' : 'Series'}</span>
+                </div>
+            </div>
+        </div>
+        <div class="vod-items-grid">
+    `;
+    
+    // Store items globally for detail view access
+    window.currentVodItems = items;
+    
+    items.forEach((item, index) => {
+        const poster = item.screenshot_uri || '';
+        const year = item.year || '';
+        const title = item.name || 'Unknown';
+        
+        html += `
+            <div class="vod-item-card" onclick="openVodDetail(${index}, '${categoryType}')">
+                <div class="vod-poster">
+                    ${poster ? 
+                        `<img src="${poster}" alt="${escapeHtml(title)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                         <div class="placeholder-icon" style="display:none;"><i class="ti ti-movie"></i></div>` :
+                        `<div class="placeholder-icon"><i class="ti ti-movie"></i></div>`
+                    }
+                </div>
+                <div class="vod-info">
+                    <div class="vod-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                    ${year ? `<div class="vod-year">${year}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Add load more button if needed
+    if (hasMore) {
+        html += `
+            <div class="d-flex justify-content-center mt-4">
+                <button class="btn btn-outline-primary" onclick="loadMoreItems()">
+                    <i class="ti ti-chevron-down me-2"></i>Load More
+                </button>
+            </div>
+        `;
+    }
+    
+    document.getElementById('vodModalContent').innerHTML = html;
+}
+
+function filterItems() {
+    const search = document.getElementById('itemSearch').value.toLowerCase();
+    document.querySelectorAll('.vod-item-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
+    });
+}
+
+function backToCategories() {
+    loadPortalCategories(currentPortalId);
+}
+
+let currentVodItem = null;
+
+function playVodItem(type, cmd, title, workingMac, item) {
+    console.log('Opening VOD detail:', {type, cmd, title, workingMac});
+    
+    // Store current item for playback
+    currentVodItem = {
+        type: type,
+        cmd: cmd,
+        title: title,
+        workingMac: workingMac,
+        item: item || {}
+    };
+    
+    // Show detail modal
+    showVodDetailModal(type, item || {name: title, cmd: cmd});
+}
+
+function showVodDetailModal(type, item) {
+    const modal = new bootstrap.Modal(document.getElementById('vodDetailModal'));
+    
+    // Update modal content
+    document.getElementById('vodDetailTitle').textContent = type === 'series' ? 'Series Details' : 'Film Details';
+    document.getElementById('vodDetailSubtitle').textContent = currentPortalName;
+    document.getElementById('vodDetailType').textContent = type === 'series' ? 'Series' : 'VOD';
+    document.getElementById('vodDetailType').className = type === 'series' ? 'badge bg-yellow-lt me-2' : 'badge bg-blue-lt me-2';
+    
+    document.getElementById('vodDetailName').textContent = item.name || 'Unknown Title';
+    document.getElementById('vodDetailYear').textContent = item.year || '';
+    document.getElementById('vodDetailYear').style.display = item.year ? 'inline' : 'none';
+    
+    const rating = item.rating || item.rating_imdb;
+    document.getElementById('vodDetailRating').textContent = rating ? `★ ${rating}` : '';
+    document.getElementById('vodDetailRating').style.display = rating ? 'inline' : 'none';
+    
+    const genre = item.genre || item.genre_str;
+    const genreEl = document.getElementById('vodDetailGenre');
+    if (genre) {
+        genreEl.querySelector('span').textContent = genre;
+        genreEl.style.display = 'block';
+    } else {
+        genreEl.style.display = 'none';
+    }
+    
+    const duration = item.duration || item.time;
+    const durationEl = document.getElementById('vodDetailDuration');
+    if (duration) {
+        durationEl.querySelector('span').textContent = duration;
+        durationEl.style.display = 'block';
+    } else {
+        durationEl.style.display = 'none';
+    }
+    
+    document.getElementById('vodDetailDescription').textContent = item.description || 'No description available.';
+    
+    // Update poster
+    const posterEl = document.getElementById('vodDetailPoster');
+    const posterUrl = item.screenshot_uri || item.poster_url;
+    if (posterUrl) {
+        posterEl.innerHTML = `<img src="${posterUrl}" alt="${escapeHtml(item.name || '')}" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-icon\\'><i class=\\'ti ti-movie\\'></i></div>'">`;
+    } else {
+        posterEl.innerHTML = '<div class="placeholder-icon"><i class="ti ti-movie"></i></div>';
+    }
+    
+    // Handle series episodes
+    const episodesSection = document.getElementById('vodDetailEpisodes');
+    if (type === 'series' && item.id) {
+        episodesSection.style.display = 'block';
+        loadSeriesEpisodes(item.id);
+    } else {
+        episodesSection.style.display = 'none';
+    }
+    
+    modal.show();
+}
+
+function loadSeriesEpisodes(seriesId) {
+    const accordion = document.getElementById('seasonsAccordion');
+    accordion.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Loading episodes...</div>';
+    
+    fetch(`/vods/series/${currentPortalId}/${seriesId}/episodes`, {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.series_info) {
+                renderSeriesEpisodes(data.series_info, seriesId);
+            } else {
+                accordion.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="ti ti-alert-circle me-2"></i>
+                        Could not load episodes: ${data.error || 'Unknown error'}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            console.error('Error loading episodes:', err);
+            accordion.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="ti ti-alert-circle me-2"></i>
+                    Error loading episodes: ${err.message}
+                </div>
+            `;
+        });
+}
+
+function renderSeriesEpisodes(seriesInfo, seriesId) {
+    const accordion = document.getElementById('seasonsAccordion');
+    
+    // Check if we have episode data
+    if (!seriesInfo || !seriesInfo.data || seriesInfo.data.length === 0) {
+        accordion.innerHTML = `
+            <div class="alert alert-info">
+                <i class="ti ti-info-circle me-2"></i>
+                No episodes found for this series.
+            </div>
+        `;
+        return;
+    }
+    
+    console.log('Series info data:', seriesInfo.data);
+    
+    // The API returns seasons with 'series' array containing episode numbers
+    // Format: [{id: "123:1", series: [1,2,3,4], ...}, {id: "123:2", series: [1,2,3], ...}]
+    // OR it might return individual episodes with season/episode fields
+    
+    let html = '';
+    let hasSeasons = false;
+    
+    // Check if data contains seasons (with 'series' array) or individual episodes
+    if (seriesInfo.data[0] && Array.isArray(seriesInfo.data[0].series)) {
+        // Format: Seasons with episode number arrays
+        hasSeasons = true;
+        
+        seriesInfo.data.forEach((season, idx) => {
+            // Extract season number from id (format: "seriesId:seasonNum")
+            const seasonNum = season.id ? season.id.split(':')[1] || (idx + 1) : (idx + 1);
+            const episodes = season.series || [];
+            const isFirst = idx === 0;
+            const seasonTitle = season.name || `Season ${seasonNum}`;
+            
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#season${seasonNum}">
+                            <i class="ti ti-folder me-2"></i>${escapeHtml(seasonTitle)}
+                            <span class="badge bg-primary-lt ms-2">${episodes.length} Episodes</span>
+                        </button>
+                    </h2>
+                    <div id="season${seasonNum}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+            `;
+            
+            // Episodes are just numbers in the 'series' array
+            episodes.forEach(epNum => {
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-secondary-lt me-2">E${epNum}</span>
+                            Episode ${epNum}
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="playEpisode('${seriesId}', ${epNum}, ${seasonNum})">
+                            <i class="ti ti-player-play"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        // Format: Individual episode objects with season/episode fields
+        // Group episodes by season
+        const seasons = {};
+        seriesInfo.data.forEach(episode => {
+            const seasonNum = episode.season || episode.series || 1;
+            if (!seasons[seasonNum]) {
+                seasons[seasonNum] = [];
+            }
+            seasons[seasonNum].push(episode);
+        });
+        
+        Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b)).forEach((seasonNum, idx) => {
+            const episodes = seasons[seasonNum];
+            const isFirst = idx === 0;
+            
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#season${seasonNum}">
+                            <i class="ti ti-folder me-2"></i>Season ${seasonNum}
+                            <span class="badge bg-primary-lt ms-2">${episodes.length} Episodes</span>
+                        </button>
+                    </h2>
+                    <div id="season${seasonNum}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+            `;
+            
+            episodes.forEach(episode => {
+                const epNum = episode.episode || episode.series_episode || '?';
+                const epTitle = episode.name || episode.title || `Episode ${epNum}`;
+                const epCmd = episode.cmd || '';
+                
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-secondary-lt me-2">E${epNum}</span>
+                            ${escapeHtml(epTitle)}
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="playEpisodeWithCmd('${seriesId}', '${escapeHtml(epCmd)}', ${epNum}, ${seasonNum})">
+                            <i class="ti ti-player-play"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    accordion.innerHTML = html || '<div class="alert alert-info">No episodes found.</div>';
+}
+
+function playEpisode(seriesId, episodeNum, seasonNum) {
+    // For series with episode number arrays, we need to construct the cmd
+    // Based on macshow.py: cmd is base64 encoded JSON with series_id, season_num, type
+    const cmdData = {
+        series_id: seriesId,
+        season_num: parseInt(seasonNum),
+        type: "series"
+    };
+    const cmd = btoa(JSON.stringify(cmdData));
+    
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch(`/vods/play/${currentPortalId}/series`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: cmd,
+            episode_num: episodeNum,
+            season_num: seasonNum
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            showToast('Error: ' + (data.error || 'Could not get stream URL'), 'danger');
+        }
+    })
+    .catch(err => {
+        showToast('Error: ' + err.message, 'danger');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+// For episodes that already have a cmd field
+function playEpisodeWithCmd(seriesId, cmd, episodeNum, seasonNum) {
+    if (!cmd) {
+        // Fallback to constructing cmd
+        playEpisode(seriesId, episodeNum, seasonNum);
+        return;
+    }
+    
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch(`/vods/play/${currentPortalId}/series`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: cmd,
+            episode_num: episodeNum,
+            season_num: seasonNum
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            showToast('Error: ' + (data.error || 'Could not get stream URL'), 'danger');
+        }
+    })
+    .catch(err => {
+        showToast('Error: ' + err.message, 'danger');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+function openVodDetail(index, type) {
+    const item = window.currentVodItems[index];
+    if (!item) {
+        console.error('Item not found at index:', index);
+        return;
+    }
+    
+    playVodItem(type, item.cmd, item.name, item.working_mac, item);
+}
+
+function playCurrentVod() {
+    if (!currentVodItem) {
+        showToast('No VOD item selected', 'warning');
+        return;
+    }
+    
+    const playBtn = document.getElementById('vodDetailPlayBtn');
+    const originalText = playBtn.innerHTML;
+    playBtn.disabled = true;
+    playBtn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Loading...';
+    
+    const contentType = currentVodItem.type || 'vod';
+    
+    fetch(`/vods/play/${currentPortalId}/${contentType}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: currentVodItem.cmd,
+            series_id: currentVodItem.item?.id || '0'
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            console.log('Stream URL:', data.url);
+            window.open(data.url, '_blank');
+        } else {
+            showToast('Error getting stream: ' + (data.error || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(err => {
+        console.error('Error getting stream:', err);
+        showToast('Error getting stream: ' + err.message, 'danger');
+    })
+    .finally(() => {
+        playBtn.disabled = false;
+        playBtn.innerHTML = originalText;
+    });
+}
+
+function refreshCategories() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Refreshing...';
+    
+    // Start VOD cache refresh
+    fetch('/vods/refresh', {
+        method: 'POST',
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Show progress bar and start monitoring
+            document.getElementById('vodRefreshProgress').style.display = 'block';
+            startVodProgressMonitoring();
+        } else {
+            showToast('Error starting refresh: ' + (data.error || 'Unknown error'), 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
+        }
+    })
+    .catch(err => {
+        console.error('Error starting refresh:', err);
+        showToast('Error starting refresh: ' + err.message, 'danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
+    });
+}
+
+function checkVodRefreshProgress() {
+    fetch('/vods/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.running) {
+                document.getElementById('vodRefreshProgress').style.display = 'block';
+                startVodProgressMonitoring();
+            }
+        })
+        .catch(err => {
+            console.error('Error checking VOD refresh progress:', err);
+        });
+}
+
+function startVodProgressMonitoring() {
+    if (vodRefreshInterval) {
+        clearInterval(vodRefreshInterval);
+    }
+    
+    vodRefreshInterval = setInterval(() => {
+        fetch('/vods/refresh/progress', {credentials: 'same-origin'})
+            .then(res => res.json())
+            .then(data => {
+                updateVodProgress(data);
+                
+                if (!data.running) {
+                    // Refresh completed
+                    clearInterval(vodRefreshInterval);
+                    vodRefreshInterval = null;
+                    
+                    setTimeout(() => {
+                        document.getElementById('vodRefreshProgress').style.display = 'none';
+                        loadPortals(); // Reload portal list
+                        
+                        // Re-enable refresh button
+                        const btn = document.getElementById('refreshBtn');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
+                    }, 2000);
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching VOD progress:', err);
+                clearInterval(vodRefreshInterval);
+                vodRefreshInterval = null;
+                document.getElementById('vodRefreshProgress').style.display = 'none';
+                
+                // Re-enable refresh button
+                const btn = document.getElementById('refreshBtn');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
+            });
+    }, 1000); // Poll every second
+}
+
+function updateVodProgress(data) {
+    const progressBar = document.getElementById('vodProgressBar');
+    const progressPercent = document.getElementById('vodProgressPercent');
+    const progressDetails = document.getElementById('vodProgressDetails');
+    const progressTitle = document.getElementById('vodProgressTitle');
+    
+    if (!progressBar || !progressPercent || !progressDetails || !progressTitle) {
+        return;
+    }
+    
+    // Calculate percentage
+    let percentage = 0;
+    if (data.portals_total > 0) {
+        percentage = Math.round((data.portals_done / data.portals_total) * 100);
+    }
+    
+    // Update progress bar
+    progressBar.style.width = percentage + '%';
+    progressPercent.textContent = percentage + '%';
+    
+    // Update title and details
+    if (data.current_portal) {
+        progressTitle.textContent = `Refreshing VOD Cache - ${data.current_portal}`;
+    } else {
+        progressTitle.textContent = 'Refreshing VOD Cache...';
+    }
+    
+    progressDetails.textContent = data.current_step || 'Processing...';
+}
+
+function openVodSettings() {
+    // Load current settings before showing modal
+    loadVodSettings();
+    const modal = new bootstrap.Modal(document.getElementById('vodSettingsModal'));
+    modal.show();
+}
+
+function loadVodSettings() {
+    fetch('/vods/settings', {credentials: 'same-origin'})
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            console.log('VOD Settings Response:', data);
+            if (data.success) {
+                const settings = data.settings;
+                const ffmpegEl = document.getElementById('streamTypeFFmpeg');
+                const directEl = document.getElementById('streamTypeDirect');
+                const macRotationEl = document.getElementById('macRotation');
+                
+                if (ffmpegEl) ffmpegEl.checked = settings.stream_type === 'ffmpeg';
+                if (directEl) directEl.checked = settings.stream_type === 'direct';
+                if (macRotationEl) macRotationEl.checked = settings.mac_rotation === 'true';
+            } else {
+                console.error('Settings API Error:', data.error);
+            }
+        })
+        .catch(err => {
+            console.error('Error loading VOD settings:', err);
+        });
+}
+
+function saveVodSettings() {
+    const streamType = document.querySelector('input[name="stream_type"]:checked').value;
+    const macRotation = document.getElementById('macRotation').checked;
+    
+    const settings = {
+        stream_type: streamType,
+        mac_rotation: macRotation ? 'true' : 'false'
+    };
+    
+    fetch('/vods/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('vodSettingsModal'));
+            modal.hide();
+            showToast('VOD settings saved successfully', 'success');
+        } else {
+            showToast('Error saving settings: ' + (data.error || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(err => {
+        console.error('Error saving VOD settings:', err);
+        showToast('Error saving settings', 'danger');
+    });
+}
+
+function showError(message) {
+    showToast('Error: ' + message, 'danger');
+}
+
+function loadCurrentVodSelection() {
+    // Load currently selected VOD categories for this portal
+    fetch(`/vods/selection/${currentPortalId}`, {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.selected_categories) {
+                data.selected_categories.forEach(categoryKey => {
+                    const checkbox = document.querySelector(`input[data-category="${categoryKey}"]`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+                });
+                updateSelectedCount();
+                // Sort categories: checked ones first
+                sortCategoriesBySelection();
+            }
+        })
+        .catch(err => {
+            console.error('Error loading VOD selection:', err);
+        });
+}
+
+function updateSelectedCount() {
+    const checkboxes = document.querySelectorAll('.category-checkbox');
+    const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    document.getElementById('selectedCount').textContent = `${selectedCount} Selected`;
+}
+
+function selectAllCategories() {
+    // Only select visible (not hidden) categories
+    document.querySelectorAll('.category-checkbox').forEach(cb => {
+        const container = cb.closest('.col-md-6');
+        if (container && container.style.display !== 'none') {
+            cb.checked = true;
+        }
+    });
+    updateSelectedCount();
+}
+
+function deselectAllCategories() {
+    // Only deselect visible (not hidden) categories
+    document.querySelectorAll('.category-checkbox').forEach(cb => {
+        const container = cb.closest('.col-md-6');
+        if (container && container.style.display !== 'none') {
+            cb.checked = false;
+        }
+    });
+    updateSelectedCount();
+}
+
+let vodItemsLoadInterval = null;
+
+function saveVodSelection() {
+    const selectedCategories = [];
+    document.querySelectorAll('.category-checkbox:checked').forEach(cb => {
+        selectedCategories.push(cb.dataset.category);
+    });
+    
+    const saveBtn = document.querySelector('#vodModalFooter .btn-success');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Saving...';
+    
+    fetch('/vods/save-selection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            portal_id: currentPortalId,
+            selected_categories: selectedCategories,
+            load_items: true
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            if (data.loading_items) {
+                // Show items loading progress
+                showItemsLoadingProgress(selectedCategories.length);
+            } else {
+                showToast(`Successfully saved ${selectedCategories.length} VOD categories!`, 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('vodModal'));
+                modal.hide();
+                loadPortals();
+            }
+        } else {
+            showToast('Error saving selection: ' + (data.error || 'Unknown error'), 'danger');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalText;
+        }
+    })
+    .catch(err => {
+        console.error('Error saving VOD selection:', err);
+        showToast('Error saving selection: ' + err.message, 'danger');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+    });
+}
+
+function showItemsLoadingProgress(totalCategories) {
+    // Update modal content to show progress
+    document.getElementById('vodModalTitle').textContent = `${currentPortalName} - Loading Items`;
+    document.getElementById('vodModalStats').textContent = 'Loading VOD items for selected categories...';
+    
+    document.getElementById('vodModalContent').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status"></div>
+            <h4 id="itemsLoadTitle">Loading VOD Items...</h4>
+            <p class="text-muted mb-3" id="itemsLoadDetails">Starting...</p>
+            <div class="progress mb-3" style="height: 8px; max-width: 400px; margin: 0 auto;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="itemsLoadBar" style="width: 0%"></div>
+            </div>
+            <div class="d-flex justify-content-center gap-3">
+                <span class="badge bg-primary-lt" id="itemsLoadCategories">0/${totalCategories} Categories</span>
+                <span class="badge bg-success-lt" id="itemsLoadCount">0 Items Loaded</span>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('vodModalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close (Loading continues in background)</button>
+    `;
+    
+    // Start polling for progress
+    startItemsLoadProgressMonitoring(totalCategories);
+}
+
+function startItemsLoadProgressMonitoring(totalCategories) {
+    if (vodItemsLoadInterval) {
+        clearInterval(vodItemsLoadInterval);
+    }
+    
+    vodItemsLoadInterval = setInterval(() => {
+        fetch('/vods/items-load/progress', {credentials: 'same-origin'})
+            .then(res => res.json())
+            .then(data => {
+                updateItemsLoadProgress(data, totalCategories);
+                
+                if (!data.running) {
+                    // Loading completed
+                    clearInterval(vodItemsLoadInterval);
+                    vodItemsLoadInterval = null;
+                    
+                    setTimeout(() => {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('vodModal'));
+                        if (modal) {
+                            modal.hide();
+                        }
+                        loadPortals();
+                        
+                        // Show success notification
+                        showToast(`Successfully loaded ${data.items_loaded} items from ${data.categories_done} categories!`, 'success');
+                    }, 1000);
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching items load progress:', err);
+            });
+    }, 1000);
+}
+
+function updateItemsLoadProgress(data, totalCategories) {
+    const titleEl = document.getElementById('itemsLoadTitle');
+    const detailsEl = document.getElementById('itemsLoadDetails');
+    const barEl = document.getElementById('itemsLoadBar');
+    const categoriesEl = document.getElementById('itemsLoadCategories');
+    const countEl = document.getElementById('itemsLoadCount');
+    
+    if (!titleEl) return;
+    
+    const percentage = totalCategories > 0 ? Math.round((data.categories_done / totalCategories) * 100) : 0;
+    
+    titleEl.textContent = data.running ? 'Loading VOD Items...' : 'Loading Complete!';
+    detailsEl.textContent = data.current_category || 'Processing...';
+    barEl.style.width = percentage + '%';
+    categoriesEl.textContent = `${data.categories_done}/${totalCategories} Categories`;
+    countEl.textContent = `${data.items_loaded} Items Loaded`;
+}
+
+function loadCategoriesFromPortal() {
+    // Show loading state
+    document.getElementById('vodModalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading categories from portal...</p></div>';
+    
+    fetch('/vods/load-categories', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            portal_id: currentPortalId,
+            force_refresh: false
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showCategoriesView(data.categories);
+        } else {
+            document.getElementById('vodModalContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="ti ti-alert-circle me-2"></i>
+                    Error loading categories: ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        console.error('Error loading categories:', err);
+        document.getElementById('vodModalContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="ti ti-alert-circle me-2"></i>
+                Error loading categories: ${err.message}
+            </div>
+        `;
+    });
+}
+
+function previewCategoryItems(categoryId, categoryType, categoryTitle) {
+    // Open items view in a new modal or expand inline
+    openCategoryItems(categoryId, categoryType, categoryTitle);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
