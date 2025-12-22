@@ -5006,9 +5006,13 @@ def _playlist_with_auth(username, password):
     """Generate playlist with embedded Basic Auth credentials in stream URLs."""
     logger.info("Playlist with Basic Auth Requested")
     
-    # Use external host configuration
+    # Use external host configuration or request host
     external_host, external_scheme = get_external_host_config()
-    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    if external_host:
+        playlist_host = external_host
+    else:
+        # Use the actual request host (e.g., rico.goip.de:61095)
+        playlist_host = request.host or "0.0.0.0:8001"
     
     channels = []
     
