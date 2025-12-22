@@ -4944,10 +4944,47 @@ def xc_users_kick():
 
 @app.route("/playlist.m3u", methods=["GET"])
 def playlist():
+    """Main M3U playlist with support for both session-based and Basic Auth."""
     settings = getSettings()
-    if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _playlist())()
-    return _playlist()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _playlist()
+    else:
+        # Public access disabled - check for authentication
+        
+        # First check if user is logged in via session (existing logic)
+        if flask.session.get("authenticated"):
+            return _playlist()
+        
+        # If no session, try Basic Auth
+        auth = request.authorization
+        if auth and auth.username and auth.password:
+            # Validate Basic Auth credentials
+            system_username = settings.get("username", "admin")
+            system_password = settings.get("password", "12345")
+            
+            if auth.username == system_username and auth.password == system_password:
+                # Basic Auth successful - generate playlist with embedded auth
+                logger.info(f"Basic Auth successful for main playlist: {auth.username}")
+                return _playlist_with_auth(auth.username, auth.password)
+            else:
+                logger.warning(f"Invalid Basic Auth credentials for main playlist: {auth.username}")
+        
+        # No valid authentication - check if this is a Basic Auth request
+        if auth:
+            # Basic Auth was attempted but failed
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Main Playlist"'}
+            )
+            return response
+        else:
+            # No Basic Auth provided - use existing session-based auth (redirect to login)
+            return authorise(lambda: _playlist())()
 
 def _playlist():
     global cached_playlist, last_playlist_host
@@ -4964,6 +5001,101 @@ def _playlist():
         generate_playlist()
 
     return Response(cached_playlist, mimetype="text/plain")
+
+def _playlist_with_auth(username, password):
+    """Generate playlist with embedded Basic Auth credentials in stream URLs."""
+    logger.info("Playlist with Basic Auth Requested")
+    
+    # Use external host configuration
+    external_host, external_scheme = get_external_host_config()
+    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    
+    channels = []
+    
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, channel_id
+    ''')
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Get portal info
+    portals = getPortals()
+    
+    for channel in db_channels:
+        portal_id = channel['portal']
+        channel_id = str(channel['channel_id'])
+        
+        # Check if portal is enabled
+        if portal_id not in portals or portals[portal_id].get("enabled") != "true":
+            continue
+        
+        # Use custom values if available, otherwise use original values
+        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
+        genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
+        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        
+        # Apply portal prefix to genre only (for group-title organization)
+        portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+        if portal_prefix and genre:
+            genre = f"[{portal_prefix}] {genre}"
+        
+        # Build M3U entry - escape quotes in attributes
+        def escape_quotes(text):
+            return str(text).replace('"', '&quot;') if text else ""
+        
+        m3u_entry = "#EXTINF:-1"
+        m3u_entry += ' tvg-id="' + escape_quotes(epg_id) + '"'
+        
+        if getSettings().get("use channel numbers", "true") == "true" and channel_number:
+            m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
+        
+        if getSettings().get("use channel genres", "true") == "true" and genre:
+            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        
+        m3u_entry += ',' + str(channel_name) + "\n"
+        # Embed Basic Auth credentials in stream URL
+        m3u_entry += f"http://{username}:{password}@{playlist_host}/play/{portal_id}/{channel_id}"
+        
+        channels.append(m3u_entry)
+
+    # Sort channels based on settings (same logic as generate_playlist)
+    if getSettings().get("sort playlist by channel name", "true") == "true":
+        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
+    if getSettings().get("use channel numbers", "true") == "true":
+        if getSettings().get("sort playlist by channel number", "false") == "true":
+            def get_channel_number(k):
+                try:
+                    if 'tvg-chno="' in k:
+                        return int(k.split('tvg-chno="')[1].split('"')[0])
+                    return 999999  # Put channels without numbers at the end
+                except (ValueError, IndexError):
+                    return 999999
+            channels.sort(key=get_channel_number)
+    if getSettings().get("use channel genres", "true") == "true":
+        if getSettings().get("sort playlist by channel genre", "false") == "true":
+            def get_genre(k):
+                try:
+                    if 'group-title="' in k:
+                        return k.split('group-title="')[1].split('"')[0]
+                    return "zzz"  # Put channels without genre at the end
+                except IndexError:
+                    return "zzz"
+            channels.sort(key=get_genre)
+
+    playlist = "#EXTM3U \n"
+    if channels:
+        playlist = playlist + "\n".join(channels)
+
+    logger.info("Playlist with Basic Auth generated.")
+    return Response(playlist, mimetype="text/plain")
 
 @app.route("/update_playlistm3u", methods=["POST"])
 @authorise
@@ -5605,10 +5737,47 @@ def refresh_xmltv():
     
 @app.route("/xmltv", methods=["GET"])
 def xmltv():
+    """XMLTV EPG with support for both session-based and Basic Auth."""
     settings = getSettings()
-    if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _xmltv())()
-    return _xmltv()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _xmltv()
+    else:
+        # Public access disabled - check for authentication
+        
+        # First check if user is logged in via session (existing logic)
+        if flask.session.get("authenticated"):
+            return _xmltv()
+        
+        # If no session, try Basic Auth
+        auth = request.authorization
+        if auth and auth.username and auth.password:
+            # Validate Basic Auth credentials
+            system_username = settings.get("username", "admin")
+            system_password = settings.get("password", "12345")
+            
+            if auth.username == system_username and auth.password == system_password:
+                # Basic Auth successful
+                logger.info(f"Basic Auth successful for XMLTV: {auth.username}")
+                return _xmltv()
+            else:
+                logger.warning(f"Invalid Basic Auth credentials for XMLTV: {auth.username}")
+        
+        # No valid authentication - check if this is a Basic Auth request
+        if auth:
+            # Basic Auth was attempted but failed
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC XMLTV"'}
+            )
+            return response
+        else:
+            # No Basic Auth provided - use existing session-based auth (redirect to login)
+            return authorise(lambda: _xmltv())()
 
 def _xmltv():
     global cached_xmltv, last_updated
