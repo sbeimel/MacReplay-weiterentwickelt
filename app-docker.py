@@ -1,18 +1,15 @@
-import sys
 import os
 import shutil
 import time
-import tempfile
 import gzip
 import io
 import requests
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
-import xml.dom.minidom as minidom
 import threading
 from threading import Thread
 import logging
-logger = logging.getLogger("MacReplay")
+logger = logging.getLogger("MacReplayXC")
 logger.setLevel(logging.INFO)
 logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
@@ -23,14 +20,14 @@ if os.getenv("CONFIG"):
 else:
     # Default paths for container
     log_dir = "/app/data"
-    configFile = os.path.join(log_dir, "MacReplay.json")
+    configFile = os.path.join(log_dir, "MacReplayXC.json")
 
 # Create directories if they don't exist
 os.makedirs(log_dir, exist_ok=True)
 os.makedirs("/app/logs", exist_ok=True)
 
 # Log file path for container
-log_file_path = os.path.join("/app/logs", "MacReplay.log")
+log_file_path = os.path.join("/app/logs", "MacReplayXC.log")
 
 # Set up logging
 fileHandler = logging.FileHandler(log_file_path)
@@ -48,6 +45,156 @@ ffprobe_path = "ffprobe"
 
 # Check if the binaries exist
 import subprocess
+
+def get_stream_url_with_auth(playlist_host, portal_id, channel_id):
+    """
+    Generate stream URL with embedded basic auth if needed.
+    
+    Args:
+        playlist_host (str): Host for the playlist
+        portal_id (str): Portal ID
+        channel_id (str): Channel ID
+        
+    Returns:
+        str: Stream URL with or without embedded auth
+    """
+    base_url = f"http://{playlist_host}/play/{portal_id}/{channel_id}"
+    
+    # Check if we should embed basic auth credentials
+    settings = getSettings()
+    
+    # If public access is disabled, embed auth for VLC compatibility
+    if settings.get("public playlist access", "true") == "false":
+        
+        # Try to get auth from current request context
+        auth_user = None
+        auth_pass = None
+        
+        try:
+            if hasattr(request, 'authorization') and request.authorization:
+                auth_user = request.authorization.username
+                auth_pass = request.authorization.password
+        except:
+            # No request context or no authorization
+            pass
+        
+        # If no auth from request, use default credentials
+        if not auth_user:
+            auth_user = settings.get("username", "admin")
+            auth_pass = settings.get("password", "12345")
+        
+        # Embed basic auth in URL for VLC compatibility
+        # Format: http://user:pass@host/path
+        return f"http://{auth_user}:{auth_pass}@{playlist_host}/play/{portal_id}/{channel_id}"
+    
+    return base_url
+
+
+def get_external_host_config():
+    """
+    Get external host configuration from environment variables.
+    
+    Returns:
+        tuple: (external_host, external_scheme) or (None, None)
+    """
+    # Check if HOST contains a full URL (simple approach)
+    host_env = os.getenv("HOST")
+    if host_env and ("http://" in host_env or "https://" in host_env):
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(host_env)
+            if parsed.hostname:
+                host_with_port = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+                scheme = parsed.scheme or "http"
+                return host_with_port, scheme
+        except Exception:
+            pass
+    
+    # Fallback to None (use request.host)
+    return None, None
+
+
+def extract_auth_credentials(request):
+    """
+    Extract authentication credentials from HTTP request.
+    
+    Supports both HTTP Basic Authentication and Query Parameters.
+    Basic Auth takes precedence over Query Parameters.
+    
+    Args:
+        request: Flask request object
+        
+    Returns:
+        tuple: (username, password) or (None, None) if no credentials found
+    """
+    # Priority 1: HTTP Basic Authentication
+    if hasattr(request, 'authorization') and request.authorization:
+        auth = request.authorization
+        if auth.username and auth.password:
+            return (auth.username, auth.password)
+    
+    # Priority 2: Query Parameters
+    username = request.args.get('username')
+    password = request.args.get('password')
+    
+    if username and password:
+        return (username, password)
+    
+    # No credentials found
+    return (None, None)
+
+
+def validate_authentication(username, password, settings=None, client_ip=None):
+    """
+    Validate authentication credentials against system settings.
+    
+    Args:
+        username (str): Username to validate
+        password (str): Password to validate
+        settings (dict, optional): System settings. If None, will fetch current settings.
+        client_ip (str, optional): Client IP address for logging
+        
+    Returns:
+        tuple: (is_valid, error_message)
+            - is_valid (bool): True if credentials are valid
+            - error_message (str): Error message if validation fails, None if valid
+    """
+    if settings is None:
+        settings = getSettings()
+    
+    # Get client IP for logging
+    if client_ip is None:
+        try:
+            client_ip = get_client_ip()
+        except:
+            client_ip = "unknown"
+    
+    # Check if security is enabled
+    security_enabled = settings.get("enable security", "false") == "true"
+    
+    # If security is disabled, allow access
+    if not security_enabled:
+        logger.debug(f"Authentication bypassed (security disabled) from IP: {client_ip}")
+        return (True, None)
+    
+    # If security is enabled, credentials are required
+    if not username or not password:
+        logger.warning(f"Authentication attempt without credentials from IP: {client_ip}")
+        return (False, "Authentication required")
+    
+    # Validate credentials against system settings
+    system_username = settings.get("username", "admin")
+    system_password = settings.get("password", "12345")
+    
+    if username != system_username or password != system_password:
+        logger.warning(f"Authentication failed for user '{username}' from IP: {client_ip}")
+        return (False, "Invalid credentials")
+    
+    # Authentication successful
+    logger.info(f"Authentication successful for user '{username}' from IP: {client_ip}")
+    return (True, None)
+
+
 try:
     subprocess.run([ffmpeg_path, "-version"], capture_output=True, check=True)
     subprocess.run([ffprobe_path, "-version"], capture_output=True, check=True)
@@ -84,7 +231,10 @@ from utils import (
     normalize_mac_address,
     sanitize_channel_name,
     get_client_ip,
-    is_hls_url
+    is_hls_url,
+    validate_proxy_url,
+    get_proxy_type,
+    parse_proxy_url
 )
 
 app = Flask(__name__)
@@ -176,7 +326,7 @@ defaultSettings = {
     "username": "admin",
     "password": "12345",
     "enable hdhr": "true",
-    "hdhr name": "MacReplay",
+    "hdhr name": "MacReplayXC",
     "hdhr id": str(uuid.uuid4().hex),
     "hdhr tuners": "10",
     "epg fallback enabled": "false",
@@ -205,6 +355,7 @@ defaultPortal = {
     "streams per mac": "1",
     "epg offset": "0",
     "proxy": "",
+    "portal prefix": "",
     "enabled channels": [],
     "custom channel names": {},
     "custom channel numbers": {},
@@ -355,7 +506,7 @@ class HLSStreamManager:
             is_source_hls = is_hls_url(stream_url)
             
             # Create temp directory for HLS segments
-            temp_dir = tempfile.mkdtemp(prefix=f"macreplay_hls_{stream_key}_")
+            temp_dir = tempfile.mkdtemp(prefix=f"MacReplayXC_hls_{stream_key}_")
             playlist_path = os.path.join(temp_dir, "stream.m3u8")
             master_playlist_path = os.path.join(temp_dir, "master.m3u8")
             
@@ -565,6 +716,9 @@ def loadConfig():
     return data
 
 def getPortals():
+    global config
+    if not config:
+        config = loadConfig()
     return config["portals"]
 
 def savePortals(portals):
@@ -578,6 +732,9 @@ def savePortals(portals):
         raise
 
 def getSettings():
+    global config
+    if not config:
+        config = loadConfig()
     return config["settings"]
 
 def saveSettings(settings):
@@ -1152,7 +1309,7 @@ def xc_auth_optional(f):
             
             if xc_username and xc_password:
                 user_id, user = validateXCUser(xc_username, xc_password)
-                if user:
+                if user_id:
                     # XC API auth successful, allow access
                     return f(*args, **kwargs)
         
@@ -2492,6 +2649,7 @@ def portals():
     
     return render_template("portals.html", 
                          portals=getPortals(),
+                         settings=getSettings(),
                          show_genre_modal=show_genre_modal,
                          genre_modal_portal_id=genre_modal_portal_id,
                          genre_modal_portal_name=genre_modal_portal_name)
@@ -2601,6 +2759,13 @@ def portalsAdd():
     streamsPerMac = request.form.get("streams per mac", "1")
     epgOffset = request.form.get("epg offset", "0")
     proxy = request.form.get("proxy", "").strip()
+    portalPrefix = request.form.get("portal prefix", "").strip()
+    
+    # Validate proxy if provided
+    if proxy and not validate_proxy_url(proxy):
+        proxy_type = get_proxy_type(proxy)
+        flash(f"Invalid proxy format. Detected type: {proxy_type}. Use: http://host:port, socks5://host:port, ss://method:password@host:port, etc.", "danger")
+        return redirect("/portals", code=302)
 
     if not url.endswith(".php"):
         url = stb.getUrl(url, proxy)
@@ -2639,6 +2804,7 @@ def portalsAdd():
             "streams per mac": streamsPerMac,
             "epg offset": epgOffset,
             "proxy": proxy,
+            "portal prefix": portalPrefix,
         }
 
         for setting, default in defaultPortal.items():
@@ -2680,8 +2846,15 @@ def portalUpdate():
     newmacs = list(set(newmacs))  # Remove duplicates
     streamsPerMac = request.form["streams per mac"]
     epgOffset = request.form["epg offset"]
-    proxy = request.form["proxy"]
+    proxy = request.form["proxy"].strip()
+    portalPrefix = request.form.get("portal prefix", "").strip()
     retest = request.form.get("retest", None)
+    
+    # Validate proxy if provided
+    if proxy and not validate_proxy_url(proxy):
+        proxy_type = get_proxy_type(proxy)
+        flash(f"Invalid proxy format. Detected type: {proxy_type}. Use: http://host:port, socks5://host:port, ss://method:password@host:port, etc.", "danger")
+        return redirect("/portals", code=302)
 
     if not url.endswith(".php"):
         url = stb.getUrl(url, proxy)
@@ -2729,6 +2902,7 @@ def portalUpdate():
         portals[id]["streams per mac"] = streamsPerMac
         portals[id]["epg offset"] = epgOffset
         portals[id]["proxy"] = proxy
+        portals[id]["portal prefix"] = portalPrefix
         savePortals(portals)
         logger.info("Portal({}) updated!".format(name))
         flash("Portal({}) updated!".format(name), "success")
@@ -3119,6 +3293,635 @@ def portalRemove():
     flash("Portal ({}) removed!".format(name), "success")
     return redirect("/portals", code=302)
 
+
+def apply_portal_prefix(channel_name, genre, portal_prefix):
+    """Apply portal prefix to genre only (for group-title organization)."""
+    if portal_prefix and genre:
+        genre = f"[{portal_prefix}] {genre}"
+    return channel_name, genre
+
+
+def generate_portal_m3u(portal_id):
+    """Generate M3U playlist content for a specific portal."""
+    logger.info(f"Generating M3U for portal: {portal_id}")
+    
+    # Use external host configuration
+    external_host, external_scheme = get_external_host_config()
+    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    
+    channels = []
+    
+    # Get enabled channels from database for specific portal
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id
+        FROM channels 
+        WHERE enabled = 1 AND portal = ?
+        ORDER BY channel_id
+    ''', (portal_id,))
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Get portal info
+    portals = getPortals()
+    
+    # Check if portal exists and is enabled
+    if portal_id not in portals:
+        logger.warning(f"Portal {portal_id} not found")
+        return None
+        
+    if portals[portal_id].get("enabled") != "true":
+        logger.warning(f"Portal {portal_id} is disabled")
+        return "#EXTM3U \n"  # Return empty playlist for disabled portals
+    
+    # Get portal prefix
+    portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+    
+    for channel in db_channels:
+        channel_id = str(channel['channel_id'])
+        
+        # Use custom values if available, otherwise use original values
+        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
+        genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
+        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        
+        # Apply portal prefix to genre only (for group-title organization)
+        if portal_prefix and genre:
+            genre = f"[{portal_prefix}] {genre}"
+        
+        # Build M3U entry - escape quotes in attributes
+        def escape_quotes(text):
+            return str(text).replace('"', '&quot;') if text else ""
+        
+        m3u_entry = "#EXTINF:-1"
+        m3u_entry += ' tvg-id="' + escape_quotes(epg_id) + '"'
+        
+        if getSettings().get("use channel numbers", "true") == "true" and channel_number:
+            m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
+        
+        if getSettings().get("use channel genres", "true") == "true" and genre:
+            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        
+        m3u_entry += ',' + str(channel_name) + "\n"
+        m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
+        
+        channels.append(m3u_entry)
+
+    # Sort channels based on settings (same logic as main playlist)
+    if getSettings().get("sort playlist by channel name", "true") == "true":
+        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
+    if getSettings().get("use channel numbers", "true") == "true":
+        if getSettings().get("sort playlist by channel number", "false") == "true":
+            def get_channel_number(k):
+                try:
+                    if 'tvg-chno="' in k:
+                        return int(k.split('tvg-chno="')[1].split('"')[0])
+                    return 999999  # Put channels without numbers at the end
+                except (ValueError, IndexError):
+                    return 999999
+            channels.sort(key=get_channel_number)
+    if getSettings().get("use channel genres", "true") == "true":
+        if getSettings().get("sort playlist by channel genre", "false") == "true":
+            def get_genre(k):
+                try:
+                    if 'group-title="' in k:
+                        return k.split('group-title="')[1].split('"')[0]
+                    return "zzz"  # Put channels without genre at the end
+                except IndexError:
+                    return "zzz"
+            channels.sort(key=get_genre)
+
+    playlist = "#EXTM3U \n"
+    if channels:
+        playlist = playlist + "\n".join(channels)
+
+    logger.info(f"Generated M3U for portal {portal_id} with {len(channels)} channels")
+    return playlist
+
+
+def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
+    """
+    Generate M3U playlist content for a specific portal with authentication-aware stream URLs.
+    
+    Args:
+        portal_id (str): Portal ID
+        username (str): Username for embedding in stream URLs (if security enabled)
+        password (str): Password for embedding in stream URLs (if security enabled)
+        
+    Returns:
+        str: M3U playlist content with authentication-aware stream URLs
+    """
+    logger.info(f"Generating M3U with auth for portal: {portal_id}")
+    
+    # Use external host configuration
+    external_host, external_scheme = get_external_host_config()
+    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    
+    channels = []
+    
+    # Get enabled channels from database for specific portal
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+               number, custom_number, custom_epg_id
+        FROM channels 
+        WHERE enabled = 1 AND portal = ?
+        ORDER BY channel_id
+    ''', (portal_id,))
+    db_channels = cursor.fetchall()
+    conn.close()
+    
+    # Get portal info
+    portals = getPortals()
+    
+    # Check if portal exists and is enabled
+    if portal_id not in portals:
+        logger.warning(f"Portal {portal_id} not found")
+        return None
+        
+    if portals[portal_id].get("enabled") != "true":
+        logger.warning(f"Portal {portal_id} is disabled")
+        return "#EXTM3U \n"  # Return empty playlist for disabled portals
+    
+    # Get settings to determine if we should embed auth in stream URLs
+    settings = getSettings()
+    security_enabled = settings.get("enable security", "false") == "true"
+    
+    # Get portal prefix
+    portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+    
+    for channel in db_channels:
+        channel_id = str(channel['channel_id'])
+        
+        # Use custom values if available, otherwise use original values
+        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
+        genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
+        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
+        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        
+        # Apply portal prefix to genre only (for group-title organization)
+        if portal_prefix and genre:
+            genre = f"[{portal_prefix}] {genre}"
+        
+        # Build M3U entry - escape quotes in attributes
+        def escape_quotes(text):
+            return str(text).replace('"', '&quot;') if text else ""
+        
+        m3u_entry = "#EXTINF:-1"
+        m3u_entry += ' tvg-id="' + escape_quotes(epg_id) + '"'
+        
+        if getSettings().get("use channel numbers", "true") == "true" and channel_number:
+            m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
+        
+        if getSettings().get("use channel genres", "true") == "true" and genre:
+            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        
+        m3u_entry += ',' + str(channel_name) + "\n"
+        
+        # Generate stream URL with embedded auth if security is enabled and credentials provided
+        if security_enabled and username and password:
+            # Embed Basic Auth in stream URL for maximum player compatibility
+            stream_url = f"http://{username}:{password}@{playlist_host}/play/{portal_id}/{channel_id}"
+        else:
+            # Standard stream URL without embedded auth
+            stream_url = f"http://{playlist_host}/play/{portal_id}/{channel_id}"
+        
+        m3u_entry += stream_url
+        
+        channels.append(m3u_entry)
+
+    # Sort channels based on settings (same logic as main playlist)
+    if getSettings().get("sort playlist by channel name", "true") == "true":
+        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
+    if getSettings().get("use channel numbers", "true") == "true":
+        if getSettings().get("sort playlist by channel number", "false") == "true":
+            def get_channel_number(k):
+                try:
+                    if 'tvg-chno="' in k:
+                        return int(k.split('tvg-chno="')[1].split('"')[0])
+                    return 999999  # Put channels without numbers at the end
+                except (ValueError, IndexError):
+                    return 999999
+            channels.sort(key=get_channel_number)
+    if getSettings().get("use channel genres", "true") == "true":
+        if getSettings().get("sort playlist by channel genre", "false") == "true":
+            def get_genre(k):
+                try:
+                    if 'group-title="' in k:
+                        return k.split('group-title="')[1].split('"')[0]
+                    return "zzz"  # Put channels without genre at the end
+                except IndexError:
+                    return "zzz"
+            channels.sort(key=get_genre)
+
+    playlist = "#EXTM3U \n"
+    if channels:
+        playlist = playlist + "\n".join(channels)
+
+    logger.info(f"Generated M3U with auth for portal {portal_id} with {len(channels)} channels")
+    return playlist
+
+
+def generate_portal_filename(portal_name):
+    """Generate a safe filename for portal M3U download."""
+    import re
+    # Remove or replace unsafe characters
+    safe_name = re.sub(r'[<>:"/\\|?*]', '_', portal_name)
+    # Remove extra spaces and trim
+    safe_name = re.sub(r'\s+', '_', safe_name.strip())
+    # Ensure it's not empty
+    if not safe_name:
+        safe_name = "portal"
+    return f"{safe_name}.m3u"
+
+
+@app.route("/api/portal/<portal_id>/mac-status", methods=["GET"])
+@authorise
+def portal_mac_status(portal_id):
+    """Check MAC address status for a portal."""
+    try:
+        portals = getPortals()
+        
+        if portal_id not in portals:
+            return flask.jsonify({"success": False, "error": "Portal not found"}), 404
+        
+        portal = portals[portal_id]
+        portal_url = portal["url"]
+        macs = portal.get("macs", [])
+        
+        if not macs:
+            return flask.jsonify({"success": False, "error": "No MAC addresses configured"}), 400
+        
+        # Import MAC status checker
+        import requests
+        import json
+        from datetime import datetime
+        
+        def check_single_mac_status(portal_url, mac_address):
+            """Check status of a single MAC address"""
+            try:
+                # Ensure portal URL ends with portal.php
+                if not portal_url.endswith('/portal.php'):
+                    if portal_url.endswith('/'):
+                        portal_url_clean = portal_url + 'portal.php'
+                    else:
+                        portal_url_clean = portal_url + '/portal.php'
+                else:
+                    portal_url_clean = portal_url
+                
+                session = requests.Session()
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3',
+                    'X-User-Agent': f'Model: MAG250; Link: WiFi; MAC: {mac_address}',
+                    'Cookie': f'mac={mac_address}; stb_lang=en'
+                }
+                
+                # Get authentication token
+                token_response = session.get(
+                    f'{portal_url_clean}?type=stb&action=handshake&JsHttpRequest=1-xml',
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if token_response.status_code != 200:
+                    return {
+                        'success': False,
+                        'mac': mac_address,
+                        'error': f'Token request failed: HTTP {token_response.status_code}'
+                    }
+                
+                try:
+                    token_data = token_response.json()
+                    token = token_data.get('js', {}).get('token')
+                    if not token:
+                        return {
+                            'success': False,
+                            'mac': mac_address,
+                            'error': 'No token received from portal'
+                        }
+                except json.JSONDecodeError:
+                    return {
+                        'success': False,
+                        'mac': mac_address,
+                        'error': 'Invalid JSON response for token'
+                    }
+                
+                # Get profile information
+                profile_response = session.get(
+                    f'{portal_url_clean}?type=stb&action=get_profile&JsHttpRequest=1-xml',
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if profile_response.status_code != 200:
+                    return {
+                        'success': False,
+                        'mac': mac_address,
+                        'error': f'Profile request failed: HTTP {profile_response.status_code}'
+                    }
+                
+                try:
+                    profile_data = profile_response.json()
+                    profile = profile_data.get('js', {})
+                except json.JSONDecodeError:
+                    return {
+                        'success': False,
+                        'mac': mac_address,
+                        'error': 'Invalid JSON response for profile'
+                    }
+                
+                # Get account information
+                account_response = session.get(
+                    f'{portal_url_clean}?type=account_info&action=get_main_info&JsHttpRequest=1-xml',
+                    headers=headers,
+                    timeout=10
+                )
+                
+                account_info = {}
+                if account_response.status_code == 200:
+                    try:
+                        account_data = account_response.json()
+                        account_info = account_data.get('js', {})
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Extract key information
+                watchdog_timeout = profile.get('watchdog_timeout')
+                playback_limit = profile.get('playback_limit', 1)
+                account_status = profile.get('status', 0)
+                is_blocked = profile.get('blocked', '0') != '0'
+                expires = account_info.get('phone', '')  # This seems to contain expiry date
+                
+                return {
+                    'success': True,
+                    'mac': mac_address,
+                    'watchdog_timeout': watchdog_timeout,
+                    'playback_limit': playback_limit,
+                    'account_active': account_status == 1,
+                    'is_blocked': is_blocked,
+                    'expires': expires,
+                    'token': token
+                }
+                
+            except requests.exceptions.Timeout:
+                return {
+                    'success': False,
+                    'mac': mac_address,
+                    'error': 'Request timeout'
+                }
+            except requests.exceptions.ConnectionError as e:
+                return {
+                    'success': False,
+                    'mac': mac_address,
+                    'error': f'Connection error: {str(e)}'
+                }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'mac': mac_address,
+                    'error': f'Unexpected error: {str(e)}'
+                }
+        
+        # Use the enhanced stb.py functions for better MAC status checking
+        import stb
+        
+        # Get MAC status summary using the smart system
+        mac_list = list(macs.keys()) if isinstance(macs, dict) else macs
+        mac_summary = stb.getMacStatusSummary(portal_url, mac_list, portal.get('proxy'))
+        
+        # Convert to the expected format
+        mac_statuses = []
+        portal_info = {}
+        
+        for mac_info in mac_summary:
+            status = mac_info['status']
+            if status['success']:
+                # Add the enhanced information
+                enhanced_status = {
+                    'success': True,
+                    'mac': status['mac'],
+                    'watchdog_timeout': status.get('watchdog_timeout'),
+                    'playback_limit': status.get('playback_limit', 1),
+                    'account_active': status.get('account_active', False),
+                    'is_blocked': status.get('is_blocked', False),
+                    'expires': status.get('expires', ''),
+                    'token': status.get('token', ''),
+                    # New enhanced fields
+                    'is_internally_used': status.get('is_internally_used', False),
+                    'streams_used': status.get('streams_used', 0),
+                    'max_streams': status.get('max_streams', 1),
+                    'usage_ratio': status.get('usage_ratio', 0.0),
+                    'internal_usage': status.get('internal_usage')
+                }
+                mac_statuses.append(enhanced_status)
+                
+                # Extract portal info from first successful response
+                if not portal_info:
+                    portal_info = {
+                        'playback_limit': status.get('playback_limit', 1)
+                    }
+            else:
+                # Keep failed status as is
+                mac_statuses.append(status)
+        
+        return flask.jsonify({
+            "success": True,
+            "portal_id": portal_id,
+            "portal_name": portal["name"],
+            "portal_info": portal_info,
+            "mac_statuses": mac_statuses,
+            "checked_at": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking MAC status for portal {portal_id}: {e}")
+        return flask.jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/portal/download-m3u/<portal_id>", methods=["GET"])
+def portal_download_m3u(portal_id):
+    """Legacy portal M3U download with configurable access control."""
+    settings = getSettings()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _portal_download_m3u(portal_id)
+    else:
+        # Public access disabled - require Basic Auth
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            # No Basic Auth provided - return 401 with WWW-Authenticate header
+            response = Response(
+                'Authentication required\n'
+                'Please provide Basic Auth credentials in the URL:\n'
+                'http://username:password@host/portal/download-m3u/portal_id',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Legacy M3U"'}
+            )
+            return response
+        
+        # Validate Basic Auth credentials
+        system_username = settings.get("username", "admin")
+        system_password = settings.get("password", "12345")
+        
+        if auth.username != system_username or auth.password != system_password:
+            logger.warning(f"Invalid Basic Auth credentials for legacy M3U: {auth.username}")
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Legacy M3U"'}
+            )
+            return response
+        
+        # Authentication successful
+        logger.info(f"Basic Auth successful for legacy M3U: {auth.username}")
+        return _portal_download_m3u(portal_id)
+
+def _portal_download_m3u(portal_id):
+    """Download M3U playlist for a specific portal."""
+    try:
+        # Get portal info
+        portals = getPortals()
+        
+        if portal_id not in portals:
+            logger.warning(f"Portal download requested for non-existent portal: {portal_id}")
+            return Response("Portal not found", status=404)
+        
+        portal = portals[portal_id]
+        portal_name = portal.get("name", "Unknown Portal")
+        
+        # Generate M3U content
+        m3u_content = generate_portal_m3u(portal_id)
+        
+        if m3u_content is None:
+            logger.error(f"Failed to generate M3U for portal: {portal_id}")
+            return Response("Error generating M3U", status=500)
+        
+        # Generate filename
+        filename = generate_portal_filename(portal_name)
+        
+        # Create response with proper headers
+        response = Response(m3u_content, mimetype="text/plain")
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        response.headers["Content-Type"] = "text/plain; charset=utf-8"
+        
+        logger.info(f"M3U download served for portal: {portal_name} ({portal_id})")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in portal M3U download for {portal_id}: {e}")
+        return Response("Internal server error", status=500)
+
+
+@app.route("/portal/<portal_id>/playlist.m3u", methods=["GET"])
+def portal_specific_m3u(portal_id):
+    """Portal-specific M3U with configurable access control."""
+    settings = getSettings()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _portal_specific_m3u(portal_id)
+    else:
+        # Public access disabled - require Basic Auth
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            # No Basic Auth provided - return 401 with WWW-Authenticate header
+            response = Response(
+                'Authentication required\n'
+                'Please provide Basic Auth credentials in the URL:\n'
+                'http://username:password@host/portal/portal_id/playlist.m3u',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Portal M3U"'}
+            )
+            return response
+        
+        # Validate Basic Auth credentials
+        system_username = settings.get("username", "admin")
+        system_password = settings.get("password", "12345")
+        
+        if auth.username != system_username or auth.password != system_password:
+            logger.warning(f"Invalid Basic Auth credentials for portal M3U: {auth.username}")
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Portal M3U"'}
+            )
+            return response
+        
+        # Authentication successful
+        logger.info(f"Basic Auth successful for portal M3U: {auth.username}")
+        return _portal_specific_m3u(portal_id)
+
+def _portal_specific_m3u(portal_id):
+    """
+    Portal-specific M3U route handler with Basic Auth and Query Parameter support.
+    
+    Supports authentication via:
+    1. HTTP Basic Auth: http://user:pass@host/portal/portal_id/playlist.m3u
+    2. Query Parameters: http://host/portal/portal_id/playlist.m3u?username=user&password=pass
+    
+    Basic Auth takes precedence over Query Parameters.
+    """
+    try:
+        # Extract authentication credentials
+        username, password = extract_auth_credentials(request)
+        
+        # Get system settings
+        settings = getSettings()
+        security_enabled = settings.get("enable security", "false") == "true"
+        public_access_enabled = settings.get("public playlist access", "true") == "true"
+        
+        # Validate portal exists and is enabled
+        portals = getPortals()
+        
+        if portal_id not in portals:
+            logger.warning(f"Portal-specific M3U requested for non-existent portal: {portal_id}")
+            return Response("Portal not found", status=404)
+        
+        portal = portals[portal_id]
+        
+        if portal.get("enabled") != "true":
+            logger.warning(f"Portal-specific M3U requested for disabled portal: {portal_id}")
+            return Response("Portal not found", status=404)
+        
+        # Validate authentication only if public access is disabled
+        if not public_access_enabled:
+            is_valid, error_message = validate_authentication(username, password, settings)
+            if not is_valid:
+                logger.warning(f"Portal-specific M3U requested with invalid credentials for portal: {portal_id}")
+                return Response(error_message, status=401)
+        else:
+            logger.debug(f"Portal-specific M3U access granted (public access enabled) for portal: {portal_id}")
+        
+        # Generate M3U content with authentication-aware stream URLs
+        m3u_content = generate_portal_m3u_with_auth(portal_id, username, password)
+        
+        if m3u_content is None:
+            logger.error(f"Failed to generate M3U for portal: {portal_id}")
+            return Response("Error generating M3U", status=500)
+        
+        # Create response with proper headers for M3U file download
+        response = Response(m3u_content, mimetype="application/x-mpegURL")
+        response.headers["Content-Disposition"] = f"attachment; filename=portal_{portal_id}_playlist.m3u"
+        response.headers["Content-Type"] = "application/x-mpegURL; charset=utf-8"
+        
+        portal_name = portal.get("name", "Unknown Portal")
+        logger.info(f"Portal-specific M3U served for portal: {portal_name} ({portal_id})")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in portal-specific M3U for {portal_id}: {e}")
+        return Response("Internal server error", status=500)
+
+
 @app.route("/editor", methods=["GET"])
 @authorise
 def editor():
@@ -3143,8 +3946,10 @@ def editor_data():
         ''')
         
         channels = []
-        request_host = request.host
-        request_scheme = request.scheme
+        # Use external host configuration
+        external_host, external_scheme = get_external_host_config()
+        request_host = external_host or request.host
+        request_scheme = external_scheme if external_host else request.scheme
         
         for row in cursor.fetchall():
             channels.append({
@@ -3285,8 +4090,10 @@ def editor_portal_channels(portal_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        request_host = request.host
-        request_scheme = request.scheme
+        # Use external host configuration
+        external_host, external_scheme = get_external_host_config()
+        request_host = external_host or request.host
+        request_scheme = external_scheme if external_host else request.scheme
         
         cursor.execute("""
             SELECT 
@@ -3954,14 +4761,32 @@ def settings():
         "settings.html", settings=settings, defaultSettings=defaultSettings
     )
 
+
+@app.route("/proxy-test", methods=["GET"])
+@authorise
+def proxy_test_page():
+    """Proxy test page."""
+    return render_template("proxy_test.html")
+
+
 @app.route("/settings/save", methods=["POST"])
 @authorise
 def save():
     settings = {}
 
     for setting, _ in defaultSettings.items():
-        value = request.form.get(setting, "false")
-        settings[setting] = value
+        if setting == "public playlist access":
+            # Special handling for inverted checkbox logic
+            # If checkbox is checked, it means "secure" (false for public access)
+            # If checkbox is not checked, it means "public" (true for public access)
+            checkbox_value = request.form.get(setting)
+            if checkbox_value == "false":  # Checkbox is checked (secure mode)
+                settings[setting] = "false"  # No public access
+            else:  # Checkbox is not checked (public mode)
+                settings[setting] = "true"   # Allow public access
+        else:
+            value = request.form.get(setting, "false")
+            settings[setting] = value
 
     saveSettings(settings)
     logger.info("Settings saved!")
@@ -4119,17 +4944,53 @@ def xc_users_kick():
 
 @app.route("/playlist.m3u", methods=["GET"])
 def playlist():
+    """Main M3U playlist with configurable access control and Basic Auth support."""
     settings = getSettings()
-    if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _playlist())()
-    return _playlist()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _playlist()
+    else:
+        # Public access disabled - require Basic Auth
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            # No Basic Auth provided - return 401 with WWW-Authenticate header
+            response = Response(
+                'Authentication required\n'
+                'Please provide Basic Auth credentials in the URL:\n'
+                'http://username:password@host/playlist.m3u',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Main Playlist"'}
+            )
+            return response
+        
+        # Validate Basic Auth credentials
+        system_username = settings.get("username", "admin")
+        system_password = settings.get("password", "12345")
+        
+        if auth.username != system_username or auth.password != system_password:
+            logger.warning(f"Invalid Basic Auth credentials for main playlist: {auth.username}")
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Main Playlist"'}
+            )
+            return response
+        
+        # Authentication successful
+        logger.info(f"Basic Auth successful for main playlist: {auth.username}")
+        return _playlist()
 
 def _playlist():
     global cached_playlist, last_playlist_host
     
     logger.info("Playlist Requested")
     
-    current_host = request.host or "0.0.0.0:8001"
+    # Use external host configuration
+    external_host, external_scheme = get_external_host_config()
+    current_host = external_host or request.host or "0.0.0.0:8001"
     
     if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
         logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
@@ -4185,7 +5046,9 @@ def generate_playlist():
     global cached_playlist
     logger.info("Generating playlist.m3u from database...")
 
-    playlist_host = request.host or "0.0.0.0:8001"
+    # Use external host configuration
+    external_host, external_scheme = get_external_host_config()
+    playlist_host = external_host or request.host or "0.0.0.0:8001"
     
     channels = []
     
@@ -4218,6 +5081,11 @@ def generate_playlist():
         genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
+        
+        # Apply portal prefix to genre only (for group-title organization)
+        portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+        if portal_prefix and genre:
+            genre = f"[{portal_prefix}] {genre}"
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -4262,7 +5130,8 @@ def generate_playlist():
             channels.sort(key=get_genre)
 
     playlist = "#EXTM3U \n"
-    playlist = playlist + "\n".join(channels)
+    if channels:
+        playlist = playlist + "\n".join(channels)
 
     cached_playlist = playlist
     logger.info("Playlist generated and cached.")
@@ -4473,7 +5342,7 @@ def refresh_xmltv():
     # Docker-optimized cache paths
     cache_dir = "/app/data"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, "MacReplayEPG.xml")
+    cache_file = os.path.join(cache_dir, "MacReplayXCEPG.xml")
 
     day_before_yesterday = datetime.utcnow() - timedelta(days=2)
     day_before_yesterday_str = day_before_yesterday.strftime("%Y%m%d%H%M%S") + " +0000"
@@ -4770,10 +5639,44 @@ def refresh_xmltv():
     
 @app.route("/xmltv", methods=["GET"])
 def xmltv():
+    """XMLTV EPG with configurable access control and Basic Auth support."""
     settings = getSettings()
-    if settings.get("public playlist access", "true") != "true":
-        return authorise(lambda: _xmltv())()
-    return _xmltv()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _xmltv()
+    else:
+        # Public access disabled - require Basic Auth
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            # No Basic Auth provided - return 401 with WWW-Authenticate header
+            response = Response(
+                'Authentication required\n'
+                'Please provide Basic Auth credentials in the URL:\n'
+                'http://username:password@host/xmltv',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC XMLTV"'}
+            )
+            return response
+        
+        # Validate Basic Auth credentials
+        system_username = settings.get("username", "admin")
+        system_password = settings.get("password", "12345")
+        
+        if auth.username != system_username or auth.password != system_password:
+            logger.warning(f"Invalid Basic Auth credentials for XMLTV: {auth.username}")
+            response = Response(
+                'Invalid credentials\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC XMLTV"'}
+            )
+            return response
+        
+        # Authentication successful
+        logger.info(f"Basic Auth successful for XMLTV: {auth.username}")
+        return _xmltv()
 
 def _xmltv():
     global cached_xmltv, last_updated
@@ -5247,7 +6150,19 @@ def epg_refresh_progress_status():
 @app.route("/get", methods=["GET"])
 @xc_auth_only
 def xc_get_playlist():
-    """XC API M3U playlist endpoint."""
+    """XC API M3U playlist endpoint with optional portal filtering."""
+    return xc_get_playlist_impl()
+
+
+@app.route("/portal/<portal_id>/get.php", methods=["GET"])
+@xc_auth_only
+def xc_get_portal_playlist(portal_id):
+    """Route-based XC API M3U playlist endpoint for specific portal."""
+    return xc_get_playlist_impl(route_portal_id=portal_id)
+
+
+def xc_get_playlist_impl(route_portal_id=None):
+    """XC API M3U playlist endpoint with optional portal filtering."""
     settings = getSettings()
     if settings.get("xc api enabled") != "true":
         return "XC API is disabled", 403
@@ -5257,14 +6172,33 @@ def xc_get_playlist():
     output = request.args.get("output", "m3u8")
     playlist_type = request.args.get("type", "m3u_plus")
     
+    # NEW: Portal filtering support via portal_id parameter
+    portal_id_filter = request.args.get("portal_id")
+    
     if not username or not password:
         return "Missing credentials", 401
     
     user_id, user = validateXCUser(username, password)
-    if not user:
+    if not user_id:
         return "Invalid credentials", 401
     
-    # Generate M3U playlist
+    # Generate M3U playlist with optional portal filtering
+    m3u_content = generate_xc_m3u_with_portal_filter(user, portal_id_filter)
+    
+    return Response(m3u_content, mimetype="application/x-mpegURL")
+
+
+def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
+    """
+    Generate XC API M3U playlist content with optional portal filtering.
+    
+    Args:
+        user (dict): XC API user object with allowed_portals
+        portal_id_filter (str, optional): Portal ID to filter by
+        
+    Returns:
+        str: M3U playlist content
+    """
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
     
@@ -5283,6 +6217,10 @@ def xc_get_playlist():
     db_channels = cursor.fetchall()
     conn.close()
     
+    # Use the same host as the request came from (handles reverse proxy correctly)
+    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+    host = request.headers.get('X-Forwarded-Host', request.host)
+    
     # Create a copy to avoid RuntimeError if dictionary changes during iteration
     for portal_id, portal in list(portals.items()):
         if portal.get("enabled") != "true":
@@ -5290,14 +6228,14 @@ def xc_get_playlist():
         if allowed_portals and portal_id not in allowed_portals:
             continue
         
+        # NEW: Portal filtering - if portal_id_filter is specified, only include that portal
+        if portal_id_filter and portal_id != portal_id_filter:
+            continue
+        
         # Get channels for this portal from database
         portal_channels = [ch for ch in db_channels if ch['portal'] == portal_id]
         if not portal_channels:
             continue
-        
-        # Use the same host as the request came from (handles reverse proxy correctly)
-        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-        host = request.headers.get('X-Forwarded-Host', request.host)
         
         for db_channel in portal_channels:
             channel_id = str(db_channel['channel_id'])
@@ -5309,10 +6247,15 @@ def xc_get_playlist():
             epg_id = db_channel['custom_epg_id'] if db_channel['custom_epg_id'] else channel_name
             logo = db_channel['logo'] or ""
             
+            # Apply portal prefix to genre only (for group-title organization)
+            portal_prefix = portal.get("portal prefix", "").strip()
+            if portal_prefix and genre:
+                genre = f"[{portal_prefix}] {genre}"
+            
             stream_id = f"{portal_id}_{channel_id}"
             # Standard XC API URL format for maximum compatibility
             # Add .ts extension for better IPTV client compatibility
-            stream_url = f"{scheme}://{host}/{username}/{password}/{stream_id}.ts"
+            stream_url = f"{scheme}://{host}/{request.args.get('username')}/{request.args.get('password')}/{stream_id}.ts"
             
             # Escape quotes in attributes
             def escape_quotes(text):
@@ -5321,7 +6264,7 @@ def xc_get_playlist():
             m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(genre)}",{channel_name}\n'
             m3u_content += f'{stream_url}\n'
     
-    return Response(m3u_content, mimetype="application/x-mpegURL")
+    return m3u_content
 
 
 @app.route("/player_api.php", methods=["GET"])
@@ -5350,7 +6293,7 @@ def xc_api():
         })
     
     user_id, user = validateXCUser(username, password)
-    if not user:
+    if not user_id:
         return flask.jsonify({
             "user_info": {
                 "auth": 0,
@@ -6265,7 +7208,7 @@ def xc_base(username, password):
 def xc_stream(username, password, stream_id, extension=None):
     """XC API stream endpoint."""
     # Block access to data directory and other system paths
-    if username == "data" or "MacReplay.json" in str(stream_id) or str(stream_id).startswith("data/"):
+    if username == "data" or "MacReplayXC.json" in str(stream_id) or str(stream_id).startswith("data/"):
         return "Access denied", 403
     settings = getSettings()
     if settings.get("xc api enabled") != "true":
@@ -6277,11 +7220,11 @@ def xc_stream(username, password, stream_id, extension=None):
         }), 403
     
     user_id, user = validateXCUser(username, password)
-    if not user:
+    if not user_id:
         return flask.jsonify({
             "user_info": {
                 "auth": 0,
-                "message": user_id  # user_id contains error message
+                "message": user  # user contains error message
             }
         }), 401
     
@@ -6293,6 +7236,9 @@ def xc_stream(username, password, stream_id, extension=None):
         except:
             return "Invalid stream ID", 400
     else:
+        if not str(stream_id).isdigit():
+            return "Invalid stream ID", 400
+            
         # Numeric format: need to find the matching channel
         # This is inefficient but necessary for XC API compatibility
         numeric_id = int(stream_id)
@@ -6550,8 +7496,8 @@ def xc_movie_stream(username, password, stream_id, extension=None):
         return flask.jsonify({"user_info": {"auth": 0, "message": "XC API disabled"}}), 403
     
     user_id, user = validateXCUser(username, password)
-    if not user:
-        return flask.jsonify({"user_info": {"auth": 0, "message": user_id}}), 401
+    if not user_id:
+        return flask.jsonify({"user_info": {"auth": 0, "message": user}}), 401
     
     # Parse stream_id to find the VOD
     portal_id = None
@@ -6733,8 +7679,8 @@ def xc_series_stream(username, password, stream_id, extension=None):
         return flask.jsonify({"user_info": {"auth": 0, "message": "XC API disabled"}}), 403
     
     user_id, user = validateXCUser(username, password)
-    if not user:
-        return flask.jsonify({"user_info": {"auth": 0, "message": user_id}}), 401
+    if not user_id:
+        return flask.jsonify({"user_info": {"auth": 0, "message": user}}), 401
     
     # Parse stream_id to find the episode
     portal_id = None
@@ -7138,10 +8084,44 @@ def stream_channel(portalId, channelId, xc_user=None):
 
 
 @app.route("/play/<portalId>/<channelId>", methods=["GET"])
-@authorise
 def channel(portalId, channelId):
-    """Web UI endpoint to play a channel."""
-    return stream_channel(portalId, channelId)
+    """Stream endpoint with configurable access control."""
+    settings = getSettings()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return stream_channel(portalId, channelId)
+    else:
+        # Public access disabled - require Basic Auth
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            # No Basic Auth provided - return 401 with WWW-Authenticate header
+            response = Response(
+                'Authentication required for stream access\n'
+                'Please provide Basic Auth credentials.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Stream Access"'}
+            )
+            return response
+        
+        # Validate Basic Auth credentials
+        system_username = settings.get("username", "admin")
+        system_password = settings.get("password", "12345")
+        
+        if auth.username != system_username or auth.password != system_password:
+            logger.warning(f"Invalid Basic Auth credentials for stream: {auth.username}")
+            response = Response(
+                'Invalid credentials for stream access\n'
+                'Please check your username and password.',
+                401,
+                {'WWW-Authenticate': 'Basic realm="MacReplayXC Stream Access"'}
+            )
+            return response
+        
+        # Authentication successful
+        logger.info(f"Basic Auth successful for stream: {auth.username}")
+        return stream_channel(portalId, channelId)
 
 
 @app.route("/hls/<portalId>/<channelId>/<path:filename>", methods=["GET"])
@@ -7303,7 +8283,7 @@ def dashboard_stats():
 @app.route("/log")
 @authorise
 def log():
-    logFilePath = "/app/logs/MacReplay.log"
+    logFilePath = "/app/logs/MacReplayXC.log"
     
     try:
         with open(logFilePath) as f:
@@ -7345,7 +8325,7 @@ def discover():
         "BaseURL": host,
         "DeviceAuth": name,
         "DeviceID": id,
-        "FirmwareName": "MacReplay",
+        "FirmwareName": "MacReplayXC",
         "FirmwareVersion": "666",
         "FriendlyName": name,
         "LineupURL": host + "/lineup.json",
@@ -7493,7 +8473,142 @@ def get_recent_logs():
 def start_refresh():
     threading.Thread(target=refresh_lineup, daemon=True).start()
     threading.Thread(target=refresh_xmltv, daemon=True).start()
-    
+
+
+@app.route("/proxy/test", methods=["POST"])
+@authorise
+def proxy_test():
+    """Test proxy connectivity and functionality."""
+    try:
+        data = request.json
+        proxy_url = data.get('proxy_url', '').strip()
+        test_url = data.get('test_url', 'http://httpbin.org/ip')
+        
+        if not proxy_url:
+            return flask.jsonify({"error": "No proxy URL provided"}), 400
+        
+        # Test 1: Validation
+        is_valid = validate_proxy_url(proxy_url)
+        proxy_type = get_proxy_type(proxy_url)
+        
+        result = {
+            "proxy_url": proxy_url,
+            "proxy_type": proxy_type,
+            "valid": is_valid,
+            "tests": {}
+        }
+        
+        if not is_valid:
+            result["error"] = f"Invalid proxy format. Detected type: {proxy_type}"
+            return flask.jsonify(result), 400
+        
+        # Test 2: Parse proxy
+        try:
+            parsed_proxy = parse_proxy_url(proxy_url)
+            result["parsed"] = parsed_proxy
+            result["tests"]["parsing"] = {"success": True, "message": "Proxy URL parsed successfully"}
+        except Exception as e:
+            result["tests"]["parsing"] = {"success": False, "error": str(e)}
+            return flask.jsonify(result), 500
+        
+        # Test 3: HTTP connectivity test
+        try:
+            import requests
+            
+            # For SOCKS proxies, ensure we have the right dependencies and use HTTP
+            if proxy_type in ['socks5', 'socks4']:
+                try:
+                    import socks
+                except ImportError:
+                    result["tests"]["connectivity"] = {
+                        "success": False, 
+                        "error": "PySocks library not available. Install with: pip install requests[socks]"
+                    }
+                    return flask.jsonify(result), 500
+                
+                # Use HTTP instead of HTTPS for SOCKS to avoid SSL issues
+                if test_url.startswith('https://'):
+                    test_url = test_url.replace('https://', 'http://')
+            
+            response = requests.get(test_url, proxies=parsed_proxy, timeout=10)
+            
+            if response.status_code == 200:
+                try:
+                    # Try JSON first (httpbin.org/ip format)
+                    data = response.json()
+                    external_ip = data.get('origin', 'Unknown')
+                    result["tests"]["connectivity"] = {
+                        "success": True, 
+                        "message": f"Connection successful via proxy",
+                        "external_ip": external_ip,
+                        "status_code": response.status_code
+                    }
+                except:
+                    # Fallback to plain text (ipinfo.io/ip format)
+                    external_ip = response.text.strip()
+                    if external_ip and len(external_ip) < 50:  # Reasonable IP length
+                        result["tests"]["connectivity"] = {
+                            "success": True, 
+                            "message": f"Connection successful via proxy",
+                            "external_ip": external_ip,
+                            "status_code": response.status_code
+                        }
+                    else:
+                        result["tests"]["connectivity"] = {
+                            "success": True, 
+                            "message": f"Connection successful via proxy",
+                            "status_code": response.status_code,
+                            "response_preview": response.text[:100]
+                        }
+            else:
+                result["tests"]["connectivity"] = {
+                    "success": False, 
+                    "error": f"HTTP {response.status_code}",
+                    "status_code": response.status_code
+                }
+        except requests.exceptions.ProxyError as e:
+            result["tests"]["connectivity"] = {"success": False, "error": f"Proxy error: {str(e)}"}
+        except requests.exceptions.ConnectTimeout:
+            result["tests"]["connectivity"] = {"success": False, "error": "Connection timeout"}
+        except requests.exceptions.ConnectionError as e:
+            result["tests"]["connectivity"] = {"success": False, "error": f"Connection error: {str(e)}"}
+        except Exception as e:
+            result["tests"]["connectivity"] = {"success": False, "error": f"Unexpected error: {str(e)}"}
+        
+        # Test 4: Shadowsocks specific test (if applicable)
+        if proxy_type == 'shadowsocks':
+            try:
+                # Try to import shadowsocks library
+                import shadowsocks
+                result["tests"]["shadowsocks_library"] = {"success": True, "message": "Shadowsocks library available"}
+                
+                # Additional Shadowsocks connectivity test could go here
+                result["tests"]["shadowsocks_connectivity"] = {
+                    "success": True, 
+                    "message": "Shadowsocks library detected, basic validation passed"
+                }
+            except ImportError:
+                result["tests"]["shadowsocks_library"] = {
+                    "success": False, 
+                    "error": "Shadowsocks library not available. Install with: pip install shadowsocks==2.8.2"
+                }
+            except Exception as e:
+                result["tests"]["shadowsocks_connectivity"] = {"success": False, "error": str(e)}
+        
+        # Overall success
+        all_tests_passed = all(
+            test.get("success", False) 
+            for test in result["tests"].values()
+        )
+        result["overall_success"] = all_tests_passed
+        
+        return flask.jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in proxy_test: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     config = loadConfig()
     

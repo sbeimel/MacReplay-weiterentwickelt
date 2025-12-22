@@ -1,0 +1,622 @@
+{% extends "base.html" %}
+
+{% block title %}Proxy Test - MacReplayXC{% endblock %}
+
+{% block head %}
+<style>
+    /* Dark Mode Fixes for Proxy Test */
+    
+    /* Input groups in dark mode */
+    [data-bs-theme="dark"] .input-group-text {
+        background-color: #2a2a2a;
+        border-color: #404040;
+        color: #e0e0e0;
+    }
+    
+    /* Code blocks in dark mode */
+    [data-bs-theme="dark"] code {
+        background-color: #1a1a1a !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #404040;
+    }
+    
+    /* Pre blocks in dark mode */
+    [data-bs-theme="dark"] pre {
+        background-color: #1a1a1a !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #404040;
+    }
+    
+    /* List group items in dark mode */
+    [data-bs-theme="dark"] .list-group-item {
+        background-color: transparent;
+        border-color: #404040;
+        color: #e0e0e0;
+    }
+    
+    /* Font monospace inputs in dark mode */
+    [data-bs-theme="dark"] .font-monospace {
+        background-color: #2a2a2a !important;
+        color: #e0e0e0 !important;
+        border-color: #404040 !important;
+    }
+    
+    /* Readonly inputs in dark mode */
+    [data-bs-theme="dark"] input[readonly] {
+        background-color: #1f1f1f !important;
+        color: #a0a0a0 !important;
+        border-color: #404040 !important;
+    }
+    
+    /* Avatar backgrounds in dark mode */
+    [data-bs-theme="dark"] .avatar.bg-success-lt {
+        background-color: rgba(16, 185, 129, 0.15) !important;
+        color: #6ee7b7 !important;
+    }
+    
+    [data-bs-theme="dark"] .avatar.bg-info-lt {
+        background-color: rgba(59, 130, 246, 0.15) !important;
+        color: #93c5fd !important;
+    }
+    
+    [data-bs-theme="dark"] .avatar.bg-warning-lt {
+        background-color: rgba(245, 158, 11, 0.15) !important;
+        color: #fcd34d !important;
+    }
+    
+    /* Card body backgrounds in examples */
+    [data-bs-theme="dark"] .card .bg-light {
+        background-color: #1f1f1f !important;
+        color: #e0e0e0 !important;
+        border-color: #404040 !important;
+    }
+    
+    /* Form labels in dark mode */
+    [data-bs-theme="dark"] .form-label {
+        color: #e0e0e0;
+    }
+    
+    /* Small text and hints in dark mode */
+    [data-bs-theme="dark"] .small,
+    [data-bs-theme="dark"] .text-muted {
+        color: #a0a0a0 !important;
+    }
+    
+    /* Dropdown menu items */
+    [data-bs-theme="dark"] .dropdown-item {
+        color: #e0e0e0;
+    }
+    
+    [data-bs-theme="dark"] .dropdown-item:hover {
+        background-color: #333333;
+        color: #ffffff;
+    }
+    
+    /* Button group active states */
+    [data-bs-theme="dark"] .btn-outline-primary.active {
+        background-color: #10b981;
+        border-color: #10b981;
+        color: #ffffff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <div class="page-pretitle">
+                    Network Testing
+                </div>
+                <h2 class="page-title">
+                    <i class="ti ti-network me-2"></i>
+                    Proxy Test
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <div class="row row-cards">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-plug me-2"></i>
+                            Proxy Test Tool
+                        </h3>
+                        <div class="card-actions">
+                            <div class="dropdown">
+                                <a href="#" class="btn-action dropdown-toggle" data-bs-toggle="dropdown" aria-label="Quick Examples">
+                                    <i class="ti ti-dots-vertical"></i>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <h6 class="dropdown-header">Quick Examples</h6>
+                                    <a class="dropdown-item" href="#" onclick="fillExample('socks5://127.0.0.1:1080')">
+                                        <i class="ti ti-shield-lock me-2"></i>Local SOCKS5
+                                    </a>
+                                    <a class="dropdown-item" href="#" onclick="fillExample('http://proxy.example.com:8080')">
+                                        <i class="ti ti-world me-2"></i>HTTP Proxy
+                                    </a>
+                                    <a class="dropdown-item" href="#" onclick="fillExample('socks5://gluetun:1080')">
+                                        <i class="ti ti-container me-2"></i>Gluetun SOCKS5
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info mb-4">
+                            <div class="d-flex">
+                                <div><i class="ti ti-info-circle icon alert-icon"></i></div>
+                                <div>
+                                    <h4 class="alert-title">Proxy Connectivity Test</h4>
+                                    <div class="text-muted">Test your SOCKS5, Shadowsocks, and HTTP proxy connections to ensure they're working properly before using them with your IPTV streams.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <form id="proxyTestForm">
+                            <div class="row">
+                                <div class="col-lg-8">
+                                    <div class="mb-3">
+                                        <label class="form-label required" for="proxy_url">
+                                            <i class="ti ti-link me-1"></i>
+                                            Proxy URL
+                                        </label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">
+                                                <i class="ti ti-world"></i>
+                                            </span>
+                                            <input type="text" class="form-control" id="proxy_url" name="proxy_url" 
+                                                   placeholder="e.g., socks5://127.0.0.1:1080 or ss://aes-256-gcm:password@server:8388"
+                                                   required>
+                                        </div>
+                                        <div class="form-hint">
+                                            Supported formats: 
+                                            <span class="badge bg-secondary-lt me-1">http://host:port</span>
+                                            <span class="badge bg-secondary-lt me-1">socks5://host:port</span>
+                                            <span class="badge bg-secondary-lt">ss://method:password@host:port</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-4">
+                                    <div class="mb-3">
+                                        <label class="form-label" for="test_url">
+                                            <i class="ti ti-target me-1"></i>
+                                            Test URL
+                                        </label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">
+                                                <i class="ti ti-external-link"></i>
+                                            </span>
+                                            <input type="text" class="form-control" id="test_url" name="test_url" 
+                                                   value="http://httpbin.org/ip"
+                                                   placeholder="http://httpbin.org/ip">
+                                        </div>
+                                        <div class="form-hint mb-2">URL to test connectivity</div>
+                                        
+                                        <!-- Quick URL Selection Buttons -->
+                                        <div class="btn-group btn-group-sm w-100" role="group">
+                                            <button type="button" class="btn btn-outline-primary active" onclick="setTestUrl('http://httpbin.org/ip')" title="HTTPBin - JSON response">
+                                                <i class="ti ti-json me-1"></i>httpbin
+                                            </button>
+                                            <button type="button" class="btn btn-outline-primary" onclick="setTestUrl('http://ipinfo.io/ip')" title="IPInfo - Plain text">
+                                                <i class="ti ti-info-circle me-1"></i>ipinfo
+                                            </button>
+                                            <button type="button" class="btn btn-outline-primary" onclick="setTestUrl('http://checkip.amazonaws.com')" title="AWS CheckIP">
+                                                <i class="ti ti-cloud me-1"></i>AWS
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="btn-list">
+                                            <button type="submit" class="btn btn-primary btn-lg" id="testBtn">
+                                                <i class="ti ti-rocket me-2"></i>Run Proxy Test
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" onclick="clearResults()">
+                                                <i class="ti ti-refresh me-2"></i>Reset
+                                            </button>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <i class="ti ti-clock me-1"></i>
+                                            Test typically takes 5-10 seconds
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div class="row row-cards mt-3" id="resultsSection" style="display: none;">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-check-circle me-2"></i>
+                            Test Results
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="testResults"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Examples Section -->
+        <div class="row row-cards mt-3">
+            <!-- Proxy Types -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-shield-lock me-2 text-primary"></i>
+                            SOCKS5 Proxy
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="form-label">Basic Format:</div>
+                            <code class="d-block p-2 bg-light rounded">socks5://127.0.0.1:1080</code>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label">With Authentication:</div>
+                            <code class="d-block p-2 bg-light rounded">socks5://user:pass@proxy.com:1080</code>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm w-100" onclick="fillExample('socks5://127.0.0.1:1080')">
+                            <i class="ti ti-copy me-1"></i>Use Example
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-key me-2 text-success"></i>
+                            Shadowsocks
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="form-label">AES-256-GCM:</div>
+                            <code class="d-block p-2 bg-light rounded small">ss://aes-256-gcm:password@server:8388</code>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label">ChaCha20:</div>
+                            <code class="d-block p-2 bg-light rounded small">ss://chacha20-ietf-poly1305:key@host:443</code>
+                        </div>
+                        <button class="btn btn-outline-success btn-sm w-100" onclick="fillExample('ss://aes-256-gcm:password@server:8388')">
+                            <i class="ti ti-copy me-1"></i>Use Example
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-world me-2 text-info"></i>
+                            HTTP Proxy
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="form-label">Basic Format:</div>
+                            <code class="d-block p-2 bg-light rounded">http://proxy.com:8080</code>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label">With Authentication:</div>
+                            <code class="d-block p-2 bg-light rounded">http://user:pass@proxy.com:8080</code>
+                        </div>
+                        <button class="btn btn-outline-info btn-sm w-100" onclick="fillExample('http://proxy.example.com:8080')">
+                            <i class="ti ti-copy me-1"></i>Use Example
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Advanced Examples -->
+        <div class="row row-cards mt-3">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-container me-2 text-warning"></i>
+                            Gluetun Integration
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning">
+                            <div class="d-flex">
+                                <div><i class="ti ti-info-circle icon alert-icon"></i></div>
+                                <div>
+                                    <h4 class="alert-title">Docker Network</h4>
+                                    <div class="text-muted">When using Gluetun in Docker, use the container name as hostname.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label">SOCKS5 via Gluetun:</div>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace" value="socks5://gluetun:1080" readonly>
+                                <button class="btn btn-outline-warning" onclick="fillExample('socks5://gluetun:1080')" title="Use this example">
+                                    <i class="ti ti-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-0">
+                            <div class="form-label">Shadowsocks via Gluetun:</div>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace small" value="ss://aes-256-gcm:your_password@gluetun:8388" readonly>
+                                <button class="btn btn-outline-warning" onclick="fillExample('ss://aes-256-gcm:your_password@gluetun:8388')" title="Use this example">
+                                    <i class="ti ti-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="ti ti-target me-2 text-secondary"></i>
+                            Test Endpoints
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-hint mb-3">The system automatically tries multiple test URLs if one fails:</div>
+                        <div class="list-group list-group-flush">
+                            <div class="list-group-item d-flex align-items-center px-0">
+                                <span class="avatar avatar-xs me-3 bg-success-lt">
+                                    <i class="ti ti-json"></i>
+                                </span>
+                                <div class="flex-fill">
+                                    <div class="font-weight-medium">HTTPBin</div>
+                                    <div class="text-muted small">JSON response with IP info</div>
+                                </div>
+                                <code class="small">httpbin.org/ip</code>
+                            </div>
+                            <div class="list-group-item d-flex align-items-center px-0">
+                                <span class="avatar avatar-xs me-3 bg-info-lt">
+                                    <i class="ti ti-info-circle"></i>
+                                </span>
+                                <div class="flex-fill">
+                                    <div class="font-weight-medium">IPInfo</div>
+                                    <div class="text-muted small">Plain text IP address</div>
+                                </div>
+                                <code class="small">ipinfo.io/ip</code>
+                            </div>
+                            <div class="list-group-item d-flex align-items-center px-0">
+                                <span class="avatar avatar-xs me-3 bg-warning-lt">
+                                    <i class="ti ti-cloud"></i>
+                                </span>
+                                <div class="flex-fill">
+                                    <div class="font-weight-medium">AWS CheckIP</div>
+                                    <div class="text-muted small">Amazon's IP service</div>
+                                </div>
+                                <code class="small">checkip.amazonaws.com</code>
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('proxyTestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    testProxy();
+});
+
+function testProxy() {
+    const proxyUrl = document.getElementById('proxy_url').value.trim();
+    const testUrl = document.getElementById('test_url').value.trim();
+    const testBtn = document.getElementById('testBtn');
+    const resultsSection = document.getElementById('resultsSection');
+    const testResults = document.getElementById('testResults');
+    
+    if (!proxyUrl) {
+        alert('Please enter a proxy URL');
+        return;
+    }
+    
+    // Show loading state
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+    
+    // Show results section
+    resultsSection.style.display = 'block';
+    testResults.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div><p class="mt-3 text-muted">Running proxy tests...</p></div>';
+    
+    // Make API call
+    fetch('/proxy/test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            proxy_url: proxyUrl,
+            test_url: testUrl || 'http://httpbin.org/ip'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        displayResults(data);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        testResults.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    })
+    .finally(() => {
+        // Reset button
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="ti ti-rocket me-2"></i>Run Proxy Test';
+    });
+}
+
+function displayResults(data) {
+    const testResults = document.getElementById('testResults');
+    
+    let html = '';
+    
+    // Overall status
+    const overallClass = data.overall_success ? 'success' : 'danger';
+    const overallIcon = data.overall_success ? 'check-circle' : 'alert-triangle';
+    
+    html += `
+        <div class="alert alert-${overallClass}">
+            <div class="d-flex">
+                <div><i class="ti ti-${overallIcon} icon alert-icon"></i></div>
+                <div>
+                    <h4 class="alert-title">Overall Result</h4>
+                    <div class="text-muted">${data.overall_success ? 'All tests passed successfully' : 'Some tests failed - check details below'}</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Proxy info
+    html += `
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="mb-2">
+                    <strong>Proxy URL:</strong><br>
+                    <code class="fs-5">${data.proxy_url}</code>
+                </div>
+            </div>
+            <div class="col-lg-3">
+                <div class="mb-2">
+                    <strong>Type:</strong><br>
+                    <span class="badge bg-info-lt fs-6">${data.proxy_type}</span>
+                </div>
+            </div>
+            <div class="col-lg-3">
+                <div class="mb-2">
+                    <strong>Valid:</strong><br>
+                    ${data.valid ? '<span class="badge bg-success fs-6">Valid</span>' : '<span class="badge bg-danger fs-6">Invalid</span>'}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Individual test results
+    html += '<h4 class="mb-3"><i class="ti ti-list-details me-2"></i>Test Details</h4>';
+    
+    for (const [testName, testResult] of Object.entries(data.tests)) {
+        const statusClass = testResult.success ? 'success' : 'danger';
+        const statusIcon = testResult.success ? 'check' : 'x';
+        
+        html += `
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <span class="avatar avatar-sm bg-${statusClass}-lt">
+                                <i class="ti ti-${statusIcon}"></i>
+                            </span>
+                        </div>
+                        <div class="col">
+                            <div class="font-weight-medium">${testName.replace('_', ' ').toUpperCase()}</div>
+        `;
+        
+        if (testResult.success) {
+            html += `<div class="text-success">${testResult.message}</div>`;
+            if (testResult.external_ip) {
+                html += `<div class="text-muted small">External IP: <code>${testResult.external_ip}</code></div>`;
+            }
+        } else {
+            html += `<div class="text-danger">${testResult.error}</div>`;
+        }
+        
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Show parsed proxy config if available
+    if (data.parsed) {
+        html += `
+            <div class="mt-4">
+                <h5 class="mb-3"><i class="ti ti-code me-2"></i>Parsed Configuration</h5>
+                <div class="card">
+                    <div class="card-body">
+                        <pre class="mb-0"><code>${JSON.stringify(data.parsed, null, 2)}</code></pre>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    testResults.innerHTML = html;
+}
+
+function clearResults() {
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('proxy_url').value = '';
+    document.getElementById('test_url').value = 'http://httpbin.org/ip';
+}
+
+// Quick fill examples
+function fillExample(proxyUrl) {
+    document.getElementById('proxy_url').value = proxyUrl;
+}
+
+// Set test URL
+function setTestUrl(url) {
+    document.getElementById('test_url').value = url;
+    
+    // Visual feedback
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    // Find and activate the clicked button
+    const clickedButton = Array.from(buttons).find(btn => 
+        btn.getAttribute('onclick').includes(url)
+    );
+    if (clickedButton) {
+        clickedButton.classList.add('active');
+    }
+}
+
+// Enhanced clear function with animation
+function clearResults() {
+    const resultsSection = document.getElementById('resultsSection');
+    if (resultsSection.style.display !== 'none') {
+        resultsSection.style.opacity = '0';
+        setTimeout(() => {
+            resultsSection.style.display = 'none';
+            resultsSection.style.opacity = '1';
+        }, 300);
+    }
+    document.getElementById('proxy_url').value = '';
+    document.getElementById('test_url').value = 'http://httpbin.org/ip';
+    
+    // Reset button states
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    buttons[0].classList.add('active'); // Activate first button (httpbin)
+}
+</script>
+{% endblock %}

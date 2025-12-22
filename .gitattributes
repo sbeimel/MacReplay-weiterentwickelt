@@ -1,2 +1,0 @@
-ffmpeg/ffmpeg.exe filter=lfs
-ffmpeg/ffprobe.exe filter=lfs

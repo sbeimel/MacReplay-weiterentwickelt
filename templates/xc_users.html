@@ -430,25 +430,61 @@ function copyPlaylistUrl(username, password, btn) {
     const baseUrl = window.location.origin;
     const playlistUrl = `${baseUrl}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&type=m3u_plus&output=ts`;
     
-    // Copy to clipboard
-    navigator.clipboard.writeText(playlistUrl).then(() => {
-        // Visual feedback
-        const originalHtml = btn.innerHTML;
-        const originalClass = btn.className;
+    // Try modern clipboard API first, fallback to legacy method
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(playlistUrl).then(() => {
+            showCopySuccess(btn);
+            showToast('Playlist URL copied to clipboard', 'success');
+        }).catch(err => {
+            console.error('Clipboard API failed:', err);
+            fallbackCopyToClipboard(playlistUrl, btn);
+        });
+    } else {
+        // Fallback for non-HTTPS or older browsers
+        fallbackCopyToClipboard(playlistUrl, btn);
+    }
+}
+
+function fallbackCopyToClipboard(text, btn) {
+    // Create temporary textarea element
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    
+    try {
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
         
-        btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
-        btn.className = 'btn btn-success btn-sm';
-        
-        setTimeout(() => {
-            btn.innerHTML = originalHtml;
-            btn.className = originalClass;
-        }, 2000);
-        
-        showToast('Playlist URL copied to clipboard', 'success');
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-        showAlert('Failed to copy to clipboard', 'Error', 'danger');
-    });
+        if (successful) {
+            showCopySuccess(btn);
+            showToast('Playlist URL copied to clipboard', 'success');
+        } else {
+            throw new Error('Copy command failed');
+        }
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+        showAlert('Failed to copy to clipboard. Please copy manually: ' + text, 'Copy Failed', 'warning');
+    } finally {
+        document.body.removeChild(textArea);
+    }
+}
+
+function showCopySuccess(btn) {
+    // Visual feedback
+    const originalHtml = btn.innerHTML;
+    const originalClass = btn.className;
+    
+    btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+    btn.className = 'btn btn-success btn-sm';
+    
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.className = originalClass;
+    }, 2000);
 }
 
 function showAddUserModal() {

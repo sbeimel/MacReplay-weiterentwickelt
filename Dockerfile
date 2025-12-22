@@ -16,27 +16,39 @@ RUN mkdir -p /app/data /app/logs
 # Copy Python dependencies file
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies with proxy support
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional proxy dependencies for better compatibility
+RUN pip install --no-cache-dir \
+    cryptography>=3.4.8 \
+    pycryptodome>=3.15.0
+
+# Note: shadowsocks==2.8.2 is already in requirements.txt with compatibility fix
 
 # Copy application files
 COPY app-docker.py app.py
 COPY stb.py .
 COPY utils.py .
+COPY shadowsocks_fix.py .
 COPY templates/ templates/
 COPY static/ static/
 
+# Copy test and documentation files (optional)
+COPY test_*.py ./
+COPY *_SUPPORT.md ./
+COPY *_GUIDE.md ./
+
 # Create non-root user for security
-RUN useradd -m -u 1000 macreplay && \
+RUN useradd -m -u 1000 macreplayxc && \
     chown -R root:root /app
 
 # Switch to non-root user
 #USER macreplay
 
-
 # Set environment variables for containerized deployment
 ENV HOST=0.0.0.0:8001
-ENV CONFIG=/app/data/MacReplay.json
+ENV CONFIG=/app/data/MacReplayXC.json
 ENV PYTHONUNBUFFERED=1
 
 # Expose the application port
