@@ -5046,10 +5046,8 @@ def _playlist_with_auth(username, password):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        portal_prefix = portals[portal_id].get("portal prefix", "").strip()
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Use portal name as group-title
+        portal_name = portals[portal_id].get("name", portal_id)
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -5061,8 +5059,8 @@ def _playlist_with_auth(username, password):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        # Always use portal name as group-title for playlist.m3u
+        m3u_entry += ' group-title="' + escape_quotes(portal_name) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         # Embed Basic Auth credentials in stream URL
