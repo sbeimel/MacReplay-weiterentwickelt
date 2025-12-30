@@ -38,8 +38,8 @@ Create a `docker-compose.yml` file:
 ```yaml
 services:
   macreplayxc:
-    build: .
-  # image: registry.gitlab.com/un1x/macreplayxc:latest
+  # build: .
+    image: ghcr.io/sbeimel/macreplay-weiterentwickelt:main
     container_name: MacReplayXC
     ports:
       - "8001:8001"
@@ -69,7 +69,7 @@ docker-compose up -d
 ### Docker Pull
 
 ```bash
-docker pull registry.gitlab.com/un1x/macreplayxc:latest
+docker pull ghcr.io/sbeimel/macreplay-weiterentwickelt:main
 ```
 
 The application is available at: `http://localhost:8001`
