@@ -903,15 +903,8 @@ def savePortals(portals):
             json.dump(config, f, indent=4)
         logger.debug(f"Portals saved to {configFile}")
         
-        # Invalidiere Channel-Cache nur bei echten Änderungen
-        try:
-            # Nur bei Portal-URL oder MAC-Änderungen invalidieren
-            # (Hier könnte man eine intelligentere Diff-Logik implementieren)
-            for portal_id in portals.keys():
-                channel_cache.invalidate_portal(portal_id)
-            logger.info("Channel cache invalidated due to portal configuration changes")
-        except Exception as cache_error:
-            logger.error(f"Error invalidating channel cache: {cache_error}")
+        # ENTFERNT: Aggressive Cache-Invalidierung bei jeder Portal-Speicherung
+        # Cache wird nur bei echten Konfiguration-Änderungen invalidiert (manuell)
             
     except Exception as e:
         logger.error(f"Error saving portals: {e}")
