@@ -46,6 +46,106 @@ ffprobe_path = "ffprobe"
 # Check if the binaries exist
 import subprocess
 
+
+class ChannelCache:
+    """Intelligentes Channel-Caching für bessere Performance."""
+    
+    def __init__(self, cache_duration=1800):  # 30 Minuten
+        self.cache_duration = cache_duration
+        self.cache = {}  # portal_mac -> (channels, timestamp)
+        self.lock = threading.RLock()
+        logger.info(f"ChannelCache initialized with {cache_duration}s duration")
+    
+    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
+        """Hole Channels aus Cache oder lade sie neu."""
+        cache_key = f"{portal_id}_{mac}"
+        
+        with self.lock:
+            # Prüfe Cache
+            if cache_key in self.cache:
+                channels, timestamp = self.cache[cache_key]
+                if time.time() - timestamp < self.cache_duration:
+                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
+                    return channels
+                else:
+                    logger.debug(f"Cache EXPIRED für {cache_key}")
+            
+            # Cache miss - lade neu
+            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
+            try:
+                import stb
+                channels = stb.getAllChannels(url, mac, token, proxy)
+                if channels:
+                    self.cache[cache_key] = (channels, time.time())
+                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
+                    return channels
+            except Exception as e:
+                logger.error(f"Error loading channels for {cache_key}: {e}")
+                
+            return None
+    
+    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
+        """Finde einen spezifischen Channel (mit Caching)."""
+        channels = self.get_channels(portal_id, mac, url, token, proxy)
+        if not channels:
+            return None
+        
+        # Suche Channel in gecachten Daten
+        for channel in channels:
+            if str(channel["id"]) == str(channel_id):
+                logger.debug(f"Found channel {channel_id} in cache for {portal_id}_{mac}")
+                return channel
+        
+        logger.debug(f"Channel {channel_id} not found in cache for {portal_id}_{mac}")
+        return None
+    
+    def invalidate_portal(self, portal_id: str):
+        """Lösche Cache für ein Portal (alle MACs)."""
+        with self.lock:
+            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
+            for key in keys_to_remove:
+                del self.cache[key]
+            if keys_to_remove:
+                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
+    
+    def invalidate_all(self):
+        """Lösche kompletten Cache."""
+        with self.lock:
+            count = len(self.cache)
+            self.cache.clear()
+            if count > 0:
+                logger.info(f"Complete cache invalidated ({count} entries)")
+    
+    def cleanup_expired(self):
+        """Entferne abgelaufene Cache-Einträge."""
+        current_time = time.time()
+        with self.lock:
+            expired_keys = []
+            for key, (channels, timestamp) in self.cache.items():
+                if current_time - timestamp > self.cache_duration:
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                del self.cache[key]
+            
+            if expired_keys:
+                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
+    
+    def get_cache_stats(self):
+        """Hole Cache-Statistiken."""
+        with self.lock:
+            total_entries = len(self.cache)
+            total_channels = sum(len(channels) for channels, _ in self.cache.values())
+            return {
+                "entries": total_entries,
+                "total_channels": total_channels,
+                "cache_duration": self.cache_duration
+            }
+
+
+# Globaler Channel-Cache
+channel_cache = ChannelCache()
+
 def get_stream_url_with_auth(playlist_host, portal_id, channel_id):
     """
     Generate stream URL with embedded basic auth if needed.
@@ -334,6 +434,7 @@ defaultSettings = {
     "xc api enabled": "false",
     "xc vod proxy": "true",
     "public playlist access": "true",
+    "use portal names as groups": "false",
 }
 
 defaultXCUser = {
@@ -6488,44 +6589,79 @@ def xc_get_live_categories(user):
     """Get live stream categories - only return categories with enabled channels."""
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
+    settings = getSettings()
+    use_portal_names = settings.get("use portal names as groups", "false") == "true"
     
     categories = []
     categories_with_channels = set()  # Track which categories have enabled channels
     
-    # Get enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT DISTINCT portal, 
-               COALESCE(NULLIF(custom_genre, ''), NULLIF(genre, ''), 'Unknown') as genre_name
-        FROM channels 
-        WHERE enabled = 1
-        ORDER BY portal, genre_name
-    ''')
-    db_genres = cursor.fetchall()
-    conn.close()
-    
-    # Create a copy to avoid RuntimeError if dictionary changes during iteration
-    for portal_id, portal in list(portals.items()):
-        if portal.get("enabled") != "true":
-            continue
-        if allowed_portals and portal_id not in allowed_portals:
-            continue
+    if use_portal_names:
+        # Use portal names as categories
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT portal
+            FROM channels 
+            WHERE enabled = 1
+            ORDER BY portal
+        ''')
+        db_portals = cursor.fetchall()
+        conn.close()
         
-        # Get genres for this portal from database
-        portal_genres = [g for g in db_genres if g['portal'] == portal_id]
-        
-        for genre_data in portal_genres:
-            genre_name = genre_data['genre_name']
-            category_key = f"{portal_id}_{genre_name}"
+        for portal_data in db_portals:
+            portal_id = portal_data['portal']
+            portal = portals.get(portal_id)
+            
+            if not portal or portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            portal_name = portal.get("name", portal_id)
+            category_key = f"portal_{portal_id}"
             
             if category_key not in categories_with_channels:
                 categories_with_channels.add(category_key)
                 categories.append({
                     "category_id": category_key,
-                    "category_name": genre_name,
+                    "category_name": portal_name,
                     "parent_id": 0
                 })
+    else:
+        # Use genres as categories (original behavior)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT portal, 
+                   COALESCE(NULLIF(custom_genre, ''), NULLIF(genre, ''), 'Unknown') as genre_name
+            FROM channels 
+            WHERE enabled = 1
+            ORDER BY portal, genre_name
+        ''')
+        db_genres = cursor.fetchall()
+        conn.close()
+        
+        # Create a copy to avoid RuntimeError if dictionary changes during iteration
+        for portal_id, portal in list(portals.items()):
+            if portal.get("enabled") != "true":
+                continue
+            if allowed_portals and portal_id not in allowed_portals:
+                continue
+            
+            # Get genres for this portal from database
+            portal_genres = [g for g in db_genres if g['portal'] == portal_id]
+            
+            for genre_data in portal_genres:
+                genre_name = genre_data['genre_name']
+                category_key = f"{portal_id}_{genre_name}"
+                
+                if category_key not in categories_with_channels:
+                    categories_with_channels.add(category_key)
+                    categories.append({
+                        "category_id": category_key,
+                        "category_name": genre_name,
+                        "parent_id": 0
+                    })
     
     return flask.jsonify(categories)
 
@@ -8084,7 +8220,7 @@ def stream_channel(portalId, channelId, xc_user=None):
     freeMac = False
 
     for mac in macs:
-        channels = None
+        channel = None
         cmd = None
         link = None
         if streamsPerMac == 0 or isMacFree():
@@ -8095,16 +8231,15 @@ def stream_channel(portalId, channelId, xc_user=None):
             token = stb.getToken(url, mac, proxy)
             if token:
                 stb.getProfile(url, mac, token, proxy)
-                channels = stb.getAllChannels(url, mac, token, proxy)
+                # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
+                channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
 
-        if channels:
-            for c in channels:
-                if str(c["id"]) == channelId:
-                    channelName = portal.get("custom channel names", {}).get(channelId)
-                    if channelName == None:
-                        channelName = c["name"]
-                    cmd = c["cmd"]
-                    break
+        if channel:
+            # Channel bereits gefunden - keine Schleife nötig!
+            channelName = portal.get("custom channel names", {}).get(channelId)
+            if channelName == None:
+                channelName = channel["name"]
+            cmd = channel["cmd"]
 
         if cmd:
             if "http://localhost/" in cmd:
