@@ -26,3 +26,4 @@ pycryptodome>=3.15.0
 # Optional: Alternative Shadowsocks implementation
 # Uncomment if shadowsocks-libev doesn't work:
 # shadowsocks==2.8.2
+
