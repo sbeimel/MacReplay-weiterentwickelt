@@ -366,6 +366,80 @@ cached_xmltv = None
 last_updated = 0
 hls_manager = None
 
+# Channel Cache für Performance-Optimierung
+class ChannelCache:
+    def __init__(self, cache_duration=43200):  # 12 Stunden (43200 Sekunden)
+        self.cache_duration = cache_duration
+        self.cache = {}  # portal_mac -> (channels, timestamp)
+        self.lock = threading.RLock()
+        logger.info(f"Channel cache initialized with {cache_duration/3600:.1f} hour duration")
+    
+    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
+        """Hole Channels aus Cache oder lade sie neu."""
+        cache_key = f"{portal_id}_{mac}"
+        
+        with self.lock:
+            # Prüfe Cache
+            if cache_key in self.cache:
+                channels, timestamp = self.cache[cache_key]
+                if time.time() - timestamp < self.cache_duration:
+                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
+                    return channels
+                else:
+                    logger.debug(f"Cache EXPIRED für {cache_key}")
+            
+            # Cache miss - lade neu
+            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
+            try:
+                channels = stb.getAllChannels(url, mac, token, proxy)
+                if channels:
+                    self.cache[cache_key] = (channels, time.time())
+                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
+                    return channels
+            except Exception as e:
+                logger.error(f"Error loading channels for {cache_key}: {e}")
+                
+            return None
+    
+    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
+        """Finde einen spezifischen Channel (mit Caching)."""
+        channels = self.get_channels(portal_id, mac, url, token, proxy)
+        if not channels:
+            return None
+        
+        # Suche Channel in gecachten Daten
+        for channel in channels:
+            if str(channel["id"]) == str(channel_id):
+                return channel
+        
+        return None
+    
+    def invalidate_portal(self, portal_id: str):
+        """Lösche Cache für ein Portal (alle MACs)."""
+        with self.lock:
+            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
+            for key in keys_to_remove:
+                del self.cache[key]
+            logger.info(f"Cache invalidated für Portal {portal_id}")
+    
+    def cleanup_expired(self):
+        """Entferne abgelaufene Cache-Einträge."""
+        current_time = time.time()
+        with self.lock:
+            expired_keys = []
+            for key, (channels, timestamp) in self.cache.items():
+                if current_time - timestamp > self.cache_duration:
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                del self.cache[key]
+            
+            if expired_keys:
+                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
+
+# Globaler Channel-Cache
+channel_cache = ChannelCache()
+
 # EPG refresh progress tracking
 epg_refresh_progress = {
     "running": False,
@@ -828,6 +902,17 @@ def savePortals(portals):
             config["portals"] = portals
             json.dump(config, f, indent=4)
         logger.debug(f"Portals saved to {configFile}")
+        
+        # Invalidiere Channel-Cache nur bei echten Änderungen
+        try:
+            # Nur bei Portal-URL oder MAC-Änderungen invalidieren
+            # (Hier könnte man eine intelligentere Diff-Logik implementieren)
+            for portal_id in portals.keys():
+                channel_cache.invalidate_portal(portal_id)
+            logger.info("Channel cache invalidated due to portal configuration changes")
+        except Exception as cache_error:
+            logger.error(f"Error invalidating channel cache: {cache_error}")
+            
     except Exception as e:
         logger.error(f"Error saving portals: {e}")
         raise
@@ -8412,17 +8497,16 @@ def hls_stream(portalId, channelId, filename):
                 token = stb.getToken(url, mac, proxy)
                 if token:
                     stb.getProfile(url, mac, token, proxy)
-                    channels = stb.getAllChannels(url, mac, token, proxy)
+                    # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
+                    channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
                     
-                    if channels:
-                        for c in channels:
-                            if str(c["id"]) == channelId:
-                                cmd = c["cmd"]
-                                if "http://localhost/" in cmd:
-                                    link = stb.getLink(url, mac, token, cmd, proxy)
-                                else:
-                                    link = cmd.split(" ")[1]
-                                break
+                    if channel:
+                        cmd = channel["cmd"]
+                        if "http://localhost/" in cmd:
+                            link = stb.getLink(url, mac, token, cmd, proxy)
+                        else:
+                            link = cmd.split(" ")[1]
+                        break  # Channel gefunden - fertig!
                     
                     if link:
                         break
@@ -8889,6 +8973,19 @@ if __name__ == "__main__":
     hls_manager = HLSStreamManager(max_streams=max_streams, inactive_timeout=inactive_timeout)
     hls_manager.start_monitoring()
     logger.info(f"HLS Stream Manager initialized (max_streams={max_streams}, timeout={inactive_timeout}s)")
+    
+    # Starte Channel-Cache Cleanup Task
+    def cache_cleanup_task():
+        """Background-Task der regelmäßig den Cache aufräumt."""
+        while True:
+            time.sleep(3600)  # Alle 1 Stunde (statt 5 Minuten)
+            try:
+                channel_cache.cleanup_expired()
+            except Exception as e:
+                logger.error(f"Error in cache cleanup: {e}")
+    
+    threading.Thread(target=cache_cleanup_task, daemon=True).start()
+    logger.info("Channel cache cleanup task started (runs every hour)")
     
     # Always use waitress for production in container
     logger.info("Starting Waitress server on 0.0.0.0:8001")
