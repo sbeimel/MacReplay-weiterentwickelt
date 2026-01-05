@@ -1,0 +1,59 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+*.md
+!README.md
+channel_cache_example.py
+INSTALL_PROXY_DEPS.sh
+run_proxy_tests.sh
+shadowsocks_fix.py
+test_*.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs and data (will be mounted as volumes)
+logs/
+data/
+*.log
