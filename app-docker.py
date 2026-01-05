@@ -6748,6 +6748,8 @@ def xc_get_live_streams(user):
     """Get live streams."""
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
+    settings = getSettings()
+    use_portal_names = settings.get("use portal names as groups", "false") == "true"
     
     streams = []
     
@@ -6795,7 +6797,12 @@ def xc_get_live_streams(user):
             numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
             
             # Create category_id that matches the one in xc_get_live_categories
-            category_id = f"{portal_id}_{genre}"
+            if use_portal_names:
+                # Use portal-based category (matches get_live_categories)
+                category_id = f"portal_{portal_id}"
+            else:
+                # Use genre-based category (original behavior)
+                category_id = f"{portal_id}_{genre}"
             
             streams.append({
                 "num": int(channel_number) if channel_number.isdigit() else 0,
