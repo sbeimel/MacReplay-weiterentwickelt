@@ -46,106 +46,6 @@ ffprobe_path = "ffprobe"
 # Check if the binaries exist
 import subprocess
 
-
-class ChannelCache:
-    """Intelligentes Channel-Caching für bessere Performance."""
-    
-    def __init__(self, cache_duration=1800):  # 30 Minuten
-        self.cache_duration = cache_duration
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info(f"ChannelCache initialized with {cache_duration}s duration")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                import stb
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                logger.debug(f"Found channel {channel_id} in cache for {portal_id}_{mac}")
-                return channel
-        
-        logger.debug(f"Channel {channel_id} not found in cache for {portal_id}_{mac}")
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            if keys_to_remove:
-                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
-    
-    def invalidate_all(self):
-        """Lösche kompletten Cache."""
-        with self.lock:
-            count = len(self.cache)
-            self.cache.clear()
-            if count > 0:
-                logger.info(f"Complete cache invalidated ({count} entries)")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
-    
-    def get_cache_stats(self):
-        """Hole Cache-Statistiken."""
-        with self.lock:
-            total_entries = len(self.cache)
-            total_channels = sum(len(channels) for channels, _ in self.cache.values())
-            return {
-                "entries": total_entries,
-                "total_channels": total_channels,
-                "cache_duration": self.cache_duration
-            }
-
-
-# Globaler Channel-Cache
-channel_cache = ChannelCache()
-
 def get_stream_url_with_auth(playlist_host, portal_id, channel_id):
     """
     Generate stream URL with embedded basic auth if needed.
@@ -366,80 +266,6 @@ cached_xmltv = None
 last_updated = 0
 hls_manager = None
 
-# Channel Cache für Performance-Optimierung
-class ChannelCache:
-    def __init__(self, cache_duration=43200):  # 12 Stunden (43200 Sekunden)
-        self.cache_duration = cache_duration
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info(f"Channel cache initialized with {cache_duration/3600:.1f} hour duration")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                return channel
-        
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            logger.info(f"Cache invalidated für Portal {portal_id}")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
-
-# Globaler Channel-Cache
-channel_cache = ChannelCache()
-
 # EPG refresh progress tracking
 epg_refresh_progress = {
     "running": False,
@@ -508,7 +334,6 @@ defaultSettings = {
     "xc api enabled": "false",
     "xc vod proxy": "true",
     "public playlist access": "true",
-    "use portal names as groups": "false",
 }
 
 defaultXCUser = {
@@ -902,17 +727,6 @@ def savePortals(portals):
             config["portals"] = portals
             json.dump(config, f, indent=4)
         logger.debug(f"Portals saved to {configFile}")
-        
-        # Invalidiere Channel-Cache nur bei echten Änderungen
-        try:
-            # Nur bei Portal-URL oder MAC-Änderungen invalidieren
-            # (Hier könnte man eine intelligentere Diff-Logik implementieren)
-            for portal_id in portals.keys():
-                channel_cache.invalidate_portal(portal_id)
-            logger.info("Channel cache invalidated due to portal configuration changes")
-        except Exception as cache_error:
-            logger.error(f"Error invalidating channel cache: {cache_error}")
-            
     except Exception as e:
         logger.error(f"Error saving portals: {e}")
         raise
@@ -5130,47 +4944,10 @@ def xc_users_kick():
 
 @app.route("/playlist.m3u", methods=["GET"])
 def playlist():
-    """Main M3U playlist with support for both session-based and Basic Auth."""
     settings = getSettings()
-    public_access = settings.get("public playlist access", "true") == "true"
-    
-    if public_access:
-        # Public access enabled - no authentication required
-        return _playlist()
-    else:
-        # Public access disabled - check for authentication
-        
-        # First check if user is logged in via session (existing logic)
-        if flask.session.get("authenticated"):
-            return _playlist()
-        
-        # If no session, try Basic Auth
-        auth = request.authorization
-        if auth and auth.username and auth.password:
-            # Validate Basic Auth credentials
-            system_username = settings.get("username", "admin")
-            system_password = settings.get("password", "12345")
-            
-            if auth.username == system_username and auth.password == system_password:
-                # Basic Auth successful - generate playlist with embedded auth
-                logger.info(f"Basic Auth successful for main playlist: {auth.username}")
-                return _playlist_with_auth(auth.username, auth.password)
-            else:
-                logger.warning(f"Invalid Basic Auth credentials for main playlist: {auth.username}")
-        
-        # No valid authentication - check if this is a Basic Auth request
-        if auth:
-            # Basic Auth was attempted but failed
-            response = Response(
-                'Invalid credentials\n'
-                'Please check your username and password.',
-                401,
-                {'WWW-Authenticate': 'Basic realm="MacReplayXC Main Playlist"'}
-            )
-            return response
-        else:
-            # No Basic Auth provided - use existing session-based auth (redirect to login)
-            return authorise(lambda: _playlist())()
+    if settings.get("public playlist access", "true") != "true":
+        return authorise(lambda: _playlist())()
+    return _playlist()
 
 def _playlist():
     global cached_playlist, last_playlist_host
@@ -5187,103 +4964,6 @@ def _playlist():
         generate_playlist()
 
     return Response(cached_playlist, mimetype="text/plain")
-
-def _playlist_with_auth(username, password):
-    """Generate playlist with embedded Basic Auth credentials in stream URLs."""
-    logger.info("Playlist with Basic Auth Requested")
-    
-    # Use external host configuration or request host
-    external_host, external_scheme = get_external_host_config()
-    if external_host:
-        playlist_host = external_host
-    else:
-        # Use the actual request host (e.g., rico.goip.de:61095)
-        playlist_host = request.host or "0.0.0.0:8001"
-    
-    channels = []
-    
-    # Get enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id
-        FROM channels 
-        WHERE enabled = 1
-        ORDER BY portal, channel_id
-    ''')
-    db_channels = cursor.fetchall()
-    conn.close()
-    
-    # Get portal info
-    portals = getPortals()
-    
-    for channel in db_channels:
-        portal_id = channel['portal']
-        channel_id = str(channel['channel_id'])
-        
-        # Check if portal is enabled
-        if portal_id not in portals or portals[portal_id].get("enabled") != "true":
-            continue
-        
-        # Use custom values if available, otherwise use original values
-        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
-        genre = channel['custom_genre'] if channel['custom_genre'] else (channel['genre'] or "")
-        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
-        epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
-        
-        # Use portal name as group-title
-        portal_name = portals[portal_id].get("name", portal_id)
-        
-        # Build M3U entry - escape quotes in attributes
-        def escape_quotes(text):
-            return str(text).replace('"', '&quot;') if text else ""
-        
-        m3u_entry = "#EXTINF:-1"
-        m3u_entry += ' tvg-id="' + escape_quotes(epg_id) + '"'
-        
-        if getSettings().get("use channel numbers", "true") == "true" and channel_number:
-            m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
-        
-        # Always use portal name as group-title for playlist.m3u
-        m3u_entry += ' group-title="' + escape_quotes(portal_name) + '"'
-        
-        m3u_entry += ',' + str(channel_name) + "\n"
-        # Embed Basic Auth credentials in stream URL
-        m3u_entry += f"http://{username}:{password}@{playlist_host}/play/{portal_id}/{channel_id}"
-        
-        channels.append(m3u_entry)
-
-    # Sort channels based on settings (same logic as generate_playlist)
-    if getSettings().get("sort playlist by channel name", "true") == "true":
-        channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
-    if getSettings().get("use channel numbers", "true") == "true":
-        if getSettings().get("sort playlist by channel number", "false") == "true":
-            def get_channel_number(k):
-                try:
-                    if 'tvg-chno="' in k:
-                        return int(k.split('tvg-chno="')[1].split('"')[0])
-                    return 999999  # Put channels without numbers at the end
-                except (ValueError, IndexError):
-                    return 999999
-            channels.sort(key=get_channel_number)
-    if getSettings().get("use channel genres", "true") == "true":
-        if getSettings().get("sort playlist by channel genre", "false") == "true":
-            def get_genre(k):
-                try:
-                    if 'group-title="' in k:
-                        return k.split('group-title="')[1].split('"')[0]
-                    return "zzz"  # Put channels without genre at the end
-                except IndexError:
-                    return "zzz"
-            channels.sort(key=get_genre)
-
-    playlist = "#EXTM3U \n"
-    if channels:
-        playlist = playlist + "\n".join(channels)
-
-    logger.info("Playlist with Basic Auth generated.")
-    return Response(playlist, mimetype="text/plain")
 
 @app.route("/update_playlistm3u", methods=["POST"])
 @authorise
@@ -5925,47 +5605,10 @@ def refresh_xmltv():
     
 @app.route("/xmltv", methods=["GET"])
 def xmltv():
-    """XMLTV EPG with support for both session-based and Basic Auth."""
     settings = getSettings()
-    public_access = settings.get("public playlist access", "true") == "true"
-    
-    if public_access:
-        # Public access enabled - no authentication required
-        return _xmltv()
-    else:
-        # Public access disabled - check for authentication
-        
-        # First check if user is logged in via session (existing logic)
-        if flask.session.get("authenticated"):
-            return _xmltv()
-        
-        # If no session, try Basic Auth
-        auth = request.authorization
-        if auth and auth.username and auth.password:
-            # Validate Basic Auth credentials
-            system_username = settings.get("username", "admin")
-            system_password = settings.get("password", "12345")
-            
-            if auth.username == system_username and auth.password == system_password:
-                # Basic Auth successful
-                logger.info(f"Basic Auth successful for XMLTV: {auth.username}")
-                return _xmltv()
-            else:
-                logger.warning(f"Invalid Basic Auth credentials for XMLTV: {auth.username}")
-        
-        # No valid authentication - check if this is a Basic Auth request
-        if auth:
-            # Basic Auth was attempted but failed
-            response = Response(
-                'Invalid credentials\n'
-                'Please check your username and password.',
-                401,
-                {'WWW-Authenticate': 'Basic realm="MacReplayXC XMLTV"'}
-            )
-            return response
-        else:
-            # No Basic Auth provided - use existing session-based auth (redirect to login)
-            return authorise(lambda: _xmltv())()
+    if settings.get("public playlist access", "true") != "true":
+        return authorise(lambda: _xmltv())()
+    return _xmltv()
 
 def _xmltv():
     global cached_xmltv, last_updated
@@ -6674,79 +6317,44 @@ def xc_get_live_categories(user):
     """Get live stream categories - only return categories with enabled channels."""
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
-    settings = getSettings()
-    use_portal_names = settings.get("use portal names as groups", "false") == "true"
     
     categories = []
     categories_with_channels = set()  # Track which categories have enabled channels
     
-    if use_portal_names:
-        # Use portal names as categories
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT DISTINCT portal
-            FROM channels 
-            WHERE enabled = 1
-            ORDER BY portal
-        ''')
-        db_portals = cursor.fetchall()
-        conn.close()
+    # Get enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT portal, 
+               COALESCE(NULLIF(custom_genre, ''), NULLIF(genre, ''), 'Unknown') as genre_name
+        FROM channels 
+        WHERE enabled = 1
+        ORDER BY portal, genre_name
+    ''')
+    db_genres = cursor.fetchall()
+    conn.close()
+    
+    # Create a copy to avoid RuntimeError if dictionary changes during iteration
+    for portal_id, portal in list(portals.items()):
+        if portal.get("enabled") != "true":
+            continue
+        if allowed_portals and portal_id not in allowed_portals:
+            continue
         
-        for portal_data in db_portals:
-            portal_id = portal_data['portal']
-            portal = portals.get(portal_id)
-            
-            if not portal or portal.get("enabled") != "true":
-                continue
-            if allowed_portals and portal_id not in allowed_portals:
-                continue
-            
-            portal_name = portal.get("name", portal_id)
-            category_key = f"portal_{portal_id}"
+        # Get genres for this portal from database
+        portal_genres = [g for g in db_genres if g['portal'] == portal_id]
+        
+        for genre_data in portal_genres:
+            genre_name = genre_data['genre_name']
+            category_key = f"{portal_id}_{genre_name}"
             
             if category_key not in categories_with_channels:
                 categories_with_channels.add(category_key)
                 categories.append({
                     "category_id": category_key,
-                    "category_name": portal_name,
+                    "category_name": genre_name,
                     "parent_id": 0
                 })
-    else:
-        # Use genres as categories (original behavior)
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT DISTINCT portal, 
-                   COALESCE(NULLIF(custom_genre, ''), NULLIF(genre, ''), 'Unknown') as genre_name
-            FROM channels 
-            WHERE enabled = 1
-            ORDER BY portal, genre_name
-        ''')
-        db_genres = cursor.fetchall()
-        conn.close()
-        
-        # Create a copy to avoid RuntimeError if dictionary changes during iteration
-        for portal_id, portal in list(portals.items()):
-            if portal.get("enabled") != "true":
-                continue
-            if allowed_portals and portal_id not in allowed_portals:
-                continue
-            
-            # Get genres for this portal from database
-            portal_genres = [g for g in db_genres if g['portal'] == portal_id]
-            
-            for genre_data in portal_genres:
-                genre_name = genre_data['genre_name']
-                category_key = f"{portal_id}_{genre_name}"
-                
-                if category_key not in categories_with_channels:
-                    categories_with_channels.add(category_key)
-                    categories.append({
-                        "category_id": category_key,
-                        "category_name": genre_name,
-                        "parent_id": 0
-                    })
     
     return flask.jsonify(categories)
 
@@ -8305,7 +7913,7 @@ def stream_channel(portalId, channelId, xc_user=None):
     freeMac = False
 
     for mac in macs:
-        channel = None
+        channels = None
         cmd = None
         link = None
         if streamsPerMac == 0 or isMacFree():
@@ -8316,15 +7924,16 @@ def stream_channel(portalId, channelId, xc_user=None):
             token = stb.getToken(url, mac, proxy)
             if token:
                 stb.getProfile(url, mac, token, proxy)
-                # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
-                channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
+                channels = stb.getAllChannels(url, mac, token, proxy)
 
-        if channel:
-            # Channel bereits gefunden - keine Schleife nötig!
-            channelName = portal.get("custom channel names", {}).get(channelId)
-            if channelName == None:
-                channelName = channel["name"]
-            cmd = channel["cmd"]
+        if channels:
+            for c in channels:
+                if str(c["id"]) == channelId:
+                    channelName = portal.get("custom channel names", {}).get(channelId)
+                    if channelName == None:
+                        channelName = c["name"]
+                    cmd = c["cmd"]
+                    break
 
         if cmd:
             if "http://localhost/" in cmd:
@@ -8497,16 +8106,17 @@ def hls_stream(portalId, channelId, filename):
                 token = stb.getToken(url, mac, proxy)
                 if token:
                     stb.getProfile(url, mac, token, proxy)
-                    # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
-                    channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
+                    channels = stb.getAllChannels(url, mac, token, proxy)
                     
-                    if channel:
-                        cmd = channel["cmd"]
-                        if "http://localhost/" in cmd:
-                            link = stb.getLink(url, mac, token, cmd, proxy)
-                        else:
-                            link = cmd.split(" ")[1]
-                        break  # Channel gefunden - fertig!
+                    if channels:
+                        for c in channels:
+                            if str(c["id"]) == channelId:
+                                cmd = c["cmd"]
+                                if "http://localhost/" in cmd:
+                                    link = stb.getLink(url, mac, token, cmd, proxy)
+                                else:
+                                    link = cmd.split(" ")[1]
+                                break
                     
                     if link:
                         break
@@ -8973,19 +8583,6 @@ if __name__ == "__main__":
     hls_manager = HLSStreamManager(max_streams=max_streams, inactive_timeout=inactive_timeout)
     hls_manager.start_monitoring()
     logger.info(f"HLS Stream Manager initialized (max_streams={max_streams}, timeout={inactive_timeout}s)")
-    
-    # Starte Channel-Cache Cleanup Task
-    def cache_cleanup_task():
-        """Background-Task der regelmäßig den Cache aufräumt."""
-        while True:
-            time.sleep(3600)  # Alle 1 Stunde (statt 5 Minuten)
-            try:
-                channel_cache.cleanup_expired()
-            except Exception as e:
-                logger.error(f"Error in cache cleanup: {e}")
-    
-    threading.Thread(target=cache_cleanup_task, daemon=True).start()
-    logger.info("Channel cache cleanup task started (runs every hour)")
     
     # Always use waitress for production in container
     logger.info("Starting Waitress server on 0.0.0.0:8001")

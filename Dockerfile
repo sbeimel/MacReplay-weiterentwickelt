@@ -24,17 +24,20 @@ RUN pip install --no-cache-dir \
     cryptography>=3.4.8 \
     pycryptodome>=3.15.0
 
-# Note: Proxy support (shadowsocks, socks5, http) is included in requirements.txt
+# Note: shadowsocks==2.8.2 is already in requirements.txt with compatibility fix
 
 # Copy application files
 COPY app-docker.py app.py
 COPY stb.py .
 COPY utils.py .
+COPY shadowsocks_fix.py .
 COPY templates/ templates/
 COPY static/ static/
 
-# Copy documentation files (optional)
-COPY docs/ docs/
+# Copy test and documentation files (optional)
+COPY test_*.py ./
+COPY *_SUPPORT.md ./
+COPY *_GUIDE.md ./
 
 # Create non-root user for security
 RUN useradd -m -u 1000 macreplayxc && \
