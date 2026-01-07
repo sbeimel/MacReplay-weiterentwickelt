@@ -1,7 +1,6 @@
 services:
   macreplayxc:
     build: .
-    # image: ghcr.io/un1x-dev/macreplayxc:latest
     container_name: MacReplayXC
     ports:
       - "8001:8001"
@@ -14,7 +13,7 @@ services:
       - ./logs:/app/logs
     environment:
       - HOST=0.0.0.0:8001
-      - CONFIG=/app/data/MacReplayXC.json
+      - CONFIG=/app/data/MacReplay.json
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/"]

@@ -99,6 +99,9 @@
         position: sticky;
         top: -2rem;
         z-index: 10;
+        -webkit-backdrop-filter: blur(16px);
+        padding: 2.5rem 1rem 4rem 1rem;
+        margin: -1rem -1rem -2rem -1rem;
     }
     
     [data-bs-theme="light"] #vodModal .category-filter-sticky {
@@ -115,56 +118,6 @@
             rgba(42, 42, 42, 0.95) 40%, 
             rgba(42, 42, 42, 0.5) 70%,
             rgba(42, 42, 42, 0) 100%) !important;
-    }
-    
-    /* VOD Detail Styles */
-    .vod-detail-poster {
-        width: 100%;
-        aspect-ratio: 2/3;
-        background: #f1f5f9;
-        border-radius: 0.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-    }
-    
-    [data-bs-theme="dark"] .vod-detail-poster {
-        background: #1f1f1f;
-    }
-    
-    .vod-detail-poster img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    .vod-detail-poster .placeholder-icon {
-        font-size: 4rem;
-        opacity: 0.3;
-    }
-    
-    .episode-item {
-        padding: 10px 15px;
-        border-bottom: 1px solid #e2e8f0;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    
-    [data-bs-theme="dark"] .episode-item {
-        border-color: #404040;
-    }
-    
-    .episode-item:hover {
-        background: #f1f5f9;
-    }
-    
-    [data-bs-theme="dark"] .episode-item:hover {
-        background: #2a2a2a;
-    }
-    
-    .episode-item:last-child {
-        border-bottom: none;
     }
 </style>
 {% endblock %}
@@ -381,86 +334,11 @@
         height: 1.25rem;
         margin-top: 0.125rem;
     }
-    
-    /* Custom checkbox colors for theme consistency */
-    .form-check-input:checked {
-        background-color: #10b981;
-        border-color: #10b981;
-    }
-    
-    .form-check-input:focus {
-        border-color: #10b981;
-        box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.25);
-    }
-    
-    /* Form selectgroup (radio buttons) theme colors */
-    .form-selectgroup-input:checked + .form-selectgroup-label {
-        background-color: rgba(16, 185, 129, 0.1);
-        border-color: #10b981;
-        color: #10b981;
-    }
-    
-    [data-bs-theme="dark"] .form-selectgroup-input:checked + .form-selectgroup-label {
-        background-color: rgba(16, 185, 129, 0.15);
-        border-color: #10b981;
-        color: #34d399;
-    }
-    
-    .form-selectgroup-label {
-        transition: all 0.2s ease;
-    }
-    
-    [data-bs-theme="light"] .form-selectgroup-label {
-        background: #ffffff;
-        border-color: #e2e8f0;
-    }
-    
-    [data-bs-theme="dark"] .form-selectgroup-label {
-        background: #2a2a2a;
-        border-color: #404040;
-    }
-    
-    /* Badge colors for selected count */
-    .badge.bg-success-lt {
-        background-color: rgba(16, 185, 129, 0.1) !important;
-        color: #10b981 !important;
-    }
-    
-    [data-bs-theme="dark"] .badge.bg-success-lt {
-        background-color: rgba(16, 185, 129, 0.2) !important;
-        color: #34d399 !important;
-    }
-    
-    /* Modal content theme */
-    [data-bs-theme="dark"] .modal-content {
-        background: #1a1a1a;
-    }
-    
-    [data-bs-theme="dark"] .card {
-        background: #242424;
-        border-color: #404040;
-    }
-    
-    [data-bs-theme="dark"] .card-header {
-        background: #2a2a2a;
-        border-color: #404040;
-    }
-    
-    /* Alert info theme */
-    [data-bs-theme="dark"] .alert-info {
-        background: rgba(59, 130, 246, 0.1);
-        border-color: rgba(59, 130, 246, 0.2);
-        color: #93c5fd;
-    }
-    
-    /* Form switch (toggle) colors */
-    .form-switch .form-check-input:checked {
-        background-color: #10b981;
-        border-color: #10b981;
-    }
 </style>
+    </div>
+</div>
 
-        <!-- VOD Settings Modal -->
+<!-- VOD Settings Modal -->
 <div class="modal modal-blur fade" id="vodSettingsModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -583,6 +461,56 @@
     </div>
 </div>
 
+<style>
+    .vod-detail-poster {
+        width: 100%;
+        aspect-ratio: 2/3;
+        background: #f1f5f9;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    
+    [data-bs-theme="dark"] .vod-detail-poster {
+        background: #1f1f1f;
+    }
+    
+    .vod-detail-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .vod-detail-poster .placeholder-icon {
+        font-size: 4rem;
+        opacity: 0.3;
+    }
+    
+    .episode-item {
+        padding: 10px 15px;
+        border-bottom: 1px solid #e2e8f0;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    [data-bs-theme="dark"] .episode-item {
+        border-color: #404040;
+    }
+    
+    .episode-item:hover {
+        background: #f1f5f9;
+    }
+    
+    [data-bs-theme="dark"] .episode-item:hover {
+        background: #2a2a2a;
+    }
+    
+    .episode-item:last-child {
+        border-bottom: none;
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -616,21 +544,12 @@ document.addEventListener('DOMContentLoaded', function() {
 function loadPortals() {
     const loadingEl = document.getElementById('loadingIndicator');
     const gridEl = document.getElementById('portalGrid');
-    const container = document.getElementById('portalsContainer');
     
     if (loadingEl) loadingEl.style.display = 'block';
     if (gridEl) gridEl.innerHTML = '';
     
-    // Add timeout for fetch
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-    
-    fetch('/vods/portals', {
-        credentials: 'same-origin',
-        signal: controller.signal
-    })
+    fetch('/vods/portals', {credentials: 'same-origin'})
         .then(res => {
-            clearTimeout(timeoutId);
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status}: ${res.statusText}`);
             }
@@ -644,19 +563,13 @@ function loadPortals() {
                 updateStats();
             } else {
                 console.error('API Error:', data.error);
-                if (container) {
-                    container.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading portals: ${data.error || 'Unknown error'}</div>`;
-                }
+                showError('Error loading portals: ' + (data.error || 'Unknown error'));
             }
             if (loadingEl) loadingEl.style.display = 'none';
         })
         .catch(err => {
-            clearTimeout(timeoutId);
             console.error('Fetch Error:', err);
-            const errorMsg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message;
-            if (container) {
-                container.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading portals: ${errorMsg}<br><button class="btn btn-sm btn-primary mt-2" onclick="loadPortals()"><i class="ti ti-refresh me-1"></i>Retry</button></div>`;
-            }
+            showError('Error loading portals: ' + err.message);
             if (loadingEl) loadingEl.style.display = 'none';
         });
 }
@@ -1305,11 +1218,11 @@ function playEpisode(seriesId, episodeNum, seasonNum) {
         if (data.success && data.url) {
             window.open(data.url, '_blank');
         } else {
-            showToast('Error: ' + (data.error || 'Could not get stream URL'), 'danger');
+            alert('Error: ' + (data.error || 'Could not get stream URL'));
         }
     })
     .catch(err => {
-        showToast('Error: ' + err.message, 'danger');
+        alert('Error: ' + err.message);
     })
     .finally(() => {
         btn.disabled = false;
@@ -1345,11 +1258,11 @@ function playEpisodeWithCmd(seriesId, cmd, episodeNum, seasonNum) {
         if (data.success && data.url) {
             window.open(data.url, '_blank');
         } else {
-            showToast('Error: ' + (data.error || 'Could not get stream URL'), 'danger');
+            alert('Error: ' + (data.error || 'Could not get stream URL'));
         }
     })
     .catch(err => {
-        showToast('Error: ' + err.message, 'danger');
+        alert('Error: ' + err.message);
     })
     .finally(() => {
         btn.disabled = false;
@@ -1369,7 +1282,7 @@ function openVodDetail(index, type) {
 
 function playCurrentVod() {
     if (!currentVodItem) {
-        showToast('No VOD item selected', 'warning');
+        alert('No VOD item selected');
         return;
     }
     
@@ -1395,12 +1308,12 @@ function playCurrentVod() {
             console.log('Stream URL:', data.url);
             window.open(data.url, '_blank');
         } else {
-            showToast('Error getting stream: ' + (data.error || 'Unknown error'), 'danger');
+            alert('Error getting stream: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(err => {
         console.error('Error getting stream:', err);
-        showToast('Error getting stream: ' + err.message, 'danger');
+        alert('Error getting stream: ' + err.message);
     })
     .finally(() => {
         playBtn.disabled = false;
@@ -1425,14 +1338,14 @@ function refreshCategories() {
             document.getElementById('vodRefreshProgress').style.display = 'block';
             startVodProgressMonitoring();
         } else {
-            showToast('Error starting refresh: ' + (data.error || 'Unknown error'), 'danger');
+            alert('Error starting refresh: ' + (data.error || 'Unknown error'));
             btn.disabled = false;
             btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
         }
     })
     .catch(err => {
         console.error('Error starting refresh:', err);
-        showToast('Error starting refresh: ' + err.message, 'danger');
+        alert('Error starting refresh: ' + err.message);
         btn.disabled = false;
         btn.innerHTML = '<i class="ti ti-refresh me-2"></i>Refresh';
     });
@@ -1524,8 +1437,6 @@ function updateVodProgress(data) {
 }
 
 function openVodSettings() {
-    // Load current settings before showing modal
-    loadVodSettings();
     const modal = new bootstrap.Modal(document.getElementById('vodSettingsModal'));
     modal.show();
 }
@@ -1580,19 +1491,19 @@ function saveVodSettings() {
         if (data.success) {
             const modal = bootstrap.Modal.getInstance(document.getElementById('vodSettingsModal'));
             modal.hide();
-            showToast('VOD settings saved successfully', 'success');
+            alert('VOD settings saved successfully');
         } else {
-            showToast('Error saving settings: ' + (data.error || 'Unknown error'), 'danger');
+            alert('Error saving settings: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(err => {
         console.error('Error saving VOD settings:', err);
-        showToast('Error saving settings', 'danger');
+        alert('Error saving settings');
     });
 }
 
 function showError(message) {
-    showToast('Error: ' + message, 'danger');
+    alert('Error: ' + message);
 }
 
 function loadCurrentVodSelection() {
@@ -1677,20 +1588,20 @@ function saveVodSelection() {
                 // Show items loading progress
                 showItemsLoadingProgress(selectedCategories.length);
             } else {
-                showToast(`Successfully saved ${selectedCategories.length} VOD categories!`, 'success');
+                alert(`Successfully saved ${selectedCategories.length} VOD categories!`);
                 const modal = bootstrap.Modal.getInstance(document.getElementById('vodModal'));
                 modal.hide();
                 loadPortals();
             }
         } else {
-            showToast('Error saving selection: ' + (data.error || 'Unknown error'), 'danger');
+            alert('Error saving selection: ' + (data.error || 'Unknown error'));
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
         }
     })
     .catch(err => {
         console.error('Error saving VOD selection:', err);
-        showToast('Error saving selection: ' + err.message, 'danger');
+        alert('Error saving selection: ' + err.message);
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalText;
     });
@@ -1748,7 +1659,7 @@ function startItemsLoadProgressMonitoring(totalCategories) {
                         loadPortals();
                         
                         // Show success notification
-                        showToast(`Successfully loaded ${data.items_loaded} items from ${data.categories_done} categories!`, 'success');
+                        alert(`Successfully loaded ${data.items_loaded} items from ${data.categories_done} categories!`);
                     }, 1000);
                 }
             })
@@ -1818,6 +1729,459 @@ function loadCategoriesFromPortal() {
 function previewCategoryItems(categoryId, categoryType, categoryTitle) {
     // Open items view in a new modal or expand inline
     openCategoryItems(categoryId, categoryType, categoryTitle);
+}
+
+function showItemsView(items, categoryTitle, categoryType, total, hasMore) {
+    currentView = 'items';
+    
+    document.getElementById('vodModalTitle').textContent = categoryTitle;
+    document.getElementById('vodModalStats').textContent = `${currentPortalName} • ${total} items`;
+    
+    document.getElementById('vodModalFooter').innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="backToCategories()">
+            <i class="ti ti-arrow-left me-2"></i>Back to Categories
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    `;
+    
+    let html = `
+        <div class="category-filter-sticky">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <div class="input-icon">
+                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                        <input type="text" class="form-control" id="itemSearch" placeholder="Search items..." oninput="filterItems()">
+                    </div>
+                </div>
+                <div class="col-md-8 text-end">
+                    <span class="badge bg-primary-lt"><i class="ti ti-movie me-1"></i>${items.length} Items</span>
+                    <span class="badge bg-${categoryType === 'vod' ? 'blue' : 'yellow'}-lt">${categoryType === 'vod' ? 'VOD' : 'Series'}</span>
+                </div>
+            </div>
+        </div>
+        <div class="vod-items-grid">
+    `;
+    
+    // Store items globally for detail view access
+    window.currentVodItems = items;
+    
+    items.forEach((item, index) => {
+        const poster = item.screenshot_uri || '';
+        const year = item.year || '';
+        const title = item.name || 'Unknown';
+        
+        html += `
+            <div class="vod-item-card" onclick="openVodDetail(${index}, '${categoryType}')">
+                <div class="vod-poster">
+                    ${poster ? 
+                        `<img src="${poster}" alt="${escapeHtml(title)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                         <div class="placeholder-icon" style="display:none;"><i class="ti ti-movie"></i></div>` :
+                        `<div class="placeholder-icon"><i class="ti ti-movie"></i></div>`
+                    }
+                </div>
+                <div class="vod-info">
+                    <div class="vod-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                    ${year ? `<div class="vod-year">${year}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Add load more button if needed
+    if (hasMore) {
+        html += `
+            <div class="d-flex justify-content-center mt-4">
+                <button class="btn btn-outline-primary" onclick="loadMoreItems()">
+                    <i class="ti ti-chevron-down me-2"></i>Load More
+                </button>
+            </div>
+        `;
+    }
+    
+    document.getElementById('vodModalContent').innerHTML = html;
+}
+
+function filterItems() {
+    const search = document.getElementById('itemSearch').value.toLowerCase();
+    document.querySelectorAll('.vod-item-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
+    });
+}
+
+function backToCategories() {
+    loadPortalCategories(currentPortalId);
+}
+
+let currentVodItem = null;
+
+function openVodDetail(index, type) {
+    const item = window.currentVodItems[index];
+    if (!item) {
+        console.error('Item not found at index:', index);
+        return;
+    }
+    
+    playVodItem(type, item.cmd, item.name, item.working_mac, item);
+}
+
+function playVodItem(type, cmd, title, workingMac, item) {
+    console.log('Opening VOD detail:', {type, cmd, title, workingMac});
+    
+    // Store current item for playback
+    currentVodItem = {
+        type: type,
+        cmd: cmd,
+        title: title,
+        workingMac: workingMac,
+        item: item || {}
+    };
+    
+    // Show detail modal
+    showVodDetailModal(type, item || {name: title, cmd: cmd});
+}
+
+function showVodDetailModal(type, item) {
+    const modal = new bootstrap.Modal(document.getElementById('vodDetailModal'));
+    
+    // Update modal content
+    document.getElementById('vodDetailTitle').textContent = type === 'series' ? 'Series Details' : 'Film Details';
+    document.getElementById('vodDetailSubtitle').textContent = currentPortalName;
+    document.getElementById('vodDetailType').textContent = type === 'series' ? 'Series' : 'VOD';
+    document.getElementById('vodDetailType').className = type === 'series' ? 'badge bg-yellow-lt me-2' : 'badge bg-blue-lt me-2';
+    
+    document.getElementById('vodDetailName').textContent = item.name || 'Unknown Title';
+    document.getElementById('vodDetailYear').textContent = item.year || '';
+    document.getElementById('vodDetailYear').style.display = item.year ? 'inline' : 'none';
+    
+    const rating = item.rating || item.rating_imdb;
+    document.getElementById('vodDetailRating').textContent = rating ? `★ ${rating}` : '';
+    document.getElementById('vodDetailRating').style.display = rating ? 'inline' : 'none';
+    
+    const genre = item.genre || item.genre_str;
+    const genreEl = document.getElementById('vodDetailGenre');
+    if (genre) {
+        genreEl.querySelector('span').textContent = genre;
+        genreEl.style.display = 'block';
+    } else {
+        genreEl.style.display = 'none';
+    }
+    
+    const duration = item.duration || item.time;
+    const durationEl = document.getElementById('vodDetailDuration');
+    if (duration) {
+        durationEl.querySelector('span').textContent = duration;
+        durationEl.style.display = 'block';
+    } else {
+        durationEl.style.display = 'none';
+    }
+    
+    document.getElementById('vodDetailDescription').textContent = item.description || 'No description available.';
+    
+    // Update poster
+    const posterEl = document.getElementById('vodDetailPoster');
+    const posterUrl = item.screenshot_uri || item.poster_url;
+    if (posterUrl) {
+        posterEl.innerHTML = `<img src="${posterUrl}" alt="${escapeHtml(item.name || '')}" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-icon\\'><i class=\\'ti ti-movie\\'></i></div>'">`;
+    } else {
+        posterEl.innerHTML = '<div class="placeholder-icon"><i class="ti ti-movie"></i></div>';
+    }
+    
+    // Handle series episodes
+    const episodesSection = document.getElementById('vodDetailEpisodes');
+    const playBtn = document.getElementById('vodDetailPlayBtn');
+    
+    if (type === 'series' && item.id) {
+        episodesSection.style.display = 'block';
+        playBtn.style.display = 'none'; // Hide play button for series (play individual episodes)
+        loadSeriesEpisodes(item.id);
+    } else {
+        episodesSection.style.display = 'none';
+        playBtn.style.display = 'inline-block';
+    }
+    
+    modal.show();
+}
+
+function loadSeriesEpisodes(seriesId) {
+    const accordion = document.getElementById('seasonsAccordion');
+    accordion.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Loading episodes...</div>';
+    
+    fetch(`/vods/series/${currentPortalId}/${seriesId}/episodes`, {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.series_info) {
+                renderSeriesEpisodes(data.series_info, seriesId);
+            } else {
+                accordion.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="ti ti-alert-circle me-2"></i>
+                        Could not load episodes: ${data.error || 'Unknown error'}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            console.error('Error loading episodes:', err);
+            accordion.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="ti ti-alert-circle me-2"></i>
+                    Error loading episodes: ${err.message}
+                </div>
+            `;
+        });
+}
+
+function renderSeriesEpisodes(seriesInfo, seriesId) {
+    const accordion = document.getElementById('seasonsAccordion');
+    
+    // Check if we have episode data
+    if (!seriesInfo || !seriesInfo.data || seriesInfo.data.length === 0) {
+        accordion.innerHTML = `
+            <div class="alert alert-info">
+                <i class="ti ti-info-circle me-2"></i>
+                No episodes found for this series.
+            </div>
+        `;
+        return;
+    }
+    
+    console.log('Series info data:', seriesInfo.data);
+    
+    // The API returns seasons with 'series' array containing episode numbers
+    // Format: [{id: "123:1", series: [1,2,3,4], ...}, {id: "123:2", series: [1,2,3], ...}]
+    // OR it might return individual episodes with season/episode fields
+    
+    let html = '';
+    
+    // Check if data contains seasons (with 'series' array) or individual episodes
+    if (seriesInfo.data[0] && Array.isArray(seriesInfo.data[0].series)) {
+        // Format: Seasons with episode number arrays (macshow.py pattern)
+        seriesInfo.data.forEach((season, idx) => {
+            // Extract season number from id (format: "seriesId:seasonNum")
+            const seasonNum = season.id ? season.id.split(':')[1] || (idx + 1) : (idx + 1);
+            const episodes = season.series || [];
+            const isFirst = idx === 0;
+            const seasonTitle = season.name || `Season ${seasonNum}`;
+            
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#season${seasonNum}">
+                            <i class="ti ti-folder me-2"></i>${escapeHtml(seasonTitle)}
+                            <span class="badge bg-primary-lt ms-2">${episodes.length} Episodes</span>
+                        </button>
+                    </h2>
+                    <div id="season${seasonNum}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+            `;
+            
+            // Episodes are just numbers in the 'series' array
+            episodes.forEach(epNum => {
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-secondary-lt me-2">E${epNum}</span>
+                            Episode ${epNum}
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="playEpisode('${seriesId}', ${epNum}, ${seasonNum})">
+                            <i class="ti ti-player-play"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        // Format: Individual episode objects with season/episode fields
+        // Group episodes by season
+        const seasons = {};
+        seriesInfo.data.forEach(episode => {
+            const seasonNum = episode.season || episode.series || 1;
+            if (!seasons[seasonNum]) {
+                seasons[seasonNum] = [];
+            }
+            seasons[seasonNum].push(episode);
+        });
+        
+        Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b)).forEach((seasonNum, idx) => {
+            const episodes = seasons[seasonNum];
+            const isFirst = idx === 0;
+            
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#season${seasonNum}">
+                            <i class="ti ti-folder me-2"></i>Season ${seasonNum}
+                            <span class="badge bg-primary-lt ms-2">${episodes.length} Episodes</span>
+                        </button>
+                    </h2>
+                    <div id="season${seasonNum}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+            `;
+            
+            episodes.forEach(episode => {
+                const epNum = episode.episode || episode.series_episode || '?';
+                const epTitle = episode.name || episode.title || `Episode ${epNum}`;
+                const epCmd = episode.cmd || '';
+                
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-secondary-lt me-2">E${epNum}</span>
+                            ${escapeHtml(epTitle)}
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="playEpisodeWithCmd('${seriesId}', '${escapeHtml(epCmd)}', ${epNum}, ${seasonNum})">
+                            <i class="ti ti-player-play"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    accordion.innerHTML = html || '<div class="alert alert-info">No episodes found.</div>';
+}
+
+function playEpisode(seriesId, episodeNum, seasonNum) {
+    // For series with episode number arrays, we need to construct the cmd
+    // Based on macshow.py: cmd is base64 encoded JSON with series_id, season_num, type
+    const cmdData = {
+        series_id: seriesId,
+        season_num: parseInt(seasonNum),
+        type: "series"
+    };
+    const cmd = btoa(JSON.stringify(cmdData));
+    
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch(`/vods/play/${currentPortalId}/series`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: cmd,
+            episode_num: episodeNum,
+            season_num: seasonNum
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            alert('Error: ' + (data.error || 'Could not get stream URL'));
+        }
+    })
+    .catch(err => {
+        alert('Error: ' + err.message);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+// For episodes that already have a cmd field
+function playEpisodeWithCmd(seriesId, cmd, episodeNum, seasonNum) {
+    if (!cmd) {
+        // Fallback to constructing cmd
+        playEpisode(seriesId, episodeNum, seasonNum);
+        return;
+    }
+    
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    fetch(`/vods/play/${currentPortalId}/series`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: cmd,
+            episode_num: episodeNum,
+            season_num: seasonNum
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            alert('Error: ' + (data.error || 'Could not get stream URL'));
+        }
+    })
+    .catch(err => {
+        alert('Error: ' + err.message);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+function playCurrentVod() {
+    if (!currentVodItem) {
+        alert('No VOD item selected');
+        return;
+    }
+    
+    const playBtn = document.getElementById('vodDetailPlayBtn');
+    const originalText = playBtn.innerHTML;
+    playBtn.disabled = true;
+    playBtn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Loading...';
+    
+    const contentType = currentVodItem.type || 'vod';
+    
+    fetch(`/vods/play/${currentPortalId}/${contentType}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            cmd: currentVodItem.cmd,
+            series_id: currentVodItem.item?.id || '0'
+        }),
+        credentials: 'same-origin'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.url) {
+            console.log('Stream URL:', data.url);
+            window.open(data.url, '_blank');
+        } else {
+            alert('Error getting stream: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        console.error('Error getting stream:', err);
+        alert('Error getting stream: ' + err.message);
+    })
+    .finally(() => {
+        playBtn.disabled = false;
+        playBtn.innerHTML = originalText;
+    });
 }
 
 function escapeHtml(text) {
