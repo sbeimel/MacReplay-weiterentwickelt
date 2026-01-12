@@ -8157,14 +8157,25 @@ def stream_channel(portalId, channelId, xc_user=None):
                 ffmpegcmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,  # Temporär: Zeige FFmpeg-Fehler
+                stderr=subprocess.PIPE,
             ) as ffmpeg_sp:
                 while True:
                     chunk = ffmpeg_sp.stdout.read(1024)
                     if len(chunk) == 0:
-                        if ffmpeg_sp.poll() != 0:
-                            logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(str(ffmpeg_sp.poll()), mac, portalName))
+                        exit_code = ffmpeg_sp.poll()
+                        if exit_code != 0:
+                            # Lese FFmpeg-Fehler aus stderr
+                            try:
+                                stderr_output = ffmpeg_sp.stderr.read().decode('utf-8', errors='ignore')
+                                if stderr_output.strip():
+                                    logger.error(f"FFmpeg stderr for MAC {mac}: {stderr_output.strip()}")
+                            except Exception as e:
+                                logger.debug(f"Could not read FFmpeg stderr: {e}")
+                            
+                            logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(exit_code, mac, portalName))
                             moveMac(portalId, mac)
+                        else:
+                            logger.debug(f"FFmpeg ended normally for MAC {mac}")
                         break
                     yield chunk
         except:
@@ -8301,6 +8312,10 @@ def stream_channel(portalId, channelId, xc_user=None):
                         # Bereinige doppelte Leerzeichen und splitte in Array
                         ffmpegcmd = " ".join(ffmpegcmd.split())
                         ffmpegcmd = ffmpegcmd.split()
+                        
+                        # Debug: Logge das FFmpeg-Kommando
+                        logger.debug(f"FFmpeg command: {' '.join(ffmpegcmd)}")
+                        logger.debug(f"Stream URL: {link}")
                         return Response(
                             streamData(), mimetype="application/octet-stream"
                         )
