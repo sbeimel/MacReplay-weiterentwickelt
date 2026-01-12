@@ -408,7 +408,7 @@ defaultSettings = {
     "hls playlist size": "6",
     "hls max streams": "10",
     "hls inactive timeout": "30",
-    "ffmpeg timeout": "30",
+    "ffmpeg timeout": "5",
     "test streams": "true",
     "try all macs": "true",
     "use channel genres": "true",
@@ -8157,25 +8157,14 @@ def stream_channel(portalId, channelId, xc_user=None):
                 ffmpegcmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
             ) as ffmpeg_sp:
                 while True:
                     chunk = ffmpeg_sp.stdout.read(1024)
                     if len(chunk) == 0:
-                        exit_code = ffmpeg_sp.poll()
-                        if exit_code != 0:
-                            # Lese FFmpeg-Fehler aus stderr
-                            try:
-                                stderr_output = ffmpeg_sp.stderr.read().decode('utf-8', errors='ignore')
-                                if stderr_output.strip():
-                                    logger.error(f"FFmpeg stderr for MAC {mac}: {stderr_output.strip()}")
-                            except Exception as e:
-                                logger.debug(f"Could not read FFmpeg stderr: {e}")
-                            
-                            logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(exit_code, mac, portalName))
+                        if ffmpeg_sp.poll() != 0:
+                            logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(str(ffmpeg_sp.poll()), mac, portalName))
                             moveMac(portalId, mac)
-                        else:
-                            logger.info(f"FFmpeg ended normally for MAC {mac}")
                         break
                     yield chunk
         except:
@@ -8899,30 +8888,16 @@ if __name__ == "__main__":
     
     # Parse HLS settings with error handling
     try:
-        hls_streams_value = settings.get("hls max streams", "10")
-        # Bereinige den Wert von Whitespace und konvertiere zu int
-        if isinstance(hls_streams_value, str):
-            hls_streams_value = hls_streams_value.strip()
-        max_streams = int(hls_streams_value)
-        # Validiere Bereich (mindestens 1, maximal 50)
-        if max_streams < 1 or max_streams > 50:
-            raise ValueError(f"Max streams {max_streams} outside valid range (1-50)")
-    except (ValueError, TypeError) as e:
+        max_streams = int(settings.get("hls max streams", "10"))
+    except (ValueError, TypeError):
         max_streams = 10
-        logger.warning(f"Invalid 'hls max streams' value '{settings.get('hls max streams', 'None')}': {e}. Using default: 10")
+        logger.warning("Invalid 'hls max streams' value, using default: 10")
     
     try:
-        hls_timeout_value = settings.get("hls inactive timeout", "30")
-        # Bereinige den Wert von Whitespace und konvertiere zu int
-        if isinstance(hls_timeout_value, str):
-            hls_timeout_value = hls_timeout_value.strip()
-        inactive_timeout = int(hls_timeout_value)
-        # Validiere Bereich (mindestens 5 Sekunden, maximal 300 Sekunden)
-        if inactive_timeout < 5 or inactive_timeout > 300:
-            raise ValueError(f"Timeout {inactive_timeout} outside valid range (5-300)")
-    except (ValueError, TypeError) as e:
+        inactive_timeout = int(settings.get("hls inactive timeout", "30"))
+    except (ValueError, TypeError):
         inactive_timeout = 30
-        logger.warning(f"Invalid 'hls inactive timeout' value '{settings.get('hls inactive timeout', 'None')}': {e}. Using default: 30")
+        logger.warning("Invalid 'hls inactive timeout' value, using default: 30")
     
     hls_manager = HLSStreamManager(max_streams=max_streams, inactive_timeout=inactive_timeout)
     hls_manager.start_monitoring()
