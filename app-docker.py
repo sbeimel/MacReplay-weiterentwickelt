@@ -8249,8 +8249,14 @@ def stream_channel(portalId, channelId, xc_user=None):
         if cmd:
             if "http://localhost/" in cmd:
                 link = stb.getLink(url, mac, token, cmd, proxy)
+                logger.debug(f"Generated stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Generated stream link for MAC {mac}: {link}")
             else:
                 link = cmd.split(" ")[1]
+                logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
+        
+        if not link:
+            logger.error(f"No stream link generated for MAC {mac}, channel {channelId}")
+            return make_response("No stream link available", 404)
 
         if link:
             if getSettings().get("test streams", "true") == "false" or testStream():
