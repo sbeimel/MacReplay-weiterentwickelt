@@ -2,161 +2,6 @@
 
 {% block title %}Portals - MacReplayXC{% endblock %}
 
-{% block head %}
-<style>
-    /* Dark Mode Fixes for Portals */
-
-    /* M3U URL Input Fields - Override bg-light for proper styling */
-    .form-control.font-monospace.bg-light {
-        background-color: #f8f9fa !important;
-        color: #495057 !important;
-        border-color: #dee2e6 !important;
-    }
-
-    [data-bs-theme="dark"] .form-control.font-monospace.bg-light {
-        background-color: #2a2a2a !important;
-        color: #e0e0e0 !important;
-        border-color: #404040 !important;
-    }
-
-    /* Readonly state */
-    .form-control.font-monospace.bg-light[readonly] {
-        background-color: #e9ecef !important;
-        color: #6c757d !important;
-        border-color: #ced4da !important;
-    }
-
-    [data-bs-theme="dark"] .form-control.font-monospace.bg-light[readonly] {
-        background-color: #1f1f1f !important;
-        color: #a0a0a0 !important;
-        border-color: #404040 !important;
-    }
-
-    /* Input Group Text - Light Mode */
-    [data-bs-theme="light"] .input-group-text {
-        background-color: #ffffff;
-        border-color: #dee2e6;
-        color: #495057;
-    }
-
-    [data-bs-theme="light"] .input-group-text.bg-success-lt {
-        background-color: #d1fae5 !important;
-        color: #065f46 !important;
-        border-color: #a7f3d0 !important;
-    }
-
-    [data-bs-theme="light"] .input-group-text.bg-warning-lt {
-        background-color: #fef3c7 !important;
-        color: #92400e !important;
-        border-color: #fde68a !important;
-    }
-
-    [data-bs-theme="light"] .input-group-text.bg-info-lt {
-        background-color: #dbeafe !important;
-        color: #1e40af !important;
-        border-color: #bfdbfe !important;
-    }
-
-    /* Input Group Text - Dark Mode */
-    [data-bs-theme="dark"] .input-group-text {
-        background-color: #2a2a2a;
-        border-color: #404040;
-        color: #e0e0e0;
-    }
-
-    [data-bs-theme="dark"] .input-group-text.bg-success-lt {
-        background-color: rgba(16, 185, 129, 0.15) !important;
-        color: #6ee7b7 !important;
-        border-color: #404040 !important;
-    }
-
-    [data-bs-theme="dark"] .input-group-text.bg-warning-lt {
-        background-color: rgba(245, 158, 11, 0.15) !important;
-        color: #fcd34d !important;
-        border-color: #404040 !important;
-    }
-
-    [data-bs-theme="dark"] .input-group-text.bg-info-lt {
-        background-color: rgba(59, 130, 246, 0.15) !important;
-        color: #93c5fd !important;
-        border-color: #404040 !important;
-    }
-
-    /* Small text hints under M3U URLs */
-    [data-bs-theme="dark"] .text-muted {
-        color: #a0a0a0 !important;
-    }
-
-    /* Portal cards hover effect - only green border */
-    .portal-card {
-        transition: border-color 0.2s ease;
-    }
-
-    .portal-card:hover {
-        border-color: #10b981 !important;
-    }
-
-    /* Edit section cards */
-    .edit-section-card {
-        background: transparent;
-        border: 1px solid;
-        border-radius: 0.5rem;
-        padding: 1.5rem;
-    }
-
-    [data-bs-theme="light"] .edit-section-card {
-        border-color: #e2e8f0;
-        background-color: #f8fafc;
-    }
-
-    [data-bs-theme="dark"] .edit-section-card {
-        border-color: #404040;
-        background-color: #1f1f1f;
-    }
-
-    .edit-section-title {
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid;
-    }
-
-    [data-bs-theme="light"] .edit-section-title {
-        border-color: #e2e8f0;
-        color: #1e293b;
-    }
-
-    [data-bs-theme="dark"] .edit-section-title {
-        border-color: #404040;
-        color: #e0e0e0;
-    }
-
-    /* Status card in edit modal */
-    .edit-status-card {
-        background: transparent;
-        border: 1px solid;
-        border-radius: 0.5rem;
-        padding: 1.5rem;
-    }
-
-    [data-bs-theme="light"] .edit-status-card {
-        border-color: #10b981;
-        background-color: rgba(16, 185, 129, 0.05);
-    }
-
-    [data-bs-theme="dark"] .edit-status-card {
-        border-color: #10b981;
-        background-color: rgba(16, 185, 129, 0.1);
-    }
-
-    .table-responsive {
-        border-radius: 0rem;
-        overflow: hidden;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="page-header d-print-none">
     <div class="container-xl">
@@ -188,8 +33,7 @@
                 <div class="card portal-card">
                     <div class="card-body">
                         <div class="d-flex align-items-start mb-3">
-                            <div
-                                class="avatar avatar-lg bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }}-lt me-3">
+                            <div class="avatar avatar-lg bg-{{ 'success' if portal.enabled == 'true' else 'secondary' }}-lt me-3">
                                 <i class="ti ti-antenna"></i>
                             </div>
                             <div class="flex-fill">
@@ -202,7 +46,7 @@
                                 {{ 'Active' if portal.enabled == 'true' else 'Inactive' }}
                             </span>
                         </div>
-
+                        
                         <div class="row g-3 mb-3">
                             <div class="col-6 text-center">
                                 <div class="h2 mb-1">{{ portal.macs|length }}</div>
@@ -213,7 +57,7 @@
                                 <div class="text-muted small">Channels</div>
                             </div>
                         </div>
-
+                        
                         <div class="row g-2 text-center">
                             <div class="col-6">
                                 <div class="badge bg-primary-lt w-100">
@@ -228,82 +72,21 @@
                         </div>
                     </div>
                     <div class="card-footer">
-                        <!-- Primary Actions Row -->
-                        <div class="row g-2 mb-2">
-                            <div class="col-6">
-                                <button class="btn btn-outline-success btn-sm w-100"
-                                    onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
-                                    <i class="ti ti-filter me-1"></i>Select Genres
-                                </button>
-                            </div>
-                            <div class="col-6">
-                                {% if settings.get('public playlist access', 'true') == 'true' %}
-                                <!-- Dual Button: Download M3U + Copy URL -->
-                                <div class="btn-group w-100" role="group">
-                                    <button class="btn btn-outline-info btn-sm"
-                                        onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
-                                        <i class="ti ti-download me-1"></i>Download M3U
-                                    </button>
-                                    <button class="btn btn-outline-info btn-sm"
-                                        onclick="copyLegacyUrl('{{ portal_id }}')" title="Copy Legacy M3U URL">
-                                        <i class="ti ti-copy"></i>
-                                    </button>
-                                </div>
-                                {% else %}
-                                <!-- Single Button: Download M3U only -->
-                                <button class="btn btn-outline-info btn-sm w-100"
-                                    onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
-                                    <i class="ti ti-download me-1"></i>Download M3U
-                                </button>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <!-- Secondary Actions Row -->
-                        <div class="row g-2 mb-2">
+                        <div class="row g-2">
                             <div class="col-4">
-                                <button class="btn btn-outline-warning btn-sm w-100"
-                                    onclick="checkMacStatus('{{ portal_id }}', '{{ portal.name }}')">
-                                    <i class="ti ti-activity me-1"></i>MAC Status
+                                <button class="btn btn-outline-success btn-sm w-100" onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
+                                    <i class="ti ti-filter me-1"></i>Genres
                                 </button>
                             </div>
                             <div class="col-4">
-                                <button class="btn btn-outline-primary btn-sm w-100"
-                                    onclick="editPortal('{{ portal_id }}')">
+                                <button class="btn btn-outline-primary btn-sm w-100" onclick="editPortal('{{ portal_id }}')">
                                     <i class="ti ti-edit me-1"></i>Edit
                                 </button>
                             </div>
                             <div class="col-4">
-                                <button class="btn btn-outline-danger btn-sm w-100"
-                                    onclick="deletePortal('{{ portal_id }}', '{{ portal.name }}')">
+                                <button class="btn btn-outline-danger btn-sm w-100" onclick="deletePortal('{{ portal_id }}', '{{ portal.name }}')">
                                     <i class="ti ti-trash me-1"></i>Delete
                                 </button>
-                            </div>
-                        </div>
-
-                        <!-- M3U URL Display -->
-                        <div class="row">
-                            <div class="col-12">
-                                {% if settings.get('public playlist access', 'true') == 'false' %}
-                                <!-- Basic Auth M3U URL (shown when security is enabled) -->
-                                <div class="input-group input-group-sm mb-2">
-                                    <span class="input-group-text bg-success-lt text-success">
-                                        <i class="ti ti-shield-lock"></i>
-                                    </span>
-                                    <input type="text" class="form-control font-monospace bg-light"
-                                        id="basic_auth_m3u_url_{{ portal_id }}"
-                                        value="http://{{ settings.get('username', 'admin') }}:{{ settings.get('password', '12345') }}@{{ request.host }}/portal/{{ portal_id }}/playlist.m3u"
-                                        readonly>
-                                    <button class="btn btn-success"
-                                        onclick="copyToClipboard('basic_auth_m3u_url_{{ portal_id }}')"
-                                        title="Copy Basic Auth M3U URL">
-                                        <i class="ti ti-copy"></i>
-                                    </button>
-                                </div>
-                                <small class="text-muted">Basic Auth M3U URL for {{ portal.name }}</small>
-                                {% endif %}
-
-
                             </div>
                         </div>
                     </div>
@@ -329,354 +112,294 @@
         </div>
         {% endif %}
 
-        <!-- Add Portal Modal -->
-        <div class="modal modal-blur fade" id="addPortalModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <form method="POST" action="/portal/add">
-                        <div class="modal-header">
-                            <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add New Portal</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="mb-3">
-                                <label class="form-label required" for="name">Portal Name</label>
-                                <input type="text" class="form-control" id="name" name="name"
-                                    placeholder="My IPTV Portal" required aria-required="true"
-                                    aria-describedby="name-hint">
-                                <small id="name-hint" class="form-hint">A friendly name for this portal</small>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label required" for="url">Portal URL</label>
-                                <div class="input-icon">
-                                    <span class="input-icon-addon" aria-hidden="true">
-                                        <i class="ti ti-link"></i>
-                                    </span>
-                                    <input type="url" class="form-control" id="url" name="url"
-                                        placeholder="http://portal.example.com" required aria-required="true"
-                                        aria-describedby="url-hint">
-                                </div>
-                                <small id="url-hint" class="form-hint">Enter the portal domain or full URL</small>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label required" for="macs">MAC Addresses</label>
-                                <textarea class="form-control" id="macs" name="macs" rows="4"
-                                    placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY&#10;00:1A:79:ZZ:ZZ:ZZ" required
-                                    aria-required="true" aria-describedby="macs-hint"></textarea>
-                                <small id="macs-hint" class="form-hint">Enter MAC addresses (one per line). Formats:
-                                    00:1A:79:XX:XX:XX or 00-1A-79-XX-XX-XX</small>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">Streams per MAC</label>
-                                        <input type="number" class="form-control" id="streams_per_mac"
-                                            name="streams per mac" value="1" min="0" max="10">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">EPG Offset (hours)</label>
-                                        <input type="number" class="form-control" id="epg_offset" name="epg offset"
-                                            value="0" min="-12" max="12">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Portal Prefix <span
-                                        class="form-label-description">Optional</span></label>
-                                <div class="input-icon">
-                                    <span class="input-icon-addon">
-                                        <i class="ti ti-tag"></i>
-                                    </span>
-                                    <input type="text" class="form-control" id="portal_prefix" name="portal prefix"
-                                        placeholder="prefix">
-                                </div>
-                                <small class="form-hint">Prefix for channel names in playlists (e.g., "prefix" →
-                                    "[prefix] Channel Name")</small>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Proxy <span
-                                        class="form-label-description">Optional</span></label>
-                                <div class="input-icon">
-                                    <span class="input-icon-addon">
-                                        <i class="ti ti-server"></i>
-                                    </span>
-                                    <input type="text" class="form-control" id="proxy" name="proxy"
-                                        placeholder="http://proxy:port, socks5://proxy:port, or ss://method:password@server:port">
-                                </div>
-                                <small class="form-hint">Supports HTTP, HTTPS, SOCKS4, SOCKS5, and Shadowsocks proxies.
-                                    Leave empty if no proxy needed.</small>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                                Cancel
-                            </button>
-                            <button type="submit" class="btn btn-primary ms-auto" id="addPortalBtn">
-                                <i class="ti ti-plus me-1"></i>
-                                Add Portal
-                            </button>
-                        </div>
-                    </form>
+<!-- Add Portal Modal -->
+<div class="modal modal-blur fade" id="addPortalModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <form method="POST" action="/portal/add">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add New Portal</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Edit Portal Modal -->
-        <div class="modal modal-blur fade" id="editPortalModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
-                <div class="modal-content">
-                    <form method="POST" action="/portal/update" id="editPortalForm">
-                        <input type="hidden" id="edit_portal_id" name="id">
-                        <div class="modal-header">
-                            <div>
-                                <h5 class="modal-title"><i class="ti ti-edit me-2"></i>Edit Portal</h5>
-                                <div class="text-muted small" id="editPortalSubtitle"></div>
-                            </div>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label required" for="name">Portal Name</label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="My IPTV Portal" required aria-required="true" aria-describedby="name-hint">
+                        <small id="name-hint" class="form-hint">A friendly name for this portal</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label required" for="url">Portal URL</label>
+                        <div class="input-icon">
+                            <span class="input-icon-addon" aria-hidden="true">
+                                <i class="ti ti-link"></i>
+                            </span>
+                            <input type="url" class="form-control" id="url" name="url" placeholder="http://portal.example.com" required aria-required="true" aria-describedby="url-hint">
                         </div>
-                        <div class="modal-body">
-                            <!-- Status Toggle -->
-                            <div class="edit-status-card mb-4">
-                                <div class="d-flex align-items-center justify-content-between">
-                                    <div class="d-flex align-items-center">
-                                        <div class="avatar avatar-lg me-3" id="editPortalAvatar">
-                                            <i class="ti ti-antenna"></i>
-                                        </div>
-                                        <div>
-                                            <div class="fw-bold" id="editPortalNameDisplay">Portal Name</div>
-                                            <div class="text-muted small">Toggle to enable or disable this portal</div>
+                        <small id="url-hint" class="form-hint">Enter the portal domain or full URL</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label required" for="macs">MAC Addresses</label>
+                        <textarea class="form-control" id="macs" name="macs" rows="4" placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY&#10;00:1A:79:ZZ:ZZ:ZZ" required aria-required="true" aria-describedby="macs-hint"></textarea>
+                        <small id="macs-hint" class="form-hint">Enter MAC addresses (one per line). Formats: 00:1A:79:XX:XX:XX or 00-1A-79-XX-XX-XX</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Streams per MAC</label>
+                                <input type="number" class="form-control" id="streams_per_mac" name="streams per mac" value="1" min="0" max="10">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">EPG Offset (hours)</label>
+                                <input type="number" class="form-control" id="epg_offset" name="epg offset" value="0" min="-12" max="12">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Proxy <span class="form-label-description">Optional</span></label>
+                        <div class="input-icon">
+                            <span class="input-icon-addon">
+                                <i class="ti ti-server"></i>
+                            </span>
+                            <input type="text" class="form-control" id="proxy" name="proxy" placeholder="http://proxy:port">
+                        </div>
+                        <small class="form-hint">Leave empty if no proxy needed</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary ms-auto" id="addPortalBtn">
+                        <i class="ti ti-plus me-1"></i>
+                        Add Portal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Portal Modal -->
+<div class="modal modal-blur fade" id="editPortalModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form method="POST" action="/portal/update" id="editPortalForm">
+                <input type="hidden" id="edit_portal_id" name="id">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title"><i class="ti ti-edit me-2"></i>Edit Portal</h5>
+                        <div class="text-muted small" id="editPortalSubtitle"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Status Toggle -->
+                    <div class="edit-status-card mb-4">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <div class="avatar avatar-lg me-3" id="editPortalAvatar">
+                                    <i class="ti ti-antenna"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold" id="editPortalNameDisplay">Portal Name</div>
+                                    <div class="text-muted small">Toggle to enable or disable this portal</div>
+                                </div>
+                            </div>
+                            <label class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="edit_enabled" name="enabled" value="true" style="width: 3rem; height: 1.5rem;">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Basic Settings -->
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-settings me-2"></i>Basic Settings</h4>
+                                <div class="mb-3">
+                                    <label class="form-label required">Portal Name</label>
+                                    <input type="text" class="form-control" id="edit_name" name="name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label required">Portal URL</label>
+                                    <div class="input-icon">
+                                        <span class="input-icon-addon"><i class="ti ti-link"></i></span>
+                                        <input type="url" class="form-control" id="edit_url" name="url" required>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Proxy <span class="text-muted">(Optional)</span></label>
+                                    <div class="input-icon">
+                                        <span class="input-icon-addon"><i class="ti ti-server"></i></span>
+                                        <input type="text" class="form-control" id="edit_proxy" name="proxy" placeholder="http://proxy:port">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-adjustments me-2"></i>Configuration</h4>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Streams per MAC</label>
+                                        <input type="number" class="form-control" id="edit_streams_per_mac" name="streams per mac" min="0" max="10">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">EPG Offset</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="edit_epg_offset" name="epg offset" min="-12" max="12">
+                                            <span class="input-group-text">hours</span>
                                         </div>
                                     </div>
-                                    <label class="form-check form-switch m-0">
-                                        <input class="form-check-input" type="checkbox" id="edit_enabled" name="enabled"
-                                            value="true" style="width: 3rem; height: 1.5rem;">
+                                </div>
+                                <div class="mt-3">
+                                    <label class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="retest" name="retest" value="true">
+                                        <span class="form-check-label">Retest all MAC addresses on save</span>
                                     </label>
                                 </div>
                             </div>
-
-                            <!-- Basic Settings -->
-                            <div class="row g-4">
-                                <div class="col-8">
-                                    <div class="edit-section-card h-100">
-                                        <h4 class="edit-section-title"><i class="ti ti-settings me-2"></i>Basic Settings
-                                        </h4>
-                                        <div class="mb-3">
-                                            <label class="form-label required">Portal Name</label>
-                                            <input type="text" class="form-control" id="edit_name" name="name" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label required">Portal URL</label>
-                                            <div class="input-icon">
-                                                <span class="input-icon-addon"><i class="ti ti-link"></i></span>
-                                                <input type="url" class="form-control" id="edit_url" name="url"
-                                                    required>
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Portal Prefix <span
-                                                    class="text-muted">(Optional)</span></label>
-                                            <div class="input-icon">
-                                                <span class="input-icon-addon"><i class="ti ti-tag"></i></span>
-                                                <input type="text" class="form-control" id="edit_portal_prefix"
-                                                    name="portal prefix" placeholder="prefix">
-                                            </div>
-                                            <small class="form-hint">Prefix for channel names in playlists (e.g.,
-                                                "prefix" → "[prefix] Channel Name")</small>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Proxy <span
-                                                    class="text-muted">(Optional)</span></label>
-                                            <div class="input-icon">
-                                                <span class="input-icon-addon"><i class="ti ti-server"></i></span>
-                                                <input type="text" class="form-control" id="edit_proxy" name="proxy"
-                                                    placeholder="http://proxy:port, socks5://proxy:port, or ss://method:password@server:port">
-                                            </div>
-                                            <small class="form-hint">Supports HTTP, HTTPS, SOCKS4, SOCKS5, and
-                                                Shadowsocks proxies</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="edit-section-card h-100">
-                                        <h4 class="edit-section-title"><i
-                                                class="ti ti-adjustments me-2"></i>Configuration</h4>
-                                        <div class="mb-3">
-                                            <label class="form-label">Streams per MAC</label>
-                                            <input type="number" class="form-control" id="edit_streams_per_mac"
-                                                name="streams per mac" min="0" max="10">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">EPG Offset</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" id="edit_epg_offset"
-                                                    name="epg offset" min="-12" max="12">
-                                                <span class="input-group-text">hours</span>
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" id="retest"
-                                                    name="retest" value="true">
-                                                <span class="form-check-label">Retest all MAC addresses on save</span>
-                                            </label>
-                                        </div>
-
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- MAC Addresses Section -->
-                            <div class="row g-4 mt-0">
-                                <div class="col-8">
-                                    <div class="edit-section-card h-100">
-                                        <h4 class="edit-section-title"><i class="ti ti-device-desktop me-2"></i>Current
-                                            MACs</h4>
-                                        <div class="table-responsive">
-                                            <table class="table table-sm table-vcenter mb-0" id="editMacTable">
-                                                <thead>
-                                                    <tr>
-                                                        <th>MAC</th>
-                                                        <th>Expires</th>
-                                                        <th>Status</th>
-                                                        <th>Activity</th>
-                                                        <th>Streams</th>
-                                                        <th>Delete</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="editMacTableBody"></tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="edit-section-card h-100 d-flex flex-column">
-                                        <h4 class="edit-section-title"><i class="ti ti-edit me-2"></i>Update MACs</h4>
-                                        <textarea class="form-control flex-fill" id="edit_macs" name="macs" required
-                                            placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY"
-                                            style="resize: none;"></textarea>
-                                        <small class="form-hint mt-2">One per line. Changes replace existing
-                                            MACs.</small>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary ms-auto">
-                                <i class="ti ti-device-floppy me-1"></i>Save Changes
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Delete Portal Modal -->
-        <div class="modal modal-blur fade" id="deletePortalModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <form method="POST" action="/portal/remove">
-                        <input type="hidden" id="delete_portal_id" name="deleteId">
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        <div class="modal-status bg-danger"></div>
-                        <div class="modal-body text-center py-4">
-                            <i class="ti ti-alert-triangle icon mb-2 text-danger icon-lg"></i>
-                            <h3>Are you sure?</h3>
-                            <div class="text-muted">Do you really want to delete the portal "<span
-                                    id="delete_portal_name"></span>"? This action cannot be undone.</div>
-                        </div>
-                        <div class="modal-footer">
-                            <div class="w-100">
-                                <div class="row">
-                                    <div class="col">
-                                        <button type="button" class="btn w-100" data-bs-dismiss="modal">
-                                            Cancel
-                                        </button>
-                                    </div>
-                                    <div class="col">
-                                        <button type="submit" class="btn btn-danger w-100">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Genre Selection Modal -->
-        <div class="modal modal-blur fade" id="genreSelectionModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <div>
-                            <h5 class="modal-title"><i class="ti ti-filter me-2"></i>Select Genres</h5>
-                            <div class="text-muted small" id="genre_portal_name"></div>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <div class="modal-body">
-                        <div class="genre-filter-sticky">
-                            <div class="row g-3 align-items-center">
-                                <div class="col-md-4">
-                                    <div class="input-icon">
-                                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
-                                        <input type="text" class="form-control" id="genreSearchInput"
-                                            placeholder="Search genres..." oninput="filterGenres()">
-                                    </div>
-                                </div>
-                                <div class="col-md-8 text-end">
-                                    <span class="badge bg-primary-lt me-1">
-                                        <i class="ti ti-check me-1"></i><span id="selectedGenreCount">0</span> selected
-                                    </span>
-                                    <span class="badge bg-secondary-lt me-1" id="genreCacheStatus"
-                                        style="display: none;">
-                                        <i class="ti ti-database me-1"></i>Cache
-                                    </span>
-                                    <span class="badge bg-info" style="cursor: pointer;"
-                                        onclick="refreshGenresFromPortal()" id="refreshGenresBtn">
-                                        <i class="ti ti-refresh me-1"></i>Refresh
-                                    </span>
-                                    <span class="badge bg-primary" style="cursor: pointer;"
-                                        onclick="selectAllGenresModal()">
-                                        <i class="ti ti-check me-1"></i>All
-                                    </span>
-                                    <span class="badge bg-secondary-lt" style="cursor: pointer;"
-                                        onclick="deselectAllGenresModal()">
-                                        <i class="ti ti-x me-1"></i>None
-                                    </span>
+                    
+                    <!-- MAC Addresses Section -->
+                    <div class="row g-4 mt-0">
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100">
+                                <h4 class="edit-section-title"><i class="ti ti-device-desktop me-2"></i>Current MACs</h4>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-vcenter mb-0" id="editMacTable">
+                                        <thead>
+                                            <tr>
+                                                <th>MAC</th>
+                                                <th>Expires</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="editMacTableBody"></tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
-
-                        <div id="genreLoadingMessage" class="text-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <h5 class="mt-3" id="genreLoadingStatus">Loading genres...</h5>
-                            <p class="text-muted" id="genreLoadingDetails">Please wait...</p>
-                        </div>
-
-                        <div id="genreListContainer" style="display: none;">
-                            <div class="genre-grid" id="genreList">
-                                <!-- Genres will be loaded here -->
+                        <div class="col-md-6">
+                            <div class="edit-section-card h-100 d-flex flex-column">
+                                <h4 class="edit-section-title"><i class="ti ti-edit me-2"></i>Update MACs</h4>
+                                <textarea class="form-control flex-fill" id="edit_macs" name="macs" required placeholder="00:1A:79:XX:XX:XX&#10;00:1A:79:YY:YY:YY" style="resize: none;"></textarea>
+                                <small class="form-hint mt-2">One per line. Changes replace existing MACs.</small>
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary ms-auto" onclick="saveGenreSelectionModal()"
-                            id="saveGenresBtn">
-                            <i class="ti ti-device-floppy me-1"></i>Save and Enable Channels
-                        </button>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary ms-auto">
+                        <i class="ti ti-device-floppy me-1"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Portal Modal -->
+<div class="modal modal-blur fade" id="deletePortalModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <form method="POST" action="/portal/remove">
+                <input type="hidden" id="delete_portal_id" name="deleteId">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-status bg-danger"></div>
+                <div class="modal-body text-center py-4">
+                    <i class="ti ti-alert-triangle icon mb-2 text-danger icon-lg"></i>
+                    <h3>Are you sure?</h3>
+                    <div class="text-muted">Do you really want to delete the portal "<span id="delete_portal_name"></span>"? This action cannot be undone.</div>
+                </div>
+                <div class="modal-footer">
+                    <div class="w-100">
+                        <div class="row">
+                            <div class="col">
+                                <button type="button" class="btn w-100" data-bs-dismiss="modal">
+                                    Cancel
+                                </button>
+                            </div>
+                            <div class="col">
+                                <button type="submit" class="btn btn-danger w-100">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Genre Selection Modal -->
+<div class="modal modal-blur fade" id="genreSelectionModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title"><i class="ti ti-filter me-2"></i>Select Genres</h5>
+                    <div class="text-muted small" id="genre_portal_name"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="genre-filter-sticky">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-4">
+                            <div class="input-icon">
+                                <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                <input type="text" class="form-control" id="genreSearchInput" placeholder="Search genres..." oninput="filterGenres()">
+                            </div>
+                        </div>
+                        <div class="col-md-8 text-end">
+                            <span class="badge bg-primary-lt me-1">
+                                <i class="ti ti-check me-1"></i><span id="selectedGenreCount">0</span> selected
+                            </span>
+                            <span class="badge bg-secondary-lt me-1" id="genreCacheStatus" style="display: none;">
+                                <i class="ti ti-database me-1"></i>Cache
+                            </span>
+                            <span class="badge bg-info" style="cursor: pointer;" onclick="refreshGenresFromPortal()" id="refreshGenresBtn">
+                                <i class="ti ti-refresh me-1"></i>Refresh
+                            </span>
+                            <span class="badge bg-primary" style="cursor: pointer;" onclick="selectAllGenresModal()">
+                                <i class="ti ti-check me-1"></i>All
+                            </span>
+                            <span class="badge bg-secondary-lt" style="cursor: pointer;" onclick="deselectAllGenresModal()">
+                                <i class="ti ti-x me-1"></i>None
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="genreLoadingMessage" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 class="mt-3" id="genreLoadingStatus">Loading genres...</h5>
+                    <p class="text-muted" id="genreLoadingDetails">Please wait...</p>
+                </div>
+                
+                <div id="genreListContainer" style="display: none;">
+                    <div class="genre-grid" id="genreList">
+                        <!-- Genres will be loaded here -->
                     </div>
                 </div>
             </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary ms-auto" onclick="saveGenreSelectionModal()" id="saveGenresBtn">
+                    <i class="ti ti-device-floppy me-1"></i>Save and Enable Channels
+                </button>
+            </div>
         </div>
+    </div>
+</div>
 
 
     </div>
@@ -685,669 +408,477 @@
 
 {% block scripts %}
 <style>
-    /* Genre Modal - Sticky search bar with glass effect */
-    #genreSelectionModal .genre-filter-sticky {
-        position: sticky;
-        top: -2rem;
-        z-index: 10;
-        -webkit-backdrop-filter: blur(16px);
-    }
+/* Genre Modal - Sticky search bar with glass effect */
+#genreSelectionModal .genre-filter-sticky {
+    position: sticky;
+    top: -2rem;
+    z-index: 10;
+    -webkit-backdrop-filter: blur(16px);
+}
 
-    [data-bs-theme="light"] #genreSelectionModal .genre-filter-sticky {
-        background: linear-gradient(to bottom,
-                rgba(255, 255, 255, 0.98) 0%,
-                rgba(255, 255, 255, 0.95) 40%,
-                rgba(255, 255, 255, 0.5) 70%,
-                rgba(255, 255, 255, 0) 100%) !important;
-    }
+[data-bs-theme="light"] #genreSelectionModal .genre-filter-sticky {
+    background: linear-gradient(to bottom, 
+        rgba(255, 255, 255, 0.98) 0%, 
+        rgba(255, 255, 255, 0.95) 40%, 
+        rgba(255, 255, 255, 0.5) 70%,
+        rgba(255, 255, 255, 0) 100%) !important;
+}
 
-    [data-bs-theme="dark"] #genreSelectionModal .genre-filter-sticky {
-        background: linear-gradient(to bottom,
-                rgba(42, 42, 42, 0.98) 0%,
-                rgba(42, 42, 42, 0.95) 40%,
-                rgba(42, 42, 42, 0.5) 70%,
-                rgba(42, 42, 42, 0) 100%) !important;
-    }
+[data-bs-theme="dark"] #genreSelectionModal .genre-filter-sticky {
+    background: linear-gradient(to bottom, 
+        rgba(42, 42, 42, 0.98) 0%, 
+        rgba(42, 42, 42, 0.95) 40%, 
+        rgba(42, 42, 42, 0.5) 70%,
+        rgba(42, 42, 42, 0) 100%) !important;
+}
 
-    /* Edit Portal Modal Styles */
-    .edit-status-card {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 2px solid;
-    }
+/* Edit Portal Modal Styles */
+.edit-status-card {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 2px solid;
+}
 
-    [data-bs-theme="light"] .edit-status-card {
-        background: #f8fafc;
-        border-color: #e2e8f0;
-    }
+[data-bs-theme="light"] .edit-status-card {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
 
-    [data-bs-theme="dark"] .edit-status-card {
-        background: #1f1f1f;
-        border-color: #404040;
-    }
+[data-bs-theme="dark"] .edit-status-card {
+    background: #1f1f1f;
+    border-color: #404040;
+}
 
-    .edit-section-card {
-        padding: 1.25rem;
-        border-radius: 0.5rem;
-        border: 1px solid;
-    }
+.edit-section-card {
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid;
+}
 
-    [data-bs-theme="light"] .edit-section-card {
-        background: #ffffff;
-        border-color: #e2e8f0;
-    }
+[data-bs-theme="light"] .edit-section-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
 
-    [data-bs-theme="dark"] .edit-section-card {
-        background: #2a2a2a;
-        border-color: #404040;
-    }
+[data-bs-theme="dark"] .edit-section-card {
+    background: #2a2a2a;
+    border-color: #404040;
+}
 
-    .edit-section-title {
-        font-size: 0.9rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-        display: flex;
-        align-items: center;
-    }
+.edit-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+}
 
-    /* Switch off state - neutral gray */
-    [data-bs-theme="dark"] #editPortalModal .form-check-input:not(:checked),
-    [data-bs-theme="dark"] #genreSelectionModal .form-check-input:not(:checked) {
-        background-color: #404040;
-        border-color: #404040;
-    }
+/* Switch off state - neutral gray */
+[data-bs-theme="dark"] #editPortalModal .form-check-input:not(:checked),
+[data-bs-theme="dark"] #genreSelectionModal .form-check-input:not(:checked) {
+    background-color: #404040;
+    border-color: #404040;
+}
 
-    /* MAC Table styling for Edit Modal */
-    #editPortalModal .table {
-        margin-bottom: 0;
-    }
+/* MAC Table styling for Edit Modal */
+#editPortalModal .table {
+    margin-bottom: 0;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table {
-        --bs-table-bg: transparent;
-        --bs-table-striped-bg: transparent;
-        --bs-table-hover-bg: rgba(255, 255, 255, 0.05);
-        color: #e0e0e0;
-    }
+[data-bs-theme="dark"] #editPortalModal .table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table thead th {
-        background-color: #1f1f1f;
-        color: #a0a0a0;
-        border-color: #404040;
-        font-weight: 500;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
+[data-bs-theme="dark"] #editPortalModal .table thead th {
+    background-color: #1f1f1f;
+    color: #a0a0a0;
+    border-color: #404040;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table tbody td {
-        border-color: #404040;
-        background-color: transparent !important;
-    }
+[data-bs-theme="dark"] #editPortalModal .table tbody td {
+    border-color: #404040;
+    background-color: transparent !important;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table tbody tr {
-        background-color: transparent !important;
-    }
+[data-bs-theme="dark"] #editPortalModal .table tbody tr {
+    background-color: transparent !important;
+}
 
-    /* Override Bootstrap table-warning/danger in dark mode */
-    [data-bs-theme="dark"] #editPortalModal .table-warning,
-    [data-bs-theme="dark"] #editPortalModal .table-warning td {
-        background-color: rgba(255, 193, 7, 0.1) !important;
-        color: #ffc107;
-    }
+/* Override Bootstrap table-warning/danger in dark mode */
+[data-bs-theme="dark"] #editPortalModal .table-warning,
+[data-bs-theme="dark"] #editPortalModal .table-warning td {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    color: #ffc107;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table-danger,
-    [data-bs-theme="dark"] #editPortalModal .table-danger td {
-        background-color: rgba(220, 53, 69, 0.1) !important;
-        color: #dc3545;
-    }
+[data-bs-theme="dark"] #editPortalModal .table-danger,
+[data-bs-theme="dark"] #editPortalModal .table-danger td {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+    color: #dc3545;
+}
 
-    /* Light mode table styling */
-    [data-bs-theme="light"] #editPortalModal .table thead th {
-        background-color: #f8fafc;
-        color: #64748b;
-        border-color: #e2e8f0;
-        font-weight: 500;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
+/* Light mode table styling */
+[data-bs-theme="light"] #editPortalModal .table thead th {
+    background-color: #f8fafc;
+    color: #64748b;
+    border-color: #e2e8f0;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
 
-    [data-bs-theme="light"] #editPortalModal .table tbody td {
-        border-color: #e2e8f0;
-    }
+[data-bs-theme="light"] #editPortalModal .table tbody td {
+    border-color: #e2e8f0;
+}
 
-    /* MAC code styling */
-    #editPortalModal .table code {
-        font-size: 0.8rem;
-        padding: 0.2rem 0.4rem;
-        border-radius: 4px;
-    }
+/* MAC code styling */
+#editPortalModal .table code {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+}
 
-    [data-bs-theme="dark"] #editPortalModal .table code {
-        background-color: #1f1f1f;
-        color: #e0e0e0;
-    }
+[data-bs-theme="dark"] #editPortalModal .table code {
+    background-color: #1f1f1f;
+    color: #e0e0e0;
+}
 
-    [data-bs-theme="light"] #editPortalModal .table code {
-        background-color: #f1f5f9;
-        color: #334155;
-    }
+[data-bs-theme="light"] #editPortalModal .table code {
+    background-color: #f1f5f9;
+    color: #334155;
+}
 
-    /* Fix scrolling in Edit Portal Modal */
-    #editPortalModal .modal-dialog {
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-    }
+/* Fix scrolling in Edit Portal Modal */
+#editPortalModal .modal-dialog {
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
 
-    #editPortalModal .modal-content {
-        display: flex;
-        flex-direction: column;
-        max-height: 90vh;
-    }
+#editPortalModal .modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
 
-    #editPortalModal .modal-body {
-        max-height: calc(90vh - 200px);
-        overflow-y: auto;
-        flex: 1 1 auto;
-    }
+#editPortalModal .modal-body {
+    max-height: calc(90vh - 200px);
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
 
-    #editPortalModal .modal-header,
-    #editPortalModal .modal-footer {
-        flex-shrink: 0;
-    }
+#editPortalModal .modal-header,
+#editPortalModal .modal-footer {
+    flex-shrink: 0;
+}
 
-    .genre-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 12px;
-        padding: 20px 0;
-    }
+.genre-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 20px 0;
+}
 
-    .genre-card {
-        border: 2px solid;
-        border-radius: 0.5rem;
-        padding: 15px 12px;
-        cursor: pointer;
-        transition: border-color 0.2s ease;
-        min-height: 90px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
+.genre-card {
+    border: 2px solid;
+    border-radius: 0.5rem;
+    padding: 15px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
 
-    [data-bs-theme="light"] .genre-card {
-        background: #ffffff;
-        border-color: #e2e8f0;
-    }
+[data-bs-theme="light"] .genre-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
 
-    [data-bs-theme="dark"] .genre-card {
-        background: #2a2a2a;
-        border-color: #404040;
-    }
+[data-bs-theme="dark"] .genre-card {
+    background: #2a2a2a;
+    border-color: #404040;
+}
 
-    .genre-card:hover {
-        border-color: #10b981 !important;
-    }
+.genre-card:hover {
+    border-color: #10b981 !important;
+}
 
-    [data-bs-theme="light"] .genre-card.selected {
-        background: #d1fae5;
-        border-color: #10b981;
-    }
+[data-bs-theme="light"] .genre-card.selected {
+    background: #d1fae5;
+    border-color: #10b981;
+}
 
-    [data-bs-theme="dark"] .genre-card.selected {
-        background: rgba(16, 185, 129, 0.15);
-        border-color: #10b981;
-    }
+[data-bs-theme="dark"] .genre-card.selected {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: #10b981;
+}
 
-    .genre-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 12px;
-    }
+.genre-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
 
-    .genre-name {
-        font-size: 0.95rem;
-        font-weight: 600;
-        line-height: 1.3;
-    }
+.genre-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
 
-    .genre-check {
-        font-size: 1.25rem;
-        color: #10b981;
-        display: none;
-    }
+.genre-check {
+    font-size: 1.25rem;
+    color: #10b981;
+    display: none;
+}
 
-    .genre-card.selected .genre-check {
-        display: block;
-    }
+.genre-card.selected .genre-check {
+    display: block;
+}
 
-    .genre-stats {
-        text-align: center;
-    }
+.genre-stats {
+    text-align: center;
+}
 
-    .genre-stat-value {
-        font-size: 1.75rem;
-        font-weight: 700;
-        line-height: 1;
-    }
+.genre-stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+}
 
-    .genre-stat-label {
-        font-size: 0.7rem;
-        opacity: 0.7;
-        margin-top: 4px;
-    }
+.genre-stat-label {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-top: 4px;
+}
 </style>
 <script>
-    const portalsData = {{ portals | tojson }};
+const portalsData = {{ portals | tojson }};
 
-    // Auto-open genre modal if portal was just added
-    {% if show_genre_modal and genre_modal_portal_id %}
-    document.addEventListener('DOMContentLoaded', function () {
-        setTimeout(function () {
-            selectGenres('{{ genre_modal_portal_id }}', '{{ genre_modal_portal_name }}');
-        }, 500);
-    });
-    {% endif %}
+// Auto-open genre modal if portal was just added
+{% if show_genre_modal and genre_modal_portal_id %}
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        selectGenres('{{ genre_modal_portal_id }}', '{{ genre_modal_portal_name }}');
+    }, 500);
+});
+{% endif %}
 
-    function copyToClipboard(elementId) {
-        const input = document.getElementById(elementId);
-        input.select();
-        input.setSelectionRange(0, 99999); // For mobile devices
-
-        navigator.clipboard.writeText(input.value).then(() => {
-            // Visual feedback
-            const button = event.target.closest('button');
-            const originalHTML = button.innerHTML;
-            const originalClasses = button.className;
-
-            button.innerHTML = '<i class="ti ti-check"></i>';
-            button.className = 'btn btn-success';
-
-            setTimeout(() => {
-                button.innerHTML = originalHTML;
-                button.className = originalClasses;
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy:', err);
-            // Fallback for older browsers
-            try {
-                const input = document.getElementById(elementId);
-                input.select();
-                input.setSelectionRange(0, 99999);
-                document.execCommand('copy');
-
-                const button = event.target.closest('button');
-                const originalHTML = button.innerHTML;
-                const originalClasses = button.className;
-
-                button.innerHTML = '<i class="ti ti-check"></i>';
-                button.className = 'btn btn-success';
-
-                setTimeout(() => {
-                    button.innerHTML = originalHTML;
-                    button.className = originalClasses;
-                }, 2000);
-            } catch (fallbackErr) {
-                console.error('Fallback copy failed:', fallbackErr);
-                showAlert('Failed to copy to clipboard', 'Error', 'danger');
-            }
-        });
-    }
-
-    function copyLegacyUrl(portalId) {
-        // Generate the legacy M3U URL
-        const baseUrl = window.location.origin;
-        const legacyUrl = `${baseUrl}/portal/download-m3u/${portalId}`;
-
-        // Try modern clipboard API first, fallback to legacy method
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(legacyUrl).then(() => {
-                showCopySuccess(event.target.closest('button'));
-                showAlert('Legacy M3U URL copied to clipboard', 'Success', 'success');
-            }).catch(err => {
-                console.error('Clipboard API failed:', err);
-                fallbackCopyToClipboard(legacyUrl, event.target.closest('button'));
-            });
-        } else {
-            // Fallback for non-HTTPS or older browsers
-            fallbackCopyToClipboard(legacyUrl, event.target.closest('button'));
-        }
-    }
-
-    function fallbackCopyToClipboard(text, btn) {
-        // Create temporary textarea element
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-
-        try {
-            textArea.focus();
-            textArea.select();
-            const successful = document.execCommand('copy');
-
-            if (successful) {
-                showCopySuccess(btn);
-                showAlert('Legacy M3U URL copied to clipboard', 'Success', 'success');
-            } else {
-                throw new Error('Copy command failed');
-            }
-        } catch (err) {
-            console.error('Fallback copy failed:', err);
-            showAlert('Failed to copy to clipboard. URL: ' + text, 'Copy Failed', 'warning');
-        } finally {
-            document.body.removeChild(textArea);
-        }
-    }
-
-    function showCopySuccess(btn) {
+function copyToClipboard(elementId) {
+    const input = document.getElementById(elementId);
+    input.select();
+    input.setSelectionRange(0, 99999); // For mobile devices
+    
+    navigator.clipboard.writeText(input.value).then(() => {
         // Visual feedback
-        const originalHtml = btn.innerHTML;
-        const originalClass = btn.className;
-
-        // Check if this is an icon-only button (no text, just icon)
-        const isIconOnly = btn.innerHTML.trim() === '<i class="ti ti-copy"></i>';
-
-        if (isIconOnly) {
-            // For icon-only buttons, just change the icon
-            btn.innerHTML = '<i class="ti ti-check"></i>';
-            btn.className = btn.className.replace('btn-outline-info', 'btn-success');
-        } else {
-            // For buttons with text, show full "Copied!" message
-            btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
-            btn.className = 'btn btn-success btn-sm w-100';
-        }
-
+        const button = event.target.closest('button');
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="ti ti-check"></i>';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+        
         setTimeout(() => {
-            btn.innerHTML = originalHtml;
-            btn.className = originalClass;
+            button.innerHTML = originalHTML;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
         }, 2000);
-    }
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        showAlert('Failed to copy to clipboard', 'Error', 'danger');
+    });
+}
 
-    function editPortal(portalId) {
-        const portal = portalsData[portalId];
-        if (!portal) return;
-
-        // Set form values
-        document.getElementById('edit_portal_id').value = portalId;
-        document.getElementById('edit_enabled').checked = portal.enabled === 'true';
-        document.getElementById('edit_name').value = portal.name;
-        document.getElementById('edit_url').value = portal.url;
-        document.getElementById('edit_macs').value = Object.keys(portal.macs).join('\n');
-        document.getElementById('edit_streams_per_mac').value = portal['streams per mac'];
-        document.getElementById('edit_epg_offset').value = portal['epg offset'];
-        document.getElementById('edit_proxy').value = portal.proxy || '';
-        document.getElementById('edit_portal_prefix').value = portal['portal prefix'] || '';
-
-        // Update header display
-        document.getElementById('editPortalSubtitle').textContent = `${Object.keys(portal.macs).length} MAC addresses • ${(portal['enabled channels'] || []).length} channels`;
-        document.getElementById('editPortalNameDisplay').textContent = portal.name;
-
-        // Update avatar color based on status
-        const avatar = document.getElementById('editPortalAvatar');
-        avatar.className = portal.enabled === 'true' ? 'avatar avatar-lg bg-success-lt me-3' : 'avatar avatar-lg bg-secondary-lt me-3';
-
-        // Populate MAC table with expiry dates and status
-        const macTableBody = document.getElementById('editMacTableBody');
-        macTableBody.innerHTML = '';
-
-        const now = Date.now();
-        for (const [mac, expiry] of Object.entries(portal.macs)) {
-            const row = document.createElement('tr');
-            const expires = Date.parse(expiry);
-            const diff = expires - now;
-            const daysAway = Math.floor(diff / (1000 * 3600 * 24));
-
-            let statusBadge = '';
-            if (now > expires) {
-                statusBadge = '<span class="badge bg-danger">Expired</span>';
-            } else if (daysAway < 7) {
-                statusBadge = `<span class="badge bg-warning text-dark">${daysAway}d</span>`;
-            } else if (daysAway < 30) {
-                statusBadge = `<span class="badge bg-azure-lt">${daysAway}d</span>`;
-            } else {
-                statusBadge = `<span class="badge bg-success">${daysAway}d</span>`;
-            }
-
-            row.innerHTML = `
+function editPortal(portalId) {
+    const portal = portalsData[portalId];
+    if (!portal) return;
+    
+    // Set form values
+    document.getElementById('edit_portal_id').value = portalId;
+    document.getElementById('edit_enabled').checked = portal.enabled === 'true';
+    document.getElementById('edit_name').value = portal.name;
+    document.getElementById('edit_url').value = portal.url;
+    document.getElementById('edit_macs').value = Object.keys(portal.macs).join('\n');
+    document.getElementById('edit_streams_per_mac').value = portal['streams per mac'];
+    document.getElementById('edit_epg_offset').value = portal['epg offset'];
+    document.getElementById('edit_proxy').value = portal.proxy || '';
+    
+    // Update header display
+    document.getElementById('editPortalSubtitle').textContent = `${Object.keys(portal.macs).length} MAC addresses • ${(portal['enabled channels'] || []).length} channels`;
+    document.getElementById('editPortalNameDisplay').textContent = portal.name;
+    
+    // Update avatar color based on status
+    const avatar = document.getElementById('editPortalAvatar');
+    avatar.className = portal.enabled === 'true' ? 'avatar avatar-lg bg-success-lt me-3' : 'avatar avatar-lg bg-secondary-lt me-3';
+    
+    // Populate MAC table with expiry dates and status
+    const macTableBody = document.getElementById('editMacTableBody');
+    macTableBody.innerHTML = '';
+    
+    const now = Date.now();
+    for (const [mac, expiry] of Object.entries(portal.macs)) {
+        const row = document.createElement('tr');
+        const expires = Date.parse(expiry);
+        const diff = expires - now;
+        const daysAway = Math.floor(diff / (1000 * 3600 * 24));
+        
+        let statusBadge = '';
+        if (now > expires) {
+            statusBadge = '<span class="badge bg-danger">Expired</span>';
+        } else if (daysAway < 7) {
+            statusBadge = `<span class="badge bg-warning text-dark">${daysAway}d</span>`;
+        } else if (daysAway < 30) {
+            statusBadge = `<span class="badge bg-azure-lt">${daysAway}d</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-success">${daysAway}d</span>`;
+        }
+        
+        row.innerHTML = `
             <td><code>${mac.toUpperCase()}</code></td>
             <td class="text-muted small">${expiry}</td>
             <td>${statusBadge}</td>
-            <td>
-                <span class="badge bg-warning-lt" style="cursor: pointer;" onclick="checkSingleMacStatus('${mac}', '${portalId}', this)">
-                    <i class="ti ti-activity me-1"></i>Check
-                </span>
-            </td>
-            <td>
-                <span class="badge bg-secondary-lt" id="streams_${mac.replace(/:/g, '_')}">
-                    <i class="ti ti-help me-1"></i>Unknown
-                </span>
-            </td>
-            <td>
-                <span class="badge bg-danger-lt" style="cursor: pointer;" onclick="deleteMacFromTable('${mac}', this)" title="Delete MAC">
-                    <i class="ti ti-trash"></i>
-                </span>
-            </td>
         `;
-            macTableBody.appendChild(row);
-        }
-
-        new bootstrap.Modal(document.getElementById('editPortalModal')).show();
+        macTableBody.appendChild(row);
     }
+    
+    new bootstrap.Modal(document.getElementById('editPortalModal')).show();
+}
 
-    function downloadPortalM3U(portalId, portalName) {
-        // Create a temporary link element to trigger the download
-        const link = document.createElement('a');
-        link.href = `/portal/download-m3u/${portalId}`;
-        link.download = `${portalName.replace(/[<>:"/\\|?*]/g, '_')}.m3u`;
-        link.style.display = 'none';
+function deletePortal(portalId, portalName) {
+    document.getElementById('delete_portal_id').value = portalId;
+    document.getElementById('delete_portal_name').textContent = portalName;
+    
+    new bootstrap.Modal(document.getElementById('deletePortalModal')).show();
+}
 
-        // Add to DOM, click, and remove
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+let currentPortalId = null;
+let genresData = [];
+let selectedGenresSet = new Set();
 
-        // Optional: Show a brief success message
-        showAlert(`M3U playlist for "${portalName}" downloaded successfully!`, 'Success', 'success');
-    }
-
-    function copyBasicAuthUrl(portalId, portalName) {
-        const input = document.getElementById(`basic_auth_m3u_url_${portalId}`);
-        input.select();
-        input.setSelectionRange(0, 99999);
-
-        navigator.clipboard.writeText(input.value).then(() => {
-            // Visual feedback
-            const button = event.target.closest('button');
-            const originalHTML = button.innerHTML;
-            button.innerHTML = '<i class="ti ti-check"></i>';
-            button.classList.add('btn-success');
-            button.classList.remove('btn-outline-secondary');
-
-            setTimeout(() => {
-                button.innerHTML = originalHTML;
-                button.classList.remove('btn-success');
-                button.classList.add('btn-outline-secondary');
-            }, 2000);
-
-            // Show success message
-            showAlert(`Basic Auth M3U URL for "${portalName}" copied to clipboard!`, 'Success', 'success');
-        }).catch(() => {
-            // Fallback for older browsers
-            document.execCommand('copy');
-            showAlert(`Basic Auth M3U URL for "${portalName}" copied to clipboard!`, 'Success', 'success');
-        });
-    }
-
-
-
-
-
-    function copyPortalUrl(portalId, portalName) {
-        // Legacy function - redirect to Basic Auth URL
-        copyBasicAuthUrl(portalId, portalName);
-    }
-
-    function deletePortal(portalId, portalName) {
-        document.getElementById('delete_portal_id').value = portalId;
-        document.getElementById('delete_portal_name').textContent = portalName;
-
-        new bootstrap.Modal(document.getElementById('deletePortalModal')).show();
-    }
-
-    function deleteMacFromTable(macAddress, buttonElement) {
-        // Remove the row from the table
-        const row = buttonElement.closest('tr');
-        row.remove();
-
-        // Update the textarea by removing this MAC from the list
-        updateMacTextarea();
-
-        // Show confirmation
-        showAlert(`MAC address ${macAddress} removed from list`, 'Success', 'success');
-    }
-
-    function updateMacTextarea() {
-        // Get all remaining MAC addresses from the table
-        const macTableBody = document.getElementById('editMacTableBody');
-        const rows = macTableBody.querySelectorAll('tr');
-        const macList = [];
-
-        rows.forEach(row => {
-            const macCell = row.querySelector('td:first-child code');
-            if (macCell) {
-                macList.push(macCell.textContent);
-            }
-        });
-
-        // Update the textarea with the remaining MACs
-        const textarea = document.getElementById('edit_macs');
-        textarea.value = macList.join('\n');
-    }
-
-    let currentPortalId = null;
-    let genresData = [];
-    let selectedGenresSet = new Set();
-
-    function selectGenres(portalId, portalName) {
-        currentPortalId = portalId;
-
-        // Show modal first
-        const modal = new bootstrap.Modal(document.getElementById('genreSelectionModal'));
-        modal.show();
-
-        // Wait for modal to be shown, then initialize
-        setTimeout(() => {
-            const genrePortalName = document.getElementById('genre_portal_name');
-            const loadingMsg = document.getElementById('genreLoadingMessage');
-            const listContainer = document.getElementById('genreListContainer');
-            const cacheStatus = document.getElementById('genreCacheStatus');
-
-            if (genrePortalName) genrePortalName.textContent = portalName;
-
-            // Reset state (but don't clear selectedGenresSet yet - will be set from server)
-            genresData = [];
-
-            if (loadingMsg) loadingMsg.style.display = 'block';
-            if (listContainer) listContainer.style.display = 'none';
-            if (cacheStatus) cacheStatus.style.display = 'none';
-
-            // Load genres with cache support
-            loadGenresForModal(false);
-        }, 100);
-    }
-
-    function loadGenresForModal(forceRefresh) {
+function selectGenres(portalId, portalName) {
+    currentPortalId = portalId;
+    
+    // Show modal first
+    const modal = new bootstrap.Modal(document.getElementById('genreSelectionModal'));
+    modal.show();
+    
+    // Wait for modal to be shown, then initialize
+    setTimeout(() => {
+        const genrePortalName = document.getElementById('genre_portal_name');
         const loadingMsg = document.getElementById('genreLoadingMessage');
         const listContainer = document.getElementById('genreListContainer');
-        const loadingStatus = document.getElementById('genreLoadingStatus');
-        const loadingDetails = document.getElementById('genreLoadingDetails');
-
+        const cacheStatus = document.getElementById('genreCacheStatus');
+        
+        if (genrePortalName) genrePortalName.textContent = portalName;
+        
+        // Reset state (but don't clear selectedGenresSet yet - will be set from server)
+        genresData = [];
+        
         if (loadingMsg) loadingMsg.style.display = 'block';
         if (listContainer) listContainer.style.display = 'none';
-        if (loadingStatus) loadingStatus.textContent = forceRefresh ? 'Refreshing from portal...' : 'Loading genres...';
-        if (loadingDetails) loadingDetails.textContent = 'Please wait...';
+        if (cacheStatus) cacheStatus.style.display = 'none';
+        
+        // Load genres with cache support
+        loadGenresForModal(false);
+    }, 100);
+}
 
-        fetch('/portal/load-genres', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                portal_id: currentPortalId,
-                force_refresh: forceRefresh
-            })
+function loadGenresForModal(forceRefresh) {
+    const loadingMsg = document.getElementById('genreLoadingMessage');
+    const listContainer = document.getElementById('genreListContainer');
+    const loadingStatus = document.getElementById('genreLoadingStatus');
+    const loadingDetails = document.getElementById('genreLoadingDetails');
+    
+    if (loadingMsg) loadingMsg.style.display = 'block';
+    if (listContainer) listContainer.style.display = 'none';
+    if (loadingStatus) loadingStatus.textContent = forceRefresh ? 'Refreshing from portal...' : 'Loading genres...';
+    if (loadingDetails) loadingDetails.textContent = 'Please wait...';
+    
+    fetch('/portal/load-genres', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+            portal_id: currentPortalId,
+            force_refresh: forceRefresh
         })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) {
-                    showAlert('Error loading genres: ' + data.error, 'Error', 'danger');
-                    bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
-                    return;
-                }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            showAlert('Error loading genres: ' + data.error, 'Error', 'danger');
+            bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
+            return;
+        }
+        
+        genresData = data.genres;
+        
+        // Show cache status
+        const cacheStatus = document.getElementById('genreCacheStatus');
+        if (cacheStatus) {
+            cacheStatus.style.display = data.from_cache ? 'inline-block' : 'none';
+        }
+        
+        // Always reset and pre-select enabled genres from server
+        selectedGenresSet.clear();
+        if (data.enabled_genres && data.enabled_genres.length > 0) {
+            console.log('Pre-selecting genres:', data.enabled_genres);
+            data.enabled_genres.forEach(genre => selectedGenresSet.add(genre));
+            console.log('Selected genres set size:', selectedGenresSet.size);
+        }
+        
+        renderGenresModal();
+        
+        const loadingMsg = document.getElementById('genreLoadingMessage');
+        const listContainer = document.getElementById('genreListContainer');
+        if (loadingMsg) loadingMsg.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'block';
+    })
+    .catch(err => {
+        console.error('Error loading genres:', err);
+        showAlert('Error loading genres: ' + err, 'Error', 'danger');
+        bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
+    });
+}
 
-                genresData = data.genres;
+function refreshGenresFromPortal() {
+    showConfirm('Refresh genres from portal? This will fetch the latest channel list.', 'Refresh Genres', function() {
+        const btn = document.getElementById('refreshGenresBtn');
+        btn.disabled = true;
+        
+        loadGenresForModal(true);
+        
+        setTimeout(() => {
+            btn.disabled = false;
+        }, 3000);
+    });
+}
 
-                // Show cache status
-                const cacheStatus = document.getElementById('genreCacheStatus');
-                if (cacheStatus) {
-                    cacheStatus.style.display = data.from_cache ? 'inline-block' : 'none';
-                }
-
-                // Always reset and pre-select enabled genres from server
-                selectedGenresSet.clear();
-                if (data.enabled_genres && data.enabled_genres.length > 0) {
-                    console.log('Pre-selecting genres:', data.enabled_genres);
-                    data.enabled_genres.forEach(genre => selectedGenresSet.add(genre));
-                    console.log('Selected genres set size:', selectedGenresSet.size);
-                }
-
-                renderGenresModal();
-
-                const loadingMsg = document.getElementById('genreLoadingMessage');
-                const listContainer = document.getElementById('genreListContainer');
-                if (loadingMsg) loadingMsg.style.display = 'none';
-                if (listContainer) listContainer.style.display = 'block';
-            })
-            .catch(err => {
-                console.error('Error loading genres:', err);
-                showAlert('Error loading genres: ' + err, 'Error', 'danger');
-                bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
-            });
-    }
-
-    function refreshGenresFromPortal() {
-        showConfirm('Refresh genres from portal? This will fetch the latest channel list.', 'Refresh Genres', function () {
-            const btn = document.getElementById('refreshGenresBtn');
-            btn.disabled = true;
-
-            loadGenresForModal(true);
-
-            setTimeout(() => {
-                btn.disabled = false;
-            }, 3000);
-        });
-    }
-
-    function renderGenresModal() {
-        const container = document.getElementById('genreList');
-        container.innerHTML = '';
-
-        genresData.forEach(genre => {
-            const isSelected = selectedGenresSet.has(genre.name);
-
-            const card = document.createElement('div');
-            card.className = 'genre-card';
-            if (isSelected) {
-                card.classList.add('selected');
-            }
-            card.onclick = () => toggleGenreModal(genre.name);
-
-            card.innerHTML = `
+function renderGenresModal() {
+    const container = document.getElementById('genreList');
+    container.innerHTML = '';
+    
+    genresData.forEach(genre => {
+        const isSelected = selectedGenresSet.has(genre.name);
+        
+        const card = document.createElement('div');
+        card.className = 'genre-card';
+        if (isSelected) {
+            card.classList.add('selected');
+        }
+        card.onclick = () => toggleGenreModal(genre.name);
+        
+        card.innerHTML = `
             <div class="genre-header">
                 <div class="genre-name">${escapeHtml(genre.name)}</div>
                 <div class="genre-check">
@@ -1359,734 +890,188 @@
                 <div class="genre-stat-label">Channels</div>
             </div>
         `;
+        
+        container.appendChild(card);
+    });
+    
+    console.log('Rendered', genresData.length, 'genres,', selectedGenresSet.size, 'selected');
+    updateSelectedGenreCount();
+}
 
-            container.appendChild(card);
-        });
-
-        console.log('Rendered', genresData.length, 'genres,', selectedGenresSet.size, 'selected');
-        updateSelectedGenreCount();
+function toggleGenreModal(genreName) {
+    if (selectedGenresSet.has(genreName)) {
+        selectedGenresSet.delete(genreName);
+    } else {
+        selectedGenresSet.add(genreName);
     }
+    
+    updateGenreUIModal();
+}
 
-    function toggleGenreModal(genreName) {
-        if (selectedGenresSet.has(genreName)) {
-            selectedGenresSet.delete(genreName);
-        } else {
-            selectedGenresSet.add(genreName);
-        }
-
-        updateGenreUIModal();
-    }
-
-    function selectAllGenresModal() {
-        // Select all visible genres
-        document.querySelectorAll('.genre-card').forEach((card, index) => {
-            if (card.style.display !== 'none' && index < genresData.length) {
-                selectedGenresSet.add(genresData[index].name);
-            }
-        });
-        updateGenreUIModal();
-        updateSelectedGenreCount();
-    }
-
-    function deselectAllGenresModal() {
-        // Deselect all visible genres
-        document.querySelectorAll('.genre-card').forEach((card, index) => {
-            if (card.style.display !== 'none' && index < genresData.length) {
-                selectedGenresSet.delete(genresData[index].name);
-            }
-        });
-        updateGenreUIModal();
-        updateSelectedGenreCount();
-    }
-
-    function filterGenres() {
-        const searchInput = document.getElementById('genreSearchInput');
-        if (!searchInput) return;
-
-        const searchTerm = searchInput.value.toLowerCase();
-
-        const cards = document.querySelectorAll('.genre-card');
-        cards.forEach((card, index) => {
-            if (index < genresData.length) {
-                const genreName = genresData[index].name.toLowerCase();
-
-                if (genreName.includes(searchTerm)) {
-                    card.style.display = '';
-                } else {
-                    card.style.display = 'none';
-                }
-            }
-        });
-    }
-
-    function updateGenreUIModal() {
-        // Update all genre cards based on selectedGenresSet
-        document.querySelectorAll('.genre-card').forEach((card, index) => {
-            if (index < genresData.length) {
-                const genreName = genresData[index].name;
-                const isSelected = selectedGenresSet.has(genreName);
-
-                if (isSelected) {
-                    card.classList.add('selected');
-                } else {
-                    card.classList.remove('selected');
-                }
-            }
-        });
-
-        updateSelectedGenreCount();
-    }
-
-    function updateSelectedGenreCount() {
-        const selectedCountEl = document.getElementById('selectedGenreCount');
-        if (selectedCountEl) {
-            selectedCountEl.textContent = selectedGenresSet.size;
-        }
-    }
-
-    function saveGenreSelectionModal() {
-        if (selectedGenresSet.size === 0) {
-            showConfirm('No genres selected. This means no channels will be enabled. Continue?', 'Warning', function () {
-                performSaveGenres();
-            });
-            return;
-        }
-        performSaveGenres();
-    }
-
-    function performSaveGenres() {
-
-        const saveBtn = document.getElementById('saveGenresBtn');
-        const originalText = saveBtn.innerHTML;
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
-
-        fetch('/portal/save-genre-selection', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                portal_id: currentPortalId,
-                selected_genres: Array.from(selectedGenresSet),
-                auto_sync: false
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalText;
-
-                if (data.error) {
-                    showAlert('Error saving: ' + data.error, 'Error', 'danger');
-                    return;
-                }
-
-                bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
-
-                // Combined success message with redirect option
-                showConfirm(
-                    `Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!<br><br>Go to the editor to view them?`,
-                    'Success',
-                    function () {
-                        window.location.href = '/editor';
-                    },
-                    null,
-                    'success'
-                );
-            })
-            .catch(err => {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalText;
-                console.error('Error saving:', err);
-                showAlert('Error saving: ' + err, 'Error', 'danger');
-            });
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // Add loading state to form submission
-    document.getElementById('addPortalModal')?.querySelector('form')?.addEventListener('submit', function (e) {
-        const btn = document.getElementById('addPortalBtn');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Adding...';
+function selectAllGenresModal() {
+    // Select all visible genres
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (card.style.display !== 'none' && index < genresData.length) {
+            selectedGenresSet.add(genresData[index].name);
         }
     });
+    updateGenreUIModal();
+    updateSelectedGenreCount();
+}
 
-    // Validate MAC addresses on input
-    document.getElementById('macs')?.addEventListener('blur', function () {
-        const macs = this.value.split('\n').filter(m => m.trim());
-        const macPattern = /^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$/;
-        const invalidMacs = macs.filter(mac => !macPattern.test(mac.trim()));
-
-        if (invalidMacs.length > 0) {
-            this.setCustomValidity('Invalid MAC address format: ' + invalidMacs.join(', '));
-            this.reportValidity();
-        } else {
-            this.setCustomValidity('');
+function deselectAllGenresModal() {
+    // Deselect all visible genres
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (card.style.display !== 'none' && index < genresData.length) {
+            selectedGenresSet.delete(genresData[index].name);
         }
     });
+    updateGenreUIModal();
+    updateSelectedGenreCount();
+}
 
-    // Validate URL on input
-    document.getElementById('url')?.addEventListener('blur', function () {
-        const urlPattern = /^https?:\/\/.+/;
-        if (this.value && !urlPattern.test(this.value)) {
-            this.setCustomValidity('URL must start with http:// or https://');
-            this.reportValidity();
-        } else {
-            this.setCustomValidity('');
-        }
-    });
-
-    // Validate proxy on input
-    function validateProxy(input) {
-        if (!input.value.trim()) {
-            input.setCustomValidity('');
-            return;
-        }
-
-        const proxyValue = input.value.trim();
-        const patterns = [
-            /^https?:\/\/[^:]+:\d+$/,  // http://host:port
-            /^https?:\/\/[^:]+:[^@]+@[^:]+:\d+$/,  // http://user:pass@host:port
-            /^socks[45]:\/\/[^:]+:\d+$/,  // socks5://host:port
-            /^socks[45]:\/\/[^:]+:[^@]+@[^:]+:\d+$/,  // socks5://user:pass@host:port
-            /^ss:\/\/[^@]+@[^:]+:\d+$/,  // ss://method:password@host:port
-            /^[^:]+:\d+$/,  // host:port (will be treated as HTTP)
-        ];
-
-        const isValid = patterns.some(pattern => pattern.test(proxyValue));
-
-        if (!isValid) {
-            input.setCustomValidity('Invalid proxy format. Use: http://host:port, socks5://host:port, ss://method:password@host:port, or host:port');
-            input.reportValidity();
-        } else {
-            input.setCustomValidity('');
-        }
-    }
-
-    document.getElementById('proxy')?.addEventListener('blur', function () {
-        validateProxy(this);
-    });
-
-    document.getElementById('edit_proxy')?.addEventListener('blur', function () {
-        validateProxy(this);
-    });
-
-    // MAC Status Checking Functions
-    function checkMacStatus(portalId, portalName) {
-        const button = event.target.closest('button');
-        const originalHTML = button.innerHTML;
-
-        // Show loading state
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Checking...';
-
-        // Make API call to check MAC status
-        fetch(`/api/portal/${portalId}/mac-status`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showMacStatusModal(portalName, data.mac_statuses, data.portal_info, portalId);
-                } else {
-                    showAlert(`Error checking MAC status: ${data.error}`, 'Error', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert(`Error checking MAC status: ${error.message}`, 'Error', 'danger');
-            })
-            .finally(() => {
-                // Reset button
-                button.disabled = false;
-                button.innerHTML = originalHTML;
-            });
-    }
-
-    function checkMacStatusFromEdit() {
-        // Get portal ID and name from the edit modal
-        const portalId = document.getElementById('edit_portal_id').value;
-        const portalName = document.getElementById('edit_name').value;
-
-        if (!portalId || !portalName) {
-            showAlert('Portal information not available', 'Error', 'danger');
-            return;
-        }
-
-        // Use the existing checkMacStatus function
-        checkMacStatus(portalId, portalName);
-    }
-
-    function showMacStatusModal(portalName, macStatuses, portalInfo, portalId) {
-        // Create modal HTML
-        const modalId = 'macStatusModal_' + Date.now();
-        const modalHtml = `
-        <div class="modal modal-blur fade" id="${modalId}" tabindex="-1" style="display: none;" aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <div>
-                            <h5 class="modal-title">
-                                <i class="ti ti-activity me-2"></i>MAC Status Check
-                            </h5>
-                            <div class="text-muted small">${portalName}</div>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h4 class="card-title">
-                                            <i class="ti ti-info-circle me-2"></i>Portal Info
-                                        </h4>
-                                        <div class="row">
-                                            <div class="col-6">
-                                                <div class="text-muted">Max Streams per MAC:</div>
-                                                <div class="h3 text-primary" id="maxStreams_${modalId}">${portalInfo.playback_limit || 'Unknown'}</div>
-                                            </div>
-                                            <div class="col-6">
-                                                <div class="text-muted">Total MACs:</div>
-                                                <div class="h3" id="totalMacs_${modalId}">${macStatuses.length}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h4 class="card-title">
-                                            <i class="ti ti-chart-pie me-2"></i>Status Summary
-                                        </h4>
-                                        <div class="row" id="statusSummary_${modalId}">
-                                            <!-- Will be populated by JavaScript -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="card">
-                            <div class="card-header">
-                                <h4 class="card-title">
-                                    <i class="ti ti-list me-2"></i>MAC Address Status
-                                </h4>
-                            </div>
-                            
-                            <!-- Watchdog Timeout Explanation -->
-                            <div class="card-body border-bottom">
-                                <div class="alert alert-info mb-0">
-                                    <div class="d-flex">
-                                        <div><i class="ti ti-info-circle icon alert-icon"></i></div>
-                                        <div>
-                                            <h4 class="alert-title">Understanding MAC Status</h4>
-                                            <div class="text-muted">
-                                                <p class="mb-2">The <strong>Watchdog Timeout</strong> shows seconds since last activity. Lower values indicate recent usage:</p>
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <ul class="mb-0">
-                                                            <li><strong>&lt; 60s</strong> = Very Active (currently streaming)</li>
-                                                            <li><strong>60-300s</strong> = Active (recently used)</li>
-                                                        </ul>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <ul class="mb-0">
-                                                            <li><strong>300-1800s</strong> = Moderate activity</li>
-                                                            <li><strong>&gt; 1800s</strong> = Idle (safe to use)</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                                <div class="mt-2">
-                                                    <small><strong>💡 Tip:</strong> Lower timeout values indicate active usage. "Used (Internal)" means our system is currently using this MAC address.</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="card-body p-0">
-                                <div class="table-responsive">
-                                    <table class="table table-vcenter mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>MAC Address</th>
-                                                <th>Status</th>
-                                                <th>Watchdog Timeout</th>
-                                                <th>Max Streams</th>
-                                                <th>Account Status</th>
-                                                <th>Expires</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="macStatusTable_${modalId}">
-                                            <!-- Will be populated by JavaScript -->
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" id="refreshBtn_${modalId}" onclick="refreshMacStatus('${modalId}', '${portalId}', '${portalName}')">
-                            <i class="ti ti-refresh me-2"></i>Refresh Status
-                        </button>
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-        // Add modal to page
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        const modalEl = document.getElementById(modalId);
-
-        // Populate table
-        populateMacStatusTable(modalId, macStatuses, portalInfo);
-
-        // Show modal
-        const modal = new bootstrap.Modal(modalEl);
-        modal.show();
-
-        // Clean up when modal is hidden
-        modalEl.addEventListener('hidden.bs.modal', function () {
-            modalEl.remove();
-        });
-    }
-
-    function populateMacStatusTable(modalId, macStatuses, portalInfo) {
-        const tableBody = document.getElementById(`macStatusTable_${modalId}`);
-        const summaryDiv = document.getElementById(`statusSummary_${modalId}`);
-
-        // Count statuses for summary
-        const statusCounts = {
-            very_active: 0,
-            active: 0,
-            moderate: 0,
-            idle: 0,
-            blocked: 0,
-            error: 0
-        };
-
-        let tableHtml = '';
-
-        macStatuses.forEach(macStatus => {
-            if (!macStatus.success) {
-                statusCounts.error++;
-                tableHtml += `
-                <tr>
-                    <td><code>${macStatus.mac}</code></td>
-                    <td><span class="badge bg-danger">Error</span></td>
-                    <td colspan="4" class="text-danger">${macStatus.error}</td>
-                </tr>
-            `;
-                return;
-            }
-
-            const maxStreams = macStatus.playback_limit || portalInfo.playback_limit || 1;
-            const watchdogTimeout = macStatus.watchdog_timeout;
-
-            // Determine status based on timeout values and other factors
-            let overallStatus = 'Unknown';
-            let statusClass = 'secondary';
-            let timeoutClass = 'secondary';
-
-            if (macStatus.is_blocked) {
-                overallStatus = 'Blocked';
-                statusClass = 'danger';
-                statusCounts.blocked++;
-            } else if (!macStatus.account_active) {
-                overallStatus = 'Inactive';
-                statusClass = 'secondary';
-            } else if (macStatus.is_internally_used) {
-                overallStatus = 'Used (Internal)';
-                statusClass = 'warning';
-                statusCounts.active++;
-            } else if (watchdogTimeout !== undefined && watchdogTimeout !== null) {
-                // Status based on timeout ranges
-                if (watchdogTimeout < 60) {
-                    overallStatus = 'Very Active';
-                    statusClass = 'danger';
-                    timeoutClass = 'danger';
-                    statusCounts.very_active++;
-                } else if (watchdogTimeout < 300) {
-                    overallStatus = 'Active';
-                    statusClass = 'warning';
-                    timeoutClass = 'warning';
-                    statusCounts.active++;
-                } else if (watchdogTimeout < 1800) {
-                    overallStatus = 'Moderate';
-                    statusClass = 'info';
-                    timeoutClass = 'info';
-                    statusCounts.moderate++;
-                } else {
-                    overallStatus = 'Idle';
-                    statusClass = 'success';
-                    timeoutClass = 'success';
-                    statusCounts.idle++;
-                }
+function filterGenres() {
+    const searchInput = document.getElementById('genreSearchInput');
+    if (!searchInput) return;
+    
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    const cards = document.querySelectorAll('.genre-card');
+    cards.forEach((card, index) => {
+        if (index < genresData.length) {
+            const genreName = genresData[index].name.toLowerCase();
+            
+            if (genreName.includes(searchTerm)) {
+                card.style.display = '';
             } else {
-                overallStatus = 'Unknown';
-                statusClass = 'secondary';
+                card.style.display = 'none';
             }
+        }
+    });
+}
 
-            tableHtml += `
-            <tr>
-                <td><code>${macStatus.mac}</code></td>
-                <td><span class="badge bg-${statusClass}">${overallStatus}</span></td>
-                <td>
-                    ${watchdogTimeout !== undefined && watchdogTimeout !== null ?
-                    `<span class="badge bg-${timeoutClass}-lt">${watchdogTimeout}s</span>` :
-                    '<span class="text-muted">Unknown</span>'
-                }
-                </td>
-                <td>
-                    <span class="badge bg-primary-lt">
-                        ${maxStreams} max
-                    </span>
-                </td>
-                <td>
-                    ${macStatus.account_active ?
-                    '<span class="badge bg-success-lt">Active</span>' :
-                    '<span class="badge bg-danger-lt">Inactive</span>'
-                }
-                </td>
-                <td>
-                    ${macStatus.expires ?
-                    `<span class="text-muted small">${macStatus.expires}</span>` :
-                    '<span class="text-muted">Unknown</span>'
-                }
-                </td>
-            </tr>
-        `;
+function updateGenreUIModal() {
+    // Update all genre cards based on selectedGenresSet
+    document.querySelectorAll('.genre-card').forEach((card, index) => {
+        if (index < genresData.length) {
+            const genreName = genresData[index].name;
+            const isSelected = selectedGenresSet.has(genreName);
+            
+            if (isSelected) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        }
+    });
+    
+    updateSelectedGenreCount();
+}
+
+function updateSelectedGenreCount() {
+    const selectedCountEl = document.getElementById('selectedGenreCount');
+    if (selectedCountEl) {
+        selectedCountEl.textContent = selectedGenresSet.size;
+    }
+}
+
+function saveGenreSelectionModal() {
+    if (selectedGenresSet.size === 0) {
+        showConfirm('No genres selected. This means no channels will be enabled. Continue?', 'Warning', function() {
+            performSaveGenres();
         });
-
-        tableBody.innerHTML = tableHtml;
-
-        // Update summary based on timeout ranges
-        const total = macStatuses.length;
-        summaryDiv.innerHTML = `
-        <div class="col-6">
-            <div class="text-muted">Very Active (&lt;60s):</div>
-            <div class="h4 text-danger">${statusCounts.very_active}</div>
-        </div>
-        <div class="col-6">
-            <div class="text-muted">Idle (&gt;1800s):</div>
-            <div class="h4 text-success">${statusCounts.idle}</div>
-        </div>
-    `;
+        return;
     }
+    performSaveGenres();
+}
 
-    function getActivityStatus(watchdogTimeout) {
-        if (watchdogTimeout === undefined || watchdogTimeout === null) {
-            return { level: 'Unknown', class: 'secondary', icon: 'help' };
-        }
-
-        if (watchdogTimeout < 60) {
-            return { level: 'Very Active', class: 'success', icon: 'circle-filled' };
-        } else if (watchdogTimeout < 300) {
-            return { level: 'Active', class: 'warning', icon: 'circle' };
-        } else if (watchdogTimeout < 1800) {
-            return { level: 'Moderate', class: 'info', icon: 'circle-dotted' };
-        } else {
-            return { level: 'Idle', class: 'secondary', icon: 'circle-off' };
-        }
-    }
-
-    function checkSingleMacStatus(macAddress, portalId, buttonElement) {
-        const originalHTML = buttonElement.innerHTML;
-
-        // Show loading state
-        buttonElement.disabled = true;
-        buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-
-        // Get the row element to update
-        const row = buttonElement.closest('tr');
-        const activityCell = row.cells[3];
-        const streamsCell = row.cells[4];
-
-        // Make API call for single MAC
-        fetch(`/api/portal/${portalId}/mac-status`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
+function performSaveGenres() {
+    
+    const saveBtn = document.getElementById('saveGenresBtn');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    
+    fetch('/portal/save-genre-selection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            portal_id: currentPortalId,
+            selected_genres: Array.from(selectedGenresSet),
+            auto_sync: false
         })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Find the specific MAC in the results
-                    const macStatus = data.mac_statuses.find(status => status.mac === macAddress);
+    })
+    .then(res => res.json())
+    .then(data => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+        
+        if (data.error) {
+            showAlert('Error saving: ' + data.error, 'Error', 'danger');
+            return;
+        }
+        
+        bootstrap.Modal.getInstance(document.getElementById('genreSelectionModal')).hide();
+        
+        // Combined success message with redirect option
+        showConfirm(
+            `Successfully enabled ${data.enabled_count} out of ${data.total_count} channels!<br><br>Go to the editor to view them?`, 
+            'Success', 
+            function() {
+                window.location.href = '/editor';
+            },
+            null,
+            'success'
+        );
+    })
+    .catch(err => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+        console.error('Error saving:', err);
+        showAlert('Error saving: ' + err, 'Error', 'danger');
+    });
+}
 
-                    if (macStatus && macStatus.success) {
-                        // Update activity status
-                        const activity = getActivityStatus(macStatus.watchdog_timeout);
-                        activityCell.innerHTML = `
-                    <span class="badge bg-${activity.class}-lt">
-                        <i class="ti ti-${activity.icon} me-1"></i>${activity.level}
-                    </span>
-                `;
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-                        // Update streams info
-                        const playbackLimit = macStatus.playback_limit || data.portal_info?.playback_limit || 1;
-                        const watchdogTimeout = macStatus.watchdog_timeout || 0;
-
-                        let streamStatus = 'Available';
-                        let streamClass = 'success';
-
-                        if (watchdogTimeout < 60) {
-                            streamStatus = 'In Use';
-                            streamClass = 'danger';
-                        } else if (watchdogTimeout < 300) {
-                            streamStatus = 'Recently Used';
-                            streamClass = 'warning';
-                        }
-
-                        streamsCell.innerHTML = `
-                    <span class="badge bg-${streamClass}-lt">
-                        <i class="ti ti-player-play me-1"></i>${playbackLimit} max
-                    </span>
-                `;
-
-                        // Update button to show success
-                        buttonElement.innerHTML = '<i class="ti ti-check me-1"></i>Updated';
-                        buttonElement.classList.remove('btn-outline-warning');
-                        buttonElement.classList.add('btn-success');
-
-                    } else {
-                        // Error for this specific MAC
-                        activityCell.innerHTML = `
-                    <span class="badge bg-danger-lt">
-                        <i class="ti ti-alert-triangle me-1"></i>Error
-                    </span>
-                `;
-                        streamsCell.innerHTML = `
-                    <span class="badge bg-danger-lt">
-                        <i class="ti ti-x me-1"></i>Failed
-                    </span>
-                `;
-
-                        buttonElement.innerHTML = '<i class="ti ti-alert-triangle me-1"></i>Error';
-                        buttonElement.classList.remove('btn-outline-warning');
-                        buttonElement.classList.add('btn-danger');
-                    }
-                } else {
-                    // API error
-                    activityCell.innerHTML = `
-                <span class="badge bg-danger-lt">
-                    <i class="ti ti-alert-triangle me-1"></i>API Error
-                </span>
-            `;
-                    streamsCell.innerHTML = `
-                <span class="badge bg-danger-lt">
-                    <i class="ti ti-x me-1"></i>Failed
-                </span>
-            `;
-
-                    buttonElement.innerHTML = '<i class="ti ti-alert-triangle me-1"></i>Error';
-                    buttonElement.classList.remove('btn-outline-warning');
-                    buttonElement.classList.add('btn-danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-
-                activityCell.innerHTML = `
-            <span class="badge bg-danger-lt">
-                <i class="ti ti-wifi-off me-1"></i>Network Error
-            </span>
-        `;
-                streamsCell.innerHTML = `
-            <span class="badge bg-danger-lt">
-                <i class="ti ti-x me-1"></i>Failed
-            </span>
-        `;
-
-                buttonElement.innerHTML = '<i class="ti ti-wifi-off me-1"></i>Failed';
-                buttonElement.classList.remove('btn-outline-warning');
-                buttonElement.classList.add('btn-danger');
-            })
-            .finally(() => {
-                // Reset button after 3 seconds
-                setTimeout(() => {
-                    buttonElement.disabled = false;
-                    buttonElement.innerHTML = originalHTML;
-                    buttonElement.className = 'btn btn-outline-warning btn-sm';
-                }, 3000);
-            });
+// Add loading state to form submission
+document.getElementById('addPortalModal')?.querySelector('form')?.addEventListener('submit', function(e) {
+    const btn = document.getElementById('addPortalBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Adding...';
     }
+});
 
-    function refreshMacStatus(modalId, portalId, portalName) {
-        const modalEl = document.getElementById(modalId);
-        if (!modalEl) return;
-
-        const refreshBtn = document.getElementById(`refreshBtn_${modalId}`);
-        const originalBtnHtml = refreshBtn.innerHTML;
-
-        // Set loading state
-        refreshBtn.disabled = true;
-        refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Refreshing...';
-
-        fetch(`/api/portal/${portalId}/mac-status`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update stats
-                    const maxStreamsEl = document.getElementById(`maxStreams_${modalId}`);
-                    const totalMacsEl = document.getElementById(`totalMacs_${modalId}`);
-
-                    if (maxStreamsEl) maxStreamsEl.textContent = data.portal_info.playback_limit || 'Unknown';
-                    if (totalMacsEl) totalMacsEl.textContent = data.mac_statuses.length;
-
-                    // Update table and summary
-                    populateMacStatusTable(modalId, data.mac_statuses, data.portal_info);
-
-                    // Show success feedback on button
-                    refreshBtn.innerHTML = '<i class="ti ti-check me-2"></i>Refreshed';
-                    refreshBtn.classList.remove('btn-secondary');
-                    refreshBtn.classList.add('btn-success');
-
-                    // Reset button after 2 seconds
-                    setTimeout(() => {
-                        refreshBtn.disabled = false;
-                        refreshBtn.innerHTML = originalBtnHtml;
-                        refreshBtn.classList.remove('btn-success');
-                        refreshBtn.classList.add('btn-secondary');
-                    }, 2000);
-                } else {
-                    showAlert(`Error checking MAC status: ${data.error}`, 'Error', 'danger');
-                    // Reset button immediately on error
-                    refreshBtn.disabled = false;
-                    refreshBtn.innerHTML = originalBtnHtml;
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert(`Error checking MAC status: ${error.message}`, 'Error', 'danger');
-                // Reset button immediately on error
-                refreshBtn.disabled = false;
-                refreshBtn.innerHTML = originalBtnHtml;
-            });
+// Validate MAC addresses on input
+document.getElementById('macs')?.addEventListener('blur', function() {
+    const macs = this.value.split('\n').filter(m => m.trim());
+    const macPattern = /^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$/;
+    const invalidMacs = macs.filter(mac => !macPattern.test(mac.trim()));
+    
+    if (invalidMacs.length > 0) {
+        this.setCustomValidity('Invalid MAC address format: ' + invalidMacs.join(', '));
+        this.reportValidity();
+    } else {
+        this.setCustomValidity('');
     }
+});
 
+// Validate URL on input
+document.getElementById('url')?.addEventListener('blur', function() {
+    const urlPattern = /^https?:\/\/.+/;
+    if (this.value && !urlPattern.test(this.value)) {
+        this.setCustomValidity('URL must start with http:// or https://');
+        this.reportValidity();
+    } else {
+        this.setCustomValidity('');
+    }
+});
 </script>
-{% endblock %}
+{% endblock %} 

@@ -16,15 +16,8 @@ RUN mkdir -p /app/data /app/logs
 # Copy Python dependencies file
 COPY requirements.txt .
 
-# Install Python dependencies with proxy support
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install additional proxy dependencies for better compatibility
-RUN pip install --no-cache-dir \
-    cryptography>=3.4.8 \
-    pycryptodome>=3.15.0
-
-# Note: Proxy support (shadowsocks, socks5, http) is included in requirements.txt
 
 # Copy application files
 COPY app-docker.py app.py
@@ -33,19 +26,16 @@ COPY utils.py .
 COPY templates/ templates/
 COPY static/ static/
 
-# Copy documentation files (optional)
-COPY docs/ docs/
-
 # Create non-root user for security
-RUN useradd -m -u 1000 macreplayxc && \
-    chown -R root:root /app
+RUN useradd -m -u 1000 macreplay && \
+    chown -R macreplay:macreplay /app
 
 # Switch to non-root user
-#USER macreplay
+USER macreplay
 
 # Set environment variables for containerized deployment
 ENV HOST=0.0.0.0:8001
-ENV CONFIG=/app/data/MacReplayXC.json
+ENV CONFIG=/app/data/MacReplay.json
 ENV PYTHONUNBUFFERED=1
 
 # Expose the application port

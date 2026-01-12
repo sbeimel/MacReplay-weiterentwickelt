@@ -11,7 +11,7 @@
         gap: 16px;
         padding: 20px 0;
     }
-
+    
     .portal-card {
         border: 2px solid;
         border-radius: 0.5rem;
@@ -19,68 +19,68 @@
         cursor: pointer;
         transition: border-color 0.2s ease;
     }
-
+    
     [data-bs-theme="light"] .portal-card {
         border-color: #cbd5e1;
         background: #ffffff;
     }
-
+    
     [data-bs-theme="dark"] .portal-card {
         border-color: #404040;
         background: #2a2a2a;
     }
-
+    
     .portal-card:hover {
         border-color: #10b981;
     }
-
+    
     .portal-name {
         font-weight: 600;
         font-size: 1.1rem;
         margin-bottom: 12px;
     }
-
+    
     .portal-stats {
         display: flex;
         justify-content: space-between;
         gap: 8px;
         margin-bottom: 12px;
     }
-
+    
     .portal-stat-box {
         flex: 1;
         text-align: center;
         padding: 8px 4px;
         border-radius: 6px;
     }
-
+    
     [data-bs-theme="light"] .portal-stat-box {
         background: #f1f5f9;
     }
-
+    
     [data-bs-theme="dark"] .portal-stat-box {
         background: #1f1f1f;
     }
-
+    
     .portal-stat-value {
         font-size: 0.9rem;
         font-weight: 600;
         line-height: 1;
     }
-
+    
     .portal-stat-label {
         font-size: 0.7rem;
         opacity: 0.7;
         margin-top: 4px;
     }
-
+    
     .category-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
         gap: 12px;
         padding: 10px 0;
     }
-
+    
     .category-card {
         border: 2px solid;
         border-radius: 0.5rem;
@@ -94,26 +94,26 @@
         align-items: center;
         transition: border-color 0.2s ease;
     }
-
+    
     [data-bs-theme="light"] .category-card {
         border-color: #cbd5e1;
         background: #ffffff;
     }
-
+    
     [data-bs-theme="dark"] .category-card {
         border-color: #404040;
         background: #2a2a2a;
     }
-
+    
     .category-card:hover {
         border-color: #10b981;
     }
-
+    
     /* Active category (has enabled channels) - green border */
     .category-card-active {
         border-color: #10b981 !important;
     }
-
+    
     .category-name {
         font-weight: 600;
         font-size: 0.85rem;
@@ -127,12 +127,12 @@
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
     }
-
+    
     .category-count {
         font-size: 0.75rem;
         opacity: 0.7;
     }
-
+    
     .filter-bar {
         position: sticky;
         top: 56px;
@@ -140,50 +140,50 @@
         padding: 15px 0;
         margin-bottom: 10px;
     }
-
+    
     [data-bs-theme="light"] .filter-bar {
         background: #f8fafc;
     }
-
+    
     [data-bs-theme="dark"] .filter-bar {
         background: #1a1a1a;
     }
-
+    
     /* Modal styling */
     #editorModal .modal-body {
         max-height: 70vh;
         overflow-y: auto;
     }
-
+    
     /* Table styling */
     [data-bs-theme="dark"] #editorModal .table {
         --bs-table-bg: #2a2a2a;
         --bs-table-striped-bg: #1f1f1f;
         color: #e0e0e0;
     }
-
+    
     [data-bs-theme="dark"] #editorModal .table thead th {
         background-color: #1f1f1f;
         color: #e0e0e0;
         border-color: #404040;
     }
-
+    
     [data-bs-theme="dark"] #editorModal .table tbody td {
         border-color: #404040;
     }
-
+    
     [data-bs-theme="dark"] #editorModal .form-control {
         background-color: #1f1f1f;
         border-color: #404040;
         color: #e0e0e0;
     }
-
+    
     /* Table cell vertical alignment */
     #editorModal .table td {
         vertical-align: middle;
         padding: 0.5rem 0.5rem;
     }
-
+    
     /* Switch styling - same height as play button, aligned left */
     #editorModal .form-check {
         display: flex;
@@ -192,41 +192,41 @@
         min-height: auto;
         padding-left: 0;
     }
-
+    
     #editorModal .form-check-input {
         margin: 0;
         width: 2.25rem;
         height: 1.125rem;
         float: none;
     }
-
+    
     /* Switch off state - neutral gray instead of blue */
     [data-bs-theme="dark"] #editorModal .form-check-input:not(:checked) {
         background-color: #404040;
         border-color: #404040;
     }
-
+    
     /* Sticky search bar - glass effect */
     #editorModal .channel-filter-sticky {
         position: sticky;
         top: -2rem;
         z-index: 10;
     }
-
+    
     [data-bs-theme="light"] #editorModal .channel-filter-sticky {
-        background: linear-gradient(to bottom,
-                rgba(255, 255, 255, 0.98) 0%,
-                rgba(255, 255, 255, 0.95) 40%,
-                rgba(255, 255, 255, 0.5) 70%,
-                rgba(255, 255, 255, 0) 100%) !important;
+        background: linear-gradient(to bottom, 
+            rgba(255, 255, 255, 0.98) 0%, 
+            rgba(255, 255, 255, 0.95) 40%, 
+            rgba(255, 255, 255, 0.5) 70%,
+            rgba(255, 255, 255, 0) 100%) !important;
     }
-
+    
     [data-bs-theme="dark"] #editorModal .channel-filter-sticky {
-        background: linear-gradient(to bottom,
-                rgba(42, 42, 42, 0.98) 0%,
-                rgba(42, 42, 42, 0.95) 40%,
-                rgba(42, 42, 42, 0.5) 70%,
-                rgba(42, 42, 42, 0) 100%) !important;
+        background: linear-gradient(to bottom, 
+            rgba(42, 42, 42, 0.98) 0%, 
+            rgba(42, 42, 42, 0.95) 40%, 
+            rgba(42, 42, 42, 0.5) 70%,
+            rgba(42, 42, 42, 0) 100%) !important;
     }
 </style>
 {% endblock %}
@@ -252,7 +252,7 @@
                 </div>
             </div>
         </div>
-
+        
         <!-- Channel Refresh Progress -->
         <div id="channelRefreshProgress" class="alert alert-info mt-3" style="display: none;">
             <div class="d-flex align-items-start">
@@ -264,8 +264,7 @@
                     </div>
                     <div class="text-muted small mb-2" id="channelProgressDetails">Starting...</div>
                     <div class="progress" style="height: 6px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="channelProgressBar"
-                            style="width: 0%"></div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="channelProgressBar" style="width: 0%"></div>
                     </div>
                 </div>
             </div>
@@ -279,8 +278,7 @@
             <div class="row g-3 align-items-center">
                 <div class="col-md-4">
                     <label class="form-label mb-1">Search Portals</label>
-                    <input type="text" class="form-control" id="portalSearch" placeholder="Type to filter..."
-                        oninput="filterPortals()">
+                    <input type="text" class="form-control" id="portalSearch" placeholder="Type to filter..." oninput="filterPortals()">
                 </div>
                 <div class="col-md-8 text-end">
                     <div class="mt-4">
@@ -358,26 +356,22 @@
                             </button>
                         </div>
                         <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100"
-                                onclick="applyPreset('country')">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('country')">
                                 Remove Country Codes
                             </button>
                         </div>
                         <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100"
-                                onclick="applyPreset('brackets')">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('brackets')">
                                 Remove [Brackets]
                             </button>
                         </div>
                         <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100"
-                                onclick="applyPreset('separators')">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('separators')">
                                 Clean Separators
                             </button>
                         </div>
                         <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100"
-                                onclick="applyPreset('whitespace')">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="applyPreset('whitespace')">
                                 Fix Spacing
                             </button>
                         </div>
@@ -396,14 +390,12 @@
                         </div>
                         <div class="row g-2">
                             <div class="col-8">
-                                <button type="button" class="btn btn-outline-primary btn-sm w-100"
-                                    onclick="addBulkRule()">
+                                <button type="button" class="btn btn-outline-primary btn-sm w-100" onclick="addBulkRule()">
                                     <i class="ti ti-plus me-1"></i>Add Rule
                                 </button>
                             </div>
                             <div class="col-4">
-                                <button type="button" class="btn btn-outline-secondary btn-sm w-100"
-                                    onclick="clearSavedRules()" title="Clear saved rules from database">
+                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="clearSavedRules()" title="Clear saved rules from database">
                                     <i class="ti ti-trash me-1"></i>Clear Saved
                                 </button>
                             </div>
@@ -456,7 +448,7 @@
                         </div>
                     </div>
                 </div>
-
+                
                 <!-- History Info -->
                 <div class="alert alert-warning mt-3" id="bulkHistoryInfo" style="display: none;">
                     <div class="d-flex align-items-center">
@@ -470,8 +462,7 @@
             </div>
             <div class="modal-footer">
                 <div class="btn-group me-auto">
-                    <button type="button" class="btn btn-outline-warning" onclick="undoBulkEdit()" id="undoBtn"
-                        disabled>
+                    <button type="button" class="btn btn-outline-warning" onclick="undoBulkEdit()" id="undoBtn" disabled>
                         <i class="ti ti-arrow-back-up me-1"></i>Undo Last
                     </button>
                     <button type="button" class="btn btn-outline-danger" onclick="resetAllCustomizations()">
@@ -499,8 +490,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0" style="position: relative;">
-                <button class="btn btn-primary btn-sm" onclick="copyStreamUrl()"
-                    style="position: absolute; top: 10px; right: 10px; z-index: 1000;">
+                <button class="btn btn-primary btn-sm" onclick="copyStreamUrl()" 
+                        style="position: absolute; top: 10px; right: 10px; z-index: 1000;">
                     <i class="ti ti-copy me-1"></i>Copy URL
                 </button>
                 <video id="player" playsinline controls autoplay></video>
@@ -512,62 +503,62 @@
 
 {% block scripts %}
 <script>
-    let allPortals = [];
-    let allChannels = [];
-    let currentPortalId = null;
-    let currentPortalName = '';
-    let currentView = 'categories'; // 'categories' or 'channels'
-    let categoriesData = {};
-    let currentCategoryChannels = [];
-    let currentCategoryName = '';
-    let showAllCategories = false; // Toggle for showing all vs active only
-    let edits = { enabled: [], name: [], number: [], epgId: [] };
-    let channelRefreshInterval = null;
+let allPortals = [];
+let allChannels = [];
+let currentPortalId = null;
+let currentPortalName = '';
+let currentView = 'categories'; // 'categories' or 'channels'
+let categoriesData = {};
+let currentCategoryChannels = [];
+let currentCategoryName = '';
+let showAllCategories = false; // Toggle for showing all vs active only
+let edits = { enabled: [], name: [], number: [], epgId: [] };
+let channelRefreshInterval = null;
 
-    document.addEventListener('DOMContentLoaded', function () {
-        loadPortals();
-        checkChannelRefreshProgress(); // Check if refresh is already running
-    });
+document.addEventListener('DOMContentLoaded', function() {
+    loadPortals();
+    checkChannelRefreshProgress(); // Check if refresh is already running
+});
 
-    function loadPortals() {
-        document.getElementById('loadingIndicator').style.display = 'block';
-        document.getElementById('portalGrid').innerHTML = '';
-
-        fetch('/editor/portal-stats', { credentials: 'same-origin' })
-            .then(res => res.json())
-            .then(data => {
-                allPortals = data.portals || [];
-                renderPortals();
-                updateStats();
-                document.getElementById('loadingIndicator').style.display = 'none';
-            })
-            .catch(err => {
-                console.error('Error:', err);
-                document.getElementById('loadingIndicator').style.display = 'none';
-                document.getElementById('portalGrid').innerHTML = '<div class="alert alert-danger">Error loading portals</div>';
-            });
-    }
+function loadPortals() {
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('portalGrid').innerHTML = '';
+    
+    fetch('/editor/portal-stats', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            allPortals = data.portals || [];
+            renderPortals();
+            updateStats();
+            document.getElementById('loadingIndicator').style.display = 'none';
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('portalGrid').innerHTML = '<div class="alert alert-danger">Error loading portals</div>';
+        });
+}
 </script>
 
 <script>
-    function renderPortals() {
-        const grid = document.getElementById('portalGrid');
-        const container = document.getElementById('portalsContainer');
-        grid.innerHTML = '';
-
-        if (!allPortals || allPortals.length === 0) {
-            container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-antenna icon"></i></div><p class="empty-title">No portals configured</p><p class="empty-subtitle text-muted">Add a portal to get started</p></div>';
-            return;
-        }
-
-        allPortals.forEach(portal => {
-            const enabledPercent = portal.total_channels > 0 ? Math.round((portal.enabled_channels / portal.total_channels) * 100) : 0;
-
-            const card = document.createElement('div');
-            card.className = 'portal-card';
-            card.onclick = () => openPortalModal(portal);
-
-            card.innerHTML = `
+function renderPortals() {
+    const grid = document.getElementById('portalGrid');
+    const container = document.getElementById('portalsContainer');
+    grid.innerHTML = '';
+    
+    if (!allPortals || allPortals.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon"><i class="ti ti-antenna icon"></i></div><p class="empty-title">No portals configured</p><p class="empty-subtitle text-muted">Add a portal to get started</p></div>';
+        return;
+    }
+    
+    allPortals.forEach(portal => {
+        const enabledPercent = portal.total_channels > 0 ? Math.round((portal.enabled_channels / portal.total_channels) * 100) : 0;
+        
+        const card = document.createElement('div');
+        card.className = 'portal-card';
+        card.onclick = () => openPortalModal(portal);
+        
+        card.innerHTML = `
             <div class="portal-name">${escapeHtml(portal.name)}</div>
             <div class="portal-stats">
                 <div class="portal-stat-box">
@@ -587,90 +578,90 @@
                 <div class="progress-bar bg-success" style="width: ${enabledPercent}%"></div>
             </div>
         `;
-            grid.appendChild(card);
-        });
-    }
+        grid.appendChild(card);
+    });
+}
 
-    function filterPortals() {
-        const search = document.getElementById('portalSearch').value.toLowerCase();
-        document.querySelectorAll('.portal-card').forEach(card => {
-            card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
-        });
-    }
+function filterPortals() {
+    const search = document.getElementById('portalSearch').value.toLowerCase();
+    document.querySelectorAll('.portal-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'block' : 'none';
+    });
+}
 
-    function updateStats() {
-        document.getElementById('totalPortals').textContent = allPortals.length;
-        const totalChannels = allPortals.reduce((sum, p) => sum + p.total_channels, 0);
-        document.getElementById('totalChannels').textContent = totalChannels;
-    }
+function updateStats() {
+    document.getElementById('totalPortals').textContent = allPortals.length;
+    const totalChannels = allPortals.reduce((sum, p) => sum + p.total_channels, 0);
+    document.getElementById('totalChannels').textContent = totalChannels;
+}
 
-    function openPortalModal(portal) {
-        currentPortalId = portal.id;
-        currentPortalName = portal.name;
-        currentView = 'categories';
-
-        const modal = new bootstrap.Modal(document.getElementById('editorModal'));
-        modal.show();
-
-        // Show loading state
-        document.getElementById('modalTitle').textContent = `${portal.name} - Loading...`;
-        document.getElementById('modalStats').textContent = '';
-        document.getElementById('modalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading channels...</p></div>';
-
-        // Fetch all channels for this portal
-        fetch(`/editor/portal-channels/${encodeURIComponent(portal.id)}`, { credentials: 'same-origin' })
-            .then(res => res.json())
-            .then(data => {
-                const portalChannels = data.channels || [];
-
-                // Group by category
-                categoriesData = {};
-                portalChannels.forEach(ch => {
-                    const genre = ch.customGenre || ch.genre || 'Uncategorized';
-                    if (!categoriesData[genre]) categoriesData[genre] = [];
-                    categoriesData[genre].push(ch);
-                });
-
-                showCategoriesView(portalChannels);
-            })
-            .catch(err => {
-                document.getElementById('modalContent').innerHTML = '<div class="alert alert-danger">Error loading channels</div>';
+function openPortalModal(portal) {
+    currentPortalId = portal.id;
+    currentPortalName = portal.name;
+    currentView = 'categories';
+    
+    const modal = new bootstrap.Modal(document.getElementById('editorModal'));
+    modal.show();
+    
+    // Show loading state
+    document.getElementById('modalTitle').textContent = `${portal.name} - Loading...`;
+    document.getElementById('modalStats').textContent = '';
+    document.getElementById('modalContent').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-3">Loading channels...</p></div>';
+    
+    // Fetch all channels for this portal
+    fetch(`/editor/portal-channels/${encodeURIComponent(portal.id)}`, {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            const portalChannels = data.channels || [];
+            
+            // Group by category
+            categoriesData = {};
+            portalChannels.forEach(ch => {
+                const genre = ch.customGenre || ch.genre || 'Uncategorized';
+                if (!categoriesData[genre]) categoriesData[genre] = [];
+                categoriesData[genre].push(ch);
             });
-    }
-
-    function showCategoriesView(portalChannels) {
-        currentView = 'categories';
-
-        // Remove channels-view class for normal padding
-        document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
-
-        const allGenres = Object.keys(categoriesData).sort();
-        const activeGenres = allGenres.filter(genre => categoriesData[genre].some(ch => ch.enabled));
-        const totalChannels = portalChannels ? portalChannels.length : 0;
-        const enabledCount = portalChannels ? portalChannels.filter(ch => ch.enabled).length : 0;
-
-        // Decide which genres to show based on toggle
-        const genresToShow = showAllCategories ? allGenres : activeGenres;
-
-        // Sort genres: active ones first, then alphabetically
-        const sortedGenres = [...genresToShow].sort((a, b) => {
-            const aActive = categoriesData[a].some(ch => ch.enabled) ? 1 : 0;
-            const bActive = categoriesData[b].some(ch => ch.enabled) ? 1 : 0;
-            if (aActive !== bActive) return bActive - aActive; // Active first
-            return a.localeCompare(b); // Then alphabetically
+            
+            showCategoriesView(portalChannels);
+        })
+        .catch(err => {
+            document.getElementById('modalContent').innerHTML = '<div class="alert alert-danger">Error loading channels</div>';
         });
+}
 
-        document.getElementById('modalTitle').textContent = `${currentPortalName} - Channel Editor`;
-        document.getElementById('modalStats').textContent = `${enabledCount} channels enabled • ${activeGenres.length} active categories`;
-
-        document.getElementById('modalFooter').innerHTML = `
+function showCategoriesView(portalChannels) {
+    currentView = 'categories';
+    
+    // Remove channels-view class for normal padding
+    document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
+    
+    const allGenres = Object.keys(categoriesData).sort();
+    const activeGenres = allGenres.filter(genre => categoriesData[genre].some(ch => ch.enabled));
+    const totalChannels = portalChannels ? portalChannels.length : 0;
+    const enabledCount = portalChannels ? portalChannels.filter(ch => ch.enabled).length : 0;
+    
+    // Decide which genres to show based on toggle
+    const genresToShow = showAllCategories ? allGenres : activeGenres;
+    
+    // Sort genres: active ones first, then alphabetically
+    const sortedGenres = [...genresToShow].sort((a, b) => {
+        const aActive = categoriesData[a].some(ch => ch.enabled) ? 1 : 0;
+        const bActive = categoriesData[b].some(ch => ch.enabled) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive; // Active first
+        return a.localeCompare(b); // Then alphabetically
+    });
+    
+    document.getElementById('modalTitle').textContent = `${currentPortalName} - Channel Editor`;
+    document.getElementById('modalStats').textContent = `${enabledCount} channels enabled • ${activeGenres.length} active categories`;
+    
+    document.getElementById('modalFooter').innerHTML = `
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
     `;
-
-        const toggleBadgeClass = showAllCategories ? 'bg-primary' : 'bg-secondary-lt';
-        const toggleBtnText = showAllCategories ? 'Showing All' : 'Show All';
-
-        let html = `
+    
+    const toggleBadgeClass = showAllCategories ? 'bg-primary' : 'bg-secondary-lt';
+    const toggleBtnText = showAllCategories ? 'Showing All' : 'Show All';
+    
+    let html = `
         <div class="channel-filter-sticky">
             <div class="row g-3 align-items-center">
                 <div class="col-md-4">
@@ -690,51 +681,51 @@
         </div>
         <div class="category-grid">
     `;
-
-        sortedGenres.forEach(genre => {
-            const genreChannels = categoriesData[genre];
-            const enabled = genreChannels.filter(c => c.enabled).length;
-            const isActive = enabled > 0;
-            const activeClass = (showAllCategories && isActive) ? 'category-card-active' : '';
-            html += `
+    
+    sortedGenres.forEach(genre => {
+        const genreChannels = categoriesData[genre];
+        const enabled = genreChannels.filter(c => c.enabled).length;
+        const isActive = enabled > 0;
+        const activeClass = (showAllCategories && isActive) ? 'category-card-active' : '';
+        html += `
             <div class="category-card ${activeClass}" onclick="showChannelsView('${escapeHtml(genre).replace(/'/g, "\\'")}')">
                 <div class="category-name" title="${escapeHtml(genre)}">${escapeHtml(genre)}</div>
                 <div class="category-count">${enabled}/${genreChannels.length}</div>
             </div>
         `;
-        });
+    });
+    
+    html += '</div>';
+    document.getElementById('modalContent').innerHTML = html;
+}
 
-        html += '</div>';
-        document.getElementById('modalContent').innerHTML = html;
-    }
+function toggleShowAll() {
+    showAllCategories = !showAllCategories;
+    const portalChannels = Object.values(categoriesData).flat();
+    showCategoriesView(portalChannels);
+}
 
-    function toggleShowAll() {
-        showAllCategories = !showAllCategories;
-        const portalChannels = Object.values(categoriesData).flat();
-        showCategoriesView(portalChannels);
-    }
+function filterCategories() {
+    const search = document.getElementById('categorySearch').value.toLowerCase();
+    document.querySelectorAll('.category-card').forEach(card => {
+        card.style.display = card.textContent.toLowerCase().includes(search) ? 'flex' : 'none';
+    });
+}
 
-    function filterCategories() {
-        const search = document.getElementById('categorySearch').value.toLowerCase();
-        document.querySelectorAll('.category-card').forEach(card => {
-            card.style.display = card.textContent.toLowerCase().includes(search) ? 'flex' : 'none';
-        });
-    }
-
-    function showChannelsView(genre) {
-        currentView = 'channels';
-        currentCategoryName = genre;
-        currentCategoryChannels = categoriesData[genre] || [];
-
-        const enabledCount = currentCategoryChannels.filter(ch => ch.enabled).length;
-
-        // Remove channels-view class - use normal padding
-        document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
-
-        document.getElementById('modalTitle').textContent = `${genre}`;
-        document.getElementById('modalStats').textContent = `${currentCategoryChannels.length} channels • ${enabledCount} enabled`;
-
-        document.getElementById('modalFooter').innerHTML = `
+function showChannelsView(genre) {
+    currentView = 'channels';
+    currentCategoryName = genre;
+    currentCategoryChannels = categoriesData[genre] || [];
+    
+    const enabledCount = currentCategoryChannels.filter(ch => ch.enabled).length;
+    
+    // Remove channels-view class - use normal padding
+    document.querySelector('#editorModal .modal-body').classList.remove('channels-view');
+    
+    document.getElementById('modalTitle').textContent = `${genre}`;
+    document.getElementById('modalStats').textContent = `${currentCategoryChannels.length} channels • ${enabledCount} enabled`;
+    
+    document.getElementById('modalFooter').innerHTML = `
         <button type="button" class="btn btn-secondary" onclick="backToCategories()">
             <i class="ti ti-arrow-left me-2"></i>Back
         </button>
@@ -742,8 +733,8 @@
             <i class="ti ti-device-floppy me-2"></i>Save Changes
         </button>
     `;
-
-        let html = `
+    
+    let html = `
         <div class="channel-filter-sticky">
             <div class="row g-3 align-items-center">
                 <div class="col-md-4">
@@ -781,18 +772,18 @@
             </div>
         </div>
     `;
+    
+    document.getElementById('modalContent').innerHTML = html;
+    renderChannelsTable();
+}
 
-        document.getElementById('modalContent').innerHTML = html;
-        renderChannelsTable();
-    }
-
-    function renderChannelsTable() {
-        const tbody = document.getElementById('channelsTableBody');
-        tbody.innerHTML = '';
-
-        currentCategoryChannels.forEach(ch => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
+function renderChannelsTable() {
+    const tbody = document.getElementById('channelsTableBody');
+    tbody.innerHTML = '';
+    
+    currentCategoryChannels.forEach(ch => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
             <td>
                 <div class="form-check form-switch">
                     <input type="checkbox" class="form-check-input channel-enabled" 
@@ -824,464 +815,464 @@
                        data-portal="${ch.portal}" data-channel-id="${ch.channelId}">
             </td>
         `;
-            tbody.appendChild(tr);
+        tbody.appendChild(tr);
+    });
+}
+
+function filterChannels() {
+    const search = document.getElementById('channelSearch').value.toLowerCase();
+    document.querySelectorAll('#channelsTableBody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(search) ? '' : 'none';
+    });
+}
+
+function toggleAllChannels(checkbox) {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = checkbox.checked);
+}
+
+function selectAllChannels() {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = true);
+    document.getElementById('toggleAll').checked = true;
+}
+
+function deselectAllChannels() {
+    document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = false);
+    document.getElementById('toggleAll').checked = false;
+}
+
+function backToCategories() {
+    // Rebuild portalChannels from categoriesData
+    const portalChannels = Object.values(categoriesData).flat();
+    showCategoriesView(portalChannels);
+}
+
+function saveChannelChanges() {
+    const enabledInputs = document.querySelectorAll('.channel-enabled');
+    const nameInputs = document.querySelectorAll('.channel-name');
+    const numberInputs = document.querySelectorAll('.channel-number');
+    const epgInputs = document.querySelectorAll('.channel-epg');
+    
+    edits = { enabled: [], name: [], number: [], epgId: [] };
+    
+    enabledInputs.forEach(input => {
+        edits.enabled.push({
+            portal: input.dataset.portal,
+            "channel id": input.dataset.channelId,
+            enabled: input.checked
         });
-    }
-
-    function filterChannels() {
-        const search = document.getElementById('channelSearch').value.toLowerCase();
-        document.querySelectorAll('#channelsTableBody tr').forEach(row => {
-            row.style.display = row.textContent.toLowerCase().includes(search) ? '' : 'none';
-        });
-    }
-
-    function toggleAllChannels(checkbox) {
-        document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = checkbox.checked);
-    }
-
-    function selectAllChannels() {
-        document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = true);
-        document.getElementById('toggleAll').checked = true;
-    }
-
-    function deselectAllChannels() {
-        document.querySelectorAll('.channel-enabled').forEach(cb => cb.checked = false);
-        document.getElementById('toggleAll').checked = false;
-    }
-
-    function backToCategories() {
-        // Rebuild portalChannels from categoriesData
-        const portalChannels = Object.values(categoriesData).flat();
-        showCategoriesView(portalChannels);
-    }
-
-    function saveChannelChanges() {
-        const enabledInputs = document.querySelectorAll('.channel-enabled');
-        const nameInputs = document.querySelectorAll('.channel-name');
-        const numberInputs = document.querySelectorAll('.channel-number');
-        const epgInputs = document.querySelectorAll('.channel-epg');
-
-        edits = { enabled: [], name: [], number: [], epgId: [] };
-
-        enabledInputs.forEach(input => {
-            edits.enabled.push({
+    });
+    
+    nameInputs.forEach(input => {
+        if (input.value) {
+            edits.name.push({
                 portal: input.dataset.portal,
                 "channel id": input.dataset.channelId,
-                enabled: input.checked
+                "custom name": input.value
             });
-        });
+        }
+    });
+    
+    numberInputs.forEach(input => {
+        if (input.value) {
+            edits.number.push({
+                portal: input.dataset.portal,
+                "channel id": input.dataset.channelId,
+                "custom number": input.value
+            });
+        }
+    });
+    
+    epgInputs.forEach(input => {
+        if (input.value) {
+            edits.epgId.push({
+                portal: input.dataset.portal,
+                "channel id": input.dataset.channelId,
+                "custom epg id": input.value
+            });
+        }
+    });
+    
+    const formData = new FormData();
+    formData.append('enabledEdits', JSON.stringify(edits.enabled));
+    formData.append('nameEdits', JSON.stringify(edits.name));
+    formData.append('numberEdits', JSON.stringify(edits.number));
+    formData.append('epgEdits', JSON.stringify(edits.epgId));
+    formData.append('genreEdits', JSON.stringify([]));
+    formData.append('fallbackEdits', JSON.stringify([]));
+    
+    fetch('/editor/save', { method: 'POST', body: formData, credentials: 'same-origin' })
+        .then(res => res.text())
+        .then(() => {
+            showToast('Changes saved successfully!', 'success');
+            loadPortals();
+            backToCategories();
+        })
+        .catch(err => showAlert('Error saving: ' + err, 'Error', 'danger'));
+}
 
-        nameInputs.forEach(input => {
-            if (input.value) {
-                edits.name.push({
-                    portal: input.dataset.portal,
-                    "channel id": input.dataset.channelId,
-                    "custom name": input.value
-                });
-            }
-        });
-
-        numberInputs.forEach(input => {
-            if (input.value) {
-                edits.number.push({
-                    portal: input.dataset.portal,
-                    "channel id": input.dataset.channelId,
-                    "custom number": input.value
-                });
-            }
-        });
-
-        epgInputs.forEach(input => {
-            if (input.value) {
-                edits.epgId.push({
-                    portal: input.dataset.portal,
-                    "channel id": input.dataset.channelId,
-                    "custom epg id": input.value
-                });
-            }
-        });
-
-        const formData = new FormData();
-        formData.append('enabledEdits', JSON.stringify(edits.enabled));
-        formData.append('nameEdits', JSON.stringify(edits.name));
-        formData.append('numberEdits', JSON.stringify(edits.number));
-        formData.append('epgEdits', JSON.stringify(edits.epgId));
-        formData.append('genreEdits', JSON.stringify([]));
-        formData.append('fallbackEdits', JSON.stringify([]));
-
-        fetch('/editor/save', { method: 'POST', body: formData, credentials: 'same-origin' })
-            .then(res => res.text())
-            .then(() => {
-                showToast('Changes saved successfully!', 'success');
-                loadPortals();
-                backToCategories();
-            })
-            .catch(err => showAlert('Error saving: ' + err, 'Error', 'danger'));
-    }
-
-    function refreshChannels() {
-        showConfirm('Refresh channel list from portals? This may take a few minutes.', 'Refresh Channels', function () {
-            const btn = document.getElementById('refreshBtn');
-            btn.disabled = true;
-
-            fetch('/editor/refresh', { method: 'POST', credentials: 'same-origin' })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        startChannelRefreshPolling();
-                    } else {
-                        showAlert(data.error || 'Failed to start channel refresh', 'Error', 'danger');
-                        btn.disabled = false;
-                    }
-                })
-                .catch(err => {
-                    showAlert('Error starting channel refresh: ' + err, 'Error', 'danger');
-                    btn.disabled = false;
-                });
-        });
-    }
-
-    function checkChannelRefreshProgress() {
-        fetch('/editor/refresh/progress', { credentials: 'same-origin' })
+function refreshChannels() {
+    showConfirm('Refresh channel list from portals? This may take a few minutes.', 'Refresh Channels', function() {
+        const btn = document.getElementById('refreshBtn');
+        btn.disabled = true;
+        
+        fetch('/editor/refresh', { method: 'POST', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
-                if (data.running) {
+                if (data.success) {
                     startChannelRefreshPolling();
-                }
-            })
-            .catch(err => console.error('Error checking channel refresh progress:', err));
-    }
-
-    function startChannelRefreshPolling() {
-        document.getElementById('channelRefreshProgress').style.display = 'block';
-        document.getElementById('refreshBtn').disabled = true;
-
-        // Reset progress display
-        document.getElementById('channelProgressTitle').textContent = 'Refreshing Channels...';
-        document.getElementById('channelProgressDetails').textContent = 'Starting...';
-        document.getElementById('channelProgressBar').style.width = '0%';
-        document.getElementById('channelProgressPercent').textContent = '0%';
-        document.getElementById('channelProgressBar').classList.remove('bg-success');
-        document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
-
-        // Show spinner
-        const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
-        if (spinner) spinner.style.display = 'block';
-
-        if (channelRefreshInterval) clearInterval(channelRefreshInterval);
-
-        channelRefreshInterval = setInterval(pollChannelRefreshProgress, 1000);
-        pollChannelRefreshProgress(); // Call immediately
-    }
-
-    function pollChannelRefreshProgress() {
-        fetch('/editor/refresh/progress', { credentials: 'same-origin' })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.running) {
-                    // Refresh completed
-                    clearInterval(channelRefreshInterval);
-                    channelRefreshInterval = null;
-
-                    document.getElementById('channelProgressTitle').textContent = 'Channel Refresh Complete!';
-                    document.getElementById('channelProgressDetails').textContent = data.current_step || 'Reloading portals...';
-                    document.getElementById('channelProgressBar').style.width = '100%';
-                    document.getElementById('channelProgressPercent').textContent = '100%';
-                    document.getElementById('channelProgressBar').classList.remove('progress-bar-animated');
-                    document.getElementById('channelProgressBar').classList.add('bg-success');
-
-                    // Hide spinner
-                    const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
-                    if (spinner) spinner.style.display = 'none';
-
-                    setTimeout(() => {
-                        document.getElementById('channelRefreshProgress').style.display = 'none';
-                        document.getElementById('refreshBtn').disabled = false;
-                        document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
-                        document.getElementById('channelProgressBar').classList.remove('bg-success');
-                        if (spinner) spinner.style.display = 'block';
-                        loadPortals();
-                    }, 3000);
                 } else {
-                    // Update progress
-                    const percent = data.portals_total > 0 ? Math.round((data.portals_done / data.portals_total) * 100) : 0;
-
-                    // Show portal name if available
-                    let titleText = `Refreshing Channels... (${data.portals_done}/${data.portals_total} portals)`;
-                    if (data.current_portal) {
-                        titleText = `Refreshing: ${data.current_portal} (${data.portals_done}/${data.portals_total})`;
-                    }
-
-                    document.getElementById('channelProgressTitle').textContent = titleText;
-                    document.getElementById('channelProgressDetails').textContent = data.current_step || 'Processing...';
-                    document.getElementById('channelProgressBar').style.width = percent + '%';
-                    document.getElementById('channelProgressPercent').textContent = percent + '%';
+                    showAlert(data.error || 'Failed to start channel refresh', 'Error', 'danger');
+                    btn.disabled = false;
                 }
             })
             .catch(err => {
-                console.error('Error polling channel refresh progress:', err);
+                showAlert('Error starting channel refresh: ' + err, 'Error', 'danger');
+                btn.disabled = false;
+            });
+    });
+}
+
+function checkChannelRefreshProgress() {
+    fetch('/editor/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.running) {
+                startChannelRefreshPolling();
+            }
+        })
+        .catch(err => console.error('Error checking channel refresh progress:', err));
+}
+
+function startChannelRefreshPolling() {
+    document.getElementById('channelRefreshProgress').style.display = 'block';
+    document.getElementById('refreshBtn').disabled = true;
+    
+    // Reset progress display
+    document.getElementById('channelProgressTitle').textContent = 'Refreshing Channels...';
+    document.getElementById('channelProgressDetails').textContent = 'Starting...';
+    document.getElementById('channelProgressBar').style.width = '0%';
+    document.getElementById('channelProgressPercent').textContent = '0%';
+    document.getElementById('channelProgressBar').classList.remove('bg-success');
+    document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
+    
+    // Show spinner
+    const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
+    if (spinner) spinner.style.display = 'block';
+    
+    if (channelRefreshInterval) clearInterval(channelRefreshInterval);
+    
+    channelRefreshInterval = setInterval(pollChannelRefreshProgress, 1000);
+    pollChannelRefreshProgress(); // Call immediately
+}
+
+function pollChannelRefreshProgress() {
+    fetch('/editor/refresh/progress', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (!data.running) {
+                // Refresh completed
                 clearInterval(channelRefreshInterval);
                 channelRefreshInterval = null;
-                document.getElementById('channelRefreshProgress').style.display = 'none';
-                document.getElementById('refreshBtn').disabled = false;
-            });
-    }
-
-    // Cleanup interval on page unload
-    window.addEventListener('beforeunload', function () {
-        if (channelRefreshInterval) {
+                
+                document.getElementById('channelProgressTitle').textContent = 'Channel Refresh Complete!';
+                document.getElementById('channelProgressDetails').textContent = data.current_step || 'Reloading portals...';
+                document.getElementById('channelProgressBar').style.width = '100%';
+                document.getElementById('channelProgressPercent').textContent = '100%';
+                document.getElementById('channelProgressBar').classList.remove('progress-bar-animated');
+                document.getElementById('channelProgressBar').classList.add('bg-success');
+                
+                // Hide spinner
+                const spinner = document.querySelector('#channelRefreshProgress .spinner-border');
+                if (spinner) spinner.style.display = 'none';
+                
+                setTimeout(() => {
+                    document.getElementById('channelRefreshProgress').style.display = 'none';
+                    document.getElementById('refreshBtn').disabled = false;
+                    document.getElementById('channelProgressBar').classList.add('progress-bar-animated');
+                    document.getElementById('channelProgressBar').classList.remove('bg-success');
+                    if (spinner) spinner.style.display = 'block';
+                    loadPortals();
+                }, 3000);
+            } else {
+                // Update progress
+                const percent = data.portals_total > 0 ? Math.round((data.portals_done / data.portals_total) * 100) : 0;
+                
+                // Show portal name if available
+                let titleText = `Refreshing Channels... (${data.portals_done}/${data.portals_total} portals)`;
+                if (data.current_portal) {
+                    titleText = `Refreshing: ${data.current_portal} (${data.portals_done}/${data.portals_total})`;
+                }
+                
+                document.getElementById('channelProgressTitle').textContent = titleText;
+                document.getElementById('channelProgressDetails').textContent = data.current_step || 'Processing...';
+                document.getElementById('channelProgressBar').style.width = percent + '%';
+                document.getElementById('channelProgressPercent').textContent = percent + '%';
+            }
+        })
+        .catch(err => {
+            console.error('Error polling channel refresh progress:', err);
             clearInterval(channelRefreshInterval);
-        }
-    });
+            channelRefreshInterval = null;
+            document.getElementById('channelRefreshProgress').style.display = 'none';
+            document.getElementById('refreshBtn').disabled = false;
+        });
+}
 
-    // Video player
-    let plyrPlayer = null;
-    let hls = null;
-    let currentStreamUrl = '';
-
-    function playChannel(url, name) {
-        currentStreamUrl = url;
-        document.getElementById('channelLabel').textContent = name;
-
-        const videoElement = document.getElementById('player');
-        if (hls) { hls.destroy(); hls = null; }
-
-        if (!plyrPlayer) {
-            plyrPlayer = new Plyr(videoElement, {
-                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-                volume: 0.25
-            });
-        }
-
-        if (Hls.isSupported() && url.includes('.m3u8')) {
-            hls = new Hls();
-            hls.loadSource(url);
-            hls.attachMedia(videoElement);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => plyrPlayer.play());
-        } else {
-            videoElement.src = url;
-            plyrPlayer.play();
-        }
-
-        const videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
-        videoModal.show();
+// Cleanup interval on page unload
+window.addEventListener('beforeunload', function() {
+    if (channelRefreshInterval) {
+        clearInterval(channelRefreshInterval);
     }
+});
 
-    function copyStreamUrl() {
-        navigator.clipboard.writeText(currentStreamUrl).then(() => {
-            const btn = event.target.closest('button');
-            const origHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
-            btn.classList.replace('btn-primary', 'btn-success');
-            setTimeout(() => { btn.innerHTML = origHtml; btn.classList.replace('btn-success', 'btn-primary'); }, 2000);
+// Video player
+let plyrPlayer = null;
+let hls = null;
+let currentStreamUrl = '';
+
+function playChannel(url, name) {
+    currentStreamUrl = url;
+    document.getElementById('channelLabel').textContent = name;
+    
+    const videoElement = document.getElementById('player');
+    if (hls) { hls.destroy(); hls = null; }
+    
+    if (!plyrPlayer) {
+        plyrPlayer = new Plyr(videoElement, {
+            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+            volume: 0.25
         });
     }
+    
+    if (Hls.isSupported() && url.includes('.m3u8')) {
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(videoElement);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => plyrPlayer.play());
+    } else {
+        videoElement.src = url;
+        plyrPlayer.play();
+    }
+    
+    const videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
+    videoModal.show();
+}
 
-    document.getElementById('videoModal').addEventListener('hidden.bs.modal', () => {
-        if (plyrPlayer) plyrPlayer.stop();
-        if (hls) hls.destroy();
+function copyStreamUrl() {
+    navigator.clipboard.writeText(currentStreamUrl).then(() => {
+        const btn = event.target.closest('button');
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+        btn.classList.replace('btn-primary', 'btn-success');
+        setTimeout(() => { btn.innerHTML = origHtml; btn.classList.replace('btn-success', 'btn-primary'); }, 2000);
     });
+}
 
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+document.getElementById('videoModal').addEventListener('hidden.bs.modal', () => {
+    if (plyrPlayer) plyrPlayer.stop();
+    if (hls) hls.destroy();
+});
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Bulk Edit Functions
+let bulkRules = [];
+let bulkEditSettings = {
+    applyToNames: true,
+    applyToGenres: false,
+    caseSensitive: false,
+    useRegex: false
+};
+
+function openBulkEditModal() {
+    // Only clear preview
+    document.getElementById('bulkPreview').style.display = 'none';
+    
+    // Restore saved settings
+    document.getElementById('bulkEditNames').checked = bulkEditSettings.applyToNames;
+    document.getElementById('bulkEditGenres').checked = bulkEditSettings.applyToGenres;
+    document.getElementById('bulkCaseSensitive').checked = bulkEditSettings.caseSensitive;
+    document.getElementById('bulkUseRegex').checked = bulkEditSettings.useRegex;
+    
+    // Load saved rules if no rules are currently loaded
+    if (bulkRules.length === 0) {
+        loadSavedBulkRules();
     }
+    
+    // Load history and update UI
+    loadBulkEditHistory();
+    
+    const modal = new bootstrap.Modal(document.getElementById('bulkEditModal'));
+    modal.show();
+}
 
-    // Bulk Edit Functions
-    let bulkRules = [];
-    let bulkEditSettings = {
-        applyToNames: true,
-        applyToGenres: false,
-        caseSensitive: false,
-        useRegex: false
-    };
+function clearBulkRules() {
+    bulkRules.forEach(id => document.getElementById(`rule-${id}`)?.remove());
+    bulkRules = [];
+}
 
-    function openBulkEditModal() {
-        // Only clear preview
-        document.getElementById('bulkPreview').style.display = 'none';
-
-        // Restore saved settings
-        document.getElementById('bulkEditNames').checked = bulkEditSettings.applyToNames;
-        document.getElementById('bulkEditGenres').checked = bulkEditSettings.applyToGenres;
-        document.getElementById('bulkCaseSensitive').checked = bulkEditSettings.caseSensitive;
-        document.getElementById('bulkUseRegex').checked = bulkEditSettings.useRegex;
-
-        // Load saved rules if no rules are currently loaded
-        if (bulkRules.length === 0) {
-            loadSavedBulkRules();
-        }
-
-        // Load history and update UI
-        loadBulkEditHistory();
-
-        const modal = new bootstrap.Modal(document.getElementById('bulkEditModal'));
-        modal.show();
-    }
-
-    function clearBulkRules() {
-        bulkRules.forEach(id => document.getElementById(`rule-${id}`)?.remove());
-        bulkRules = [];
-    }
-
-    function loadSavedBulkRules() {
-        fetch('/editor/bulk-edit/saved-rules', { credentials: 'same-origin' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.rules && data.rules.length > 0) {
-                    // Load the most recent rules (limit to 10 to avoid clutter)
-                    const recentRules = data.rules.slice(0, 10);
-                    recentRules.forEach(rule => {
-                        addBulkRule(rule.search, rule.replace);
-                    });
-
-                    // Update info display
-                    const rulesInfo = document.getElementById('rulesInfo');
-                    if (rulesInfo) {
-                        rulesInfo.textContent = `Loaded ${recentRules.length} saved rules`;
-                    }
-
-                    console.log(`Loaded ${recentRules.length} saved rules`);
-                } else {
-                    const rulesInfo = document.getElementById('rulesInfo');
-                    if (rulesInfo) {
-                        rulesInfo.textContent = 'No saved rules found';
-                    }
-                }
-            })
-            .catch(err => {
-                console.error('Error loading saved rules:', err);
+function loadSavedBulkRules() {
+    fetch('/editor/bulk-edit/saved-rules', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.rules && data.rules.length > 0) {
+                // Load the most recent rules (limit to 10 to avoid clutter)
+                const recentRules = data.rules.slice(0, 10);
+                recentRules.forEach(rule => {
+                    addBulkRule(rule.search, rule.replace);
+                });
+                
+                // Update info display
                 const rulesInfo = document.getElementById('rulesInfo');
                 if (rulesInfo) {
-                    rulesInfo.textContent = 'Error loading saved rules';
+                    rulesInfo.textContent = `Loaded ${recentRules.length} saved rules`;
                 }
-            });
-    }
-
-    function clearSavedRules() {
-        showConfirm(
-            'Clear all saved rules from database? This will remove your rule history permanently.',
-            'Clear Saved Rules',
-            function () {
-                fetch('/editor/bulk-edit/clear-saved-rules', {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert('All saved rules cleared successfully!', 'Success', 'success');
-                            clearBulkRules(); // Also clear current rules
-                        } else {
-                            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
-                        }
-                    })
-                    .catch(err => {
-                        showAlert('Error clearing saved rules: ' + err, 'Error', 'danger');
-                    });
+                
+                console.log(`Loaded ${recentRules.length} saved rules`);
+            } else {
+                const rulesInfo = document.getElementById('rulesInfo');
+                if (rulesInfo) {
+                    rulesInfo.textContent = 'No saved rules found';
+                }
             }
-        );
-    }
+        })
+        .catch(err => {
+            console.error('Error loading saved rules:', err);
+            const rulesInfo = document.getElementById('rulesInfo');
+            if (rulesInfo) {
+                rulesInfo.textContent = 'Error loading saved rules';
+            }
+        });
+}
 
-    function loadBulkEditHistory() {
-        fetch('/editor/bulk-edit/history', { credentials: 'same-origin' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.history && data.history.length > 0) {
-                    const undoBtn = document.getElementById('undoBtn');
-                    undoBtn.disabled = false;
-
-                    const historyInfo = document.getElementById('bulkHistoryInfo');
-                    const historyText = document.getElementById('bulkHistoryText');
-
-                    const lastEdit = data.history[0];
-                    const ruleCount = lastEdit.rules.length;
-                    const timestamp = new Date(lastEdit.timestamp).toLocaleString();
-
-                    historyText.textContent = `Last edit: ${ruleCount} rule(s) applied at ${timestamp}`;
-                    historyInfo.style.display = 'block';
-                } else {
-                    document.getElementById('undoBtn').disabled = true;
-                    document.getElementById('bulkHistoryInfo').style.display = 'none';
-                }
-            })
-            .catch(err => {
-                console.error('Error loading history:', err);
-                document.getElementById('undoBtn').disabled = true;
-            });
-    }
-
-    function undoBulkEdit() {
-        showConfirm('Undo the last bulk edit? This will restore all channels to their previous state.', 'Undo Bulk Edit', function () {
-            const undoBtn = document.getElementById('undoBtn');
-            const originalText = undoBtn.innerHTML;
-            undoBtn.disabled = true;
-            undoBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Undoing...';
-
-            fetch('/editor/bulk-edit/undo', {
+function clearSavedRules() {
+    showConfirm(
+        'Clear all saved rules from database? This will remove your rule history permanently.',
+        'Clear Saved Rules',
+        function() {
+            fetch('/editor/bulk-edit/clear-saved-rules', {
                 method: 'POST',
                 credentials: 'same-origin'
             })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        showAlert('Successfully undone last bulk edit!', 'Success', 'success');
-                        loadBulkEditHistory(); // Refresh history
-                        loadPortals(); // Refresh portal list
-                    } else {
-                        showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
-                        undoBtn.disabled = false;
-                        undoBtn.innerHTML = originalText;
-                    }
-                })
-                .catch(err => {
-                    showAlert('Error undoing bulk edit: ' + err, 'Error', 'danger');
-                    undoBtn.disabled = false;
-                    undoBtn.innerHTML = originalText;
-                });
-        });
-    }
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('All saved rules cleared successfully!', 'Success', 'success');
+                    clearBulkRules(); // Also clear current rules
+                } else {
+                    showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                }
+            })
+            .catch(err => {
+                showAlert('Error clearing saved rules: ' + err, 'Error', 'danger');
+            });
+        }
+    );
+}
 
-    function resetAllCustomizations() {
-        showConfirm(
-            'Reset ALL custom names and genres to original values? This will affect all channels across all portals and cannot be undone!',
-            'Reset All Customizations',
-            function () {
-                const btn = event.target.closest('button');
-                const originalText = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Resetting...';
-
-                fetch('/editor/reset-all', {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                })
-                    .then(res => res.json())
-                    .then(data => {
-                        btn.disabled = false;
-                        btn.innerHTML = originalText;
-
-                        if (data.success) {
-                            showAlert('All customizations reset successfully!', 'Success', 'success');
-                            bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
-                            loadPortals(); // Refresh portal list
-                        } else {
-                            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
-                        }
-                    })
-                    .catch(err => {
-                        btn.disabled = false;
-                        btn.innerHTML = originalText;
-                        showAlert('Error resetting customizations: ' + err, 'Error', 'danger');
-                    });
+function loadBulkEditHistory() {
+    fetch('/editor/bulk-edit/history', {credentials: 'same-origin'})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.history && data.history.length > 0) {
+                const undoBtn = document.getElementById('undoBtn');
+                undoBtn.disabled = false;
+                
+                const historyInfo = document.getElementById('bulkHistoryInfo');
+                const historyText = document.getElementById('bulkHistoryText');
+                
+                const lastEdit = data.history[0];
+                const ruleCount = lastEdit.rules.length;
+                const timestamp = new Date(lastEdit.timestamp).toLocaleString();
+                
+                historyText.textContent = `Last edit: ${ruleCount} rule(s) applied at ${timestamp}`;
+                historyInfo.style.display = 'block';
+            } else {
+                document.getElementById('undoBtn').disabled = true;
+                document.getElementById('bulkHistoryInfo').style.display = 'none';
             }
-        );
-    }
+        })
+        .catch(err => {
+            console.error('Error loading history:', err);
+            document.getElementById('undoBtn').disabled = true;
+        });
+}
 
-    function addBulkRule(search = '', replace = '') {
-        const ruleId = Date.now();
-        const ruleHtml = `
+function undoBulkEdit() {
+    showConfirm('Undo the last bulk edit? This will restore all channels to their previous state.', 'Undo Bulk Edit', function() {
+        const undoBtn = document.getElementById('undoBtn');
+        const originalText = undoBtn.innerHTML;
+        undoBtn.disabled = true;
+        undoBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Undoing...';
+        
+        fetch('/editor/bulk-edit/undo', {
+            method: 'POST',
+            credentials: 'same-origin'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Successfully undone last bulk edit!', 'Success', 'success');
+                loadBulkEditHistory(); // Refresh history
+                loadPortals(); // Refresh portal list
+            } else {
+                showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                undoBtn.disabled = false;
+                undoBtn.innerHTML = originalText;
+            }
+        })
+        .catch(err => {
+            showAlert('Error undoing bulk edit: ' + err, 'Error', 'danger');
+            undoBtn.disabled = false;
+            undoBtn.innerHTML = originalText;
+        });
+    });
+}
+
+function resetAllCustomizations() {
+    showConfirm(
+        'Reset ALL custom names and genres to original values? This will affect all channels across all portals and cannot be undone!', 
+        'Reset All Customizations', 
+        function() {
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Resetting...';
+            
+            fetch('/editor/reset-all', {
+                method: 'POST',
+                credentials: 'same-origin'
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                
+                if (data.success) {
+                    showAlert('All customizations reset successfully!', 'Success', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
+                    loadPortals(); // Refresh portal list
+                } else {
+                    showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                showAlert('Error resetting customizations: ' + err, 'Error', 'danger');
+            });
+        }
+    );
+}
+
+function addBulkRule(search = '', replace = '') {
+    const ruleId = Date.now();
+    const ruleHtml = `
         <div class="row g-2 mb-3 align-items-center" id="rule-${ruleId}">
             <div class="col-5">
                 <input type="text" class="form-control" placeholder="Search for..." value="${escapeHtml(search)}" id="search-${ruleId}">
@@ -1299,230 +1290,230 @@
             </div>
         </div>
     `;
-        document.getElementById('bulkRulesList').insertAdjacentHTML('beforeend', ruleHtml);
-        bulkRules.push(ruleId);
-    }
+    document.getElementById('bulkRulesList').insertAdjacentHTML('beforeend', ruleHtml);
+    bulkRules.push(ruleId);
+}
 
-    function removeBulkRule(ruleId) {
-        document.getElementById(`rule-${ruleId}`).remove();
-        bulkRules = bulkRules.filter(id => id !== ruleId);
-    }
+function removeBulkRule(ruleId) {
+    document.getElementById(`rule-${ruleId}`).remove();
+    bulkRules = bulkRules.filter(id => id !== ruleId);
+}
 
-    function applyPreset(preset) {
-        // Ask if user wants to clear existing rules or add to them
-        if (bulkRules.length > 0) {
-            showConfirm(
-                'Clear existing rules and apply preset, or add preset to existing rules?',
-                'Apply Preset',
-                function () {
-                    // Clear and apply
-                    clearBulkRules();
-                    addPresetRules(preset);
-                },
-                function () {
-                    // Just add
-                    addPresetRules(preset);
-                },
-                'info',
-                'Clear & Apply',
-                'Add to Existing'
-            );
-        } else {
-            addPresetRules(preset);
-        }
-    }
-
-    function addPresetRules(preset) {
-        switch (preset) {
-            case 'vip':
-                addBulkRule('VIP', '');
-                addBulkRule('★VIP★', '');
-                addBulkRule('[VIP]', '');
-                addBulkRule('(VIP)', '');
-                break;
-            case 'emoji':
-                document.getElementById('bulkUseRegex').checked = true;
-                addBulkRule('[\\u{1F300}-\\u{1F9FF}]', '');
-                addBulkRule('[\\u{2600}-\\u{26FF}]', '');
-                addBulkRule('[\\u{2700}-\\u{27BF}]', '');
-                break;
-            case 'country':
-                // Enable regex for country codes
-                document.getElementById('bulkUseRegex').checked = true;
-                // Match country codes with any separator (: | - _ space) at the beginning
-                addBulkRule('^(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)[:|\\-_\\s]+', '');
-                // Also match country codes in brackets or parentheses
-                addBulkRule('\\[(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\]\\s*', '');
-                addBulkRule('\\((DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\)\\s*', '');
-                break;
-            case 'brackets':
-                document.getElementById('bulkUseRegex').checked = true;
-                addBulkRule('\\[.*?\\]', '');
-                addBulkRule('\\(.*?\\)', '');
-                break;
-            case 'separators':
-                document.getElementById('bulkUseRegex').checked = true;
-                // Remove multiple pipes, dashes, underscores
-                addBulkRule('\\|+', '');
-                addBulkRule('\\-{2,}', '');
-                addBulkRule('_{2,}', '');
-                addBulkRule(':{2,}', '');
-                // Remove trailing separators
-                addBulkRule('[\\|\\-_:]+$', '');
-                // Remove leading separators
-                addBulkRule('^[\\|\\-_:]+', '');
-                break;
-            case 'whitespace':
-                document.getElementById('bulkUseRegex').checked = true;
-                // Remove multiple spaces
-                addBulkRule('\\s{2,}', ' ');
-                // Remove leading/trailing spaces (handled by backend)
-                // Remove spaces before/after separators
-                addBulkRule('\\s+([\\|\\-_:])\\s+', '$1 ');
-                break;
-        }
-    }
-
-    function getBulkRules() {
-        const rules = [];
-        bulkRules.forEach(id => {
-            const search = document.getElementById(`search-${id}`)?.value;
-            const replace = document.getElementById(`replace-${id}`)?.value;
-            if (search !== undefined) {
-                rules.push({ search, replace });
-            }
-        });
-        return rules;
-    }
-
-    function previewBulkEdit() {
-        const rules = getBulkRules();
-        if (rules.length === 0) {
-            showToast('Please add at least one rule', 'warning');
-            return;
-        }
-
-        const applyToNames = document.getElementById('bulkEditNames').checked;
-        const applyToGenres = document.getElementById('bulkEditGenres').checked;
-        const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
-        const useRegex = document.getElementById('bulkUseRegex').checked;
-
-        // Get sample channels
-        const sampleChannels = Object.values(categoriesData).flat().slice(0, 5);
-        let changes = 0;
-        let examples = [];
-
-        sampleChannels.forEach(ch => {
-            let originalName = ch.customChannelName || ch.channelName;
-            let newName = originalName;
-
-            if (applyToNames) {
-                rules.forEach(rule => {
-                    if (useRegex) {
-                        const flags = caseSensitive ? 'gu' : 'giu';
-                        const regex = new RegExp(rule.search, flags);
-                        newName = newName.replace(regex, rule.replace);
-                    } else {
-                        const flags = caseSensitive ? 'g' : 'gi';
-                        const regex = new RegExp(rule.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-                        newName = newName.replace(regex, rule.replace);
-                    }
-                });
-            }
-
-            if (newName !== originalName) {
-                changes++;
-                if (examples.length < 3) {
-                    examples.push(`"${originalName}" → "${newName}"`);
-                }
-            }
-        });
-
-        const previewDiv = document.getElementById('bulkPreview');
-        const previewText = document.getElementById('bulkPreviewText');
-
-        if (changes > 0) {
-            previewText.innerHTML = `Found ${changes} changes in sample:<br>${examples.join('<br>')}`;
-            previewDiv.style.display = 'block';
-        } else {
-            previewText.innerHTML = 'No changes detected in sample channels';
-            previewDiv.style.display = 'block';
-        }
-    }
-
-    function applyBulkEdit() {
-        const rules = getBulkRules();
-        if (rules.length === 0) {
-            showToast('Please add at least one rule', 'warning');
-            return;
-        }
-
-        const applyToNames = document.getElementById('bulkEditNames').checked;
-        const applyToGenres = document.getElementById('bulkEditGenres').checked;
-        const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
-        const useRegex = document.getElementById('bulkUseRegex').checked;
-
-        if (!applyToNames && !applyToGenres) {
-            showToast('Please select at least one option (Names or Genres)', 'warning');
-            return;
-        }
-
+function applyPreset(preset) {
+    // Ask if user wants to clear existing rules or add to them
+    if (bulkRules.length > 0) {
         showConfirm(
-            `Apply ${rules.length} rule(s) to all channels?`,
-            'Bulk Edit',
-            function () {
-                performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex);
-            }
+            'Clear existing rules and apply preset, or add preset to existing rules?',
+            'Apply Preset',
+            function() {
+                // Clear and apply
+                clearBulkRules();
+                addPresetRules(preset);
+            },
+            function() {
+                // Just add
+                addPresetRules(preset);
+            },
+            'info',
+            'Clear & Apply',
+            'Add to Existing'
         );
+    } else {
+        addPresetRules(preset);
     }
+}
 
-    function performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex) {
-        // Save settings for next time
-        bulkEditSettings = {
-            applyToNames: applyToNames,
-            applyToGenres: applyToGenres,
-            caseSensitive: caseSensitive,
-            useRegex: useRegex
-        };
+function addPresetRules(preset) {
+    switch(preset) {
+        case 'vip':
+            addBulkRule('VIP', '');
+            addBulkRule('★VIP★', '');
+            addBulkRule('[VIP]', '');
+            addBulkRule('(VIP)', '');
+            break;
+        case 'emoji':
+            document.getElementById('bulkUseRegex').checked = true;
+            addBulkRule('[\\u{1F300}-\\u{1F9FF}]', '');
+            addBulkRule('[\\u{2600}-\\u{26FF}]', '');
+            addBulkRule('[\\u{2700}-\\u{27BF}]', '');
+            break;
+        case 'country':
+            // Enable regex for country codes
+            document.getElementById('bulkUseRegex').checked = true;
+            // Match country codes with any separator (: | - _ space) at the beginning
+            addBulkRule('^(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)[:|\\-_\\s]+', '');
+            // Also match country codes in brackets or parentheses
+            addBulkRule('\\[(DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\]\\s*', '');
+            addBulkRule('\\((DE|UK|US|FR|IT|ES|NL|BE|AT|CH|GER|ENG|USA|FRA|ITA|ESP|NLD|BEL|AUT|CHE)\\)\\s*', '');
+            break;
+        case 'brackets':
+            document.getElementById('bulkUseRegex').checked = true;
+            addBulkRule('\\[.*?\\]', '');
+            addBulkRule('\\(.*?\\)', '');
+            break;
+        case 'separators':
+            document.getElementById('bulkUseRegex').checked = true;
+            // Remove multiple pipes, dashes, underscores
+            addBulkRule('\\|+', '');
+            addBulkRule('\\-{2,}', '');
+            addBulkRule('_{2,}', '');
+            addBulkRule(':{2,}', '');
+            // Remove trailing separators
+            addBulkRule('[\\|\\-_:]+$', '');
+            // Remove leading separators
+            addBulkRule('^[\\|\\-_:]+', '');
+            break;
+        case 'whitespace':
+            document.getElementById('bulkUseRegex').checked = true;
+            // Remove multiple spaces
+            addBulkRule('\\s{2,}', ' ');
+            // Remove leading/trailing spaces (handled by backend)
+            // Remove spaces before/after separators
+            addBulkRule('\\s+([\\|\\-_:])\\s+', '$1 ');
+            break;
+    }
+}
 
-        const btn = event?.target;
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Applying...';
+function getBulkRules() {
+    const rules = [];
+    bulkRules.forEach(id => {
+        const search = document.getElementById(`search-${id}`)?.value;
+        const replace = document.getElementById(`replace-${id}`)?.value;
+        if (search !== undefined) {
+            rules.push({ search, replace });
         }
+    });
+    return rules;
+}
 
-        fetch('/editor/bulk-edit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                rules: rules,
-                apply_to_names: applyToNames,
-                apply_to_genres: applyToGenres,
-                case_sensitive: caseSensitive,
-                use_regex: useRegex
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert(`Successfully updated ${data.updated} channels!`, 'Success', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
-                    loadBulkEditHistory(); // Refresh history for next time
-                    loadPortals();
+function previewBulkEdit() {
+    const rules = getBulkRules();
+    if (rules.length === 0) {
+        showToast('Please add at least one rule', 'warning');
+        return;
+    }
+    
+    const applyToNames = document.getElementById('bulkEditNames').checked;
+    const applyToGenres = document.getElementById('bulkEditGenres').checked;
+    const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
+    const useRegex = document.getElementById('bulkUseRegex').checked;
+    
+    // Get sample channels
+    const sampleChannels = Object.values(categoriesData).flat().slice(0, 5);
+    let changes = 0;
+    let examples = [];
+    
+    sampleChannels.forEach(ch => {
+        let originalName = ch.customChannelName || ch.channelName;
+        let newName = originalName;
+        
+        if (applyToNames) {
+            rules.forEach(rule => {
+                if (useRegex) {
+                    const flags = caseSensitive ? 'gu' : 'giu';
+                    const regex = new RegExp(rule.search, flags);
+                    newName = newName.replace(regex, rule.replace);
                 } else {
-                    showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
-                }
-            })
-            .catch(err => {
-                showAlert('Error applying bulk edit: ' + err, 'Error', 'danger');
-            })
-            .finally(() => {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="ti ti-check me-1"></i>Apply Changes';
+                    const flags = caseSensitive ? 'g' : 'gi';
+                    const regex = new RegExp(rule.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+                    newName = newName.replace(regex, rule.replace);
                 }
             });
+        }
+        
+        if (newName !== originalName) {
+            changes++;
+            if (examples.length < 3) {
+                examples.push(`"${originalName}" → "${newName}"`);
+            }
+        }
+    });
+    
+    const previewDiv = document.getElementById('bulkPreview');
+    const previewText = document.getElementById('bulkPreviewText');
+    
+    if (changes > 0) {
+        previewText.innerHTML = `Found ${changes} changes in sample:<br>${examples.join('<br>')}`;
+        previewDiv.style.display = 'block';
+    } else {
+        previewText.innerHTML = 'No changes detected in sample channels';
+        previewDiv.style.display = 'block';
     }
+}
+
+function applyBulkEdit() {
+    const rules = getBulkRules();
+    if (rules.length === 0) {
+        showToast('Please add at least one rule', 'warning');
+        return;
+    }
+    
+    const applyToNames = document.getElementById('bulkEditNames').checked;
+    const applyToGenres = document.getElementById('bulkEditGenres').checked;
+    const caseSensitive = document.getElementById('bulkCaseSensitive').checked;
+    const useRegex = document.getElementById('bulkUseRegex').checked;
+    
+    if (!applyToNames && !applyToGenres) {
+        showToast('Please select at least one option (Names or Genres)', 'warning');
+        return;
+    }
+    
+    showConfirm(
+        `Apply ${rules.length} rule(s) to all channels?`,
+        'Bulk Edit',
+        function() {
+            performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex);
+        }
+    );
+}
+
+function performBulkEdit(rules, applyToNames, applyToGenres, caseSensitive, useRegex) {
+    // Save settings for next time
+    bulkEditSettings = {
+        applyToNames: applyToNames,
+        applyToGenres: applyToGenres,
+        caseSensitive: caseSensitive,
+        useRegex: useRegex
+    };
+    
+    const btn = event?.target;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Applying...';
+    }
+    
+    fetch('/editor/bulk-edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            rules: rules,
+            apply_to_names: applyToNames,
+            apply_to_genres: applyToGenres,
+            case_sensitive: caseSensitive,
+            use_regex: useRegex
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`Successfully updated ${data.updated} channels!`, 'Success', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('bulkEditModal')).hide();
+            loadBulkEditHistory(); // Refresh history for next time
+            loadPortals();
+        } else {
+            showAlert('Error: ' + (data.error || 'Unknown error'), 'Error', 'danger');
+        }
+    })
+    .catch(err => {
+        showAlert('Error applying bulk edit: ' + err, 'Error', 'danger');
+    })
+    .finally(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ti ti-check me-1"></i>Apply Changes';
+        }
+    });
+}
 </script>
 {% endblock %}
