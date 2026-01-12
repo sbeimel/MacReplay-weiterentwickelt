@@ -8291,7 +8291,9 @@ def stream_channel(portalId, channelId, xc_user=None):
                             ffmpegcmd = ffmpegcmd.replace("<proxy>", proxy)
                         else:
                             ffmpegcmd = ffmpegcmd.replace("-http_proxy <proxy>", "")
-                        " ".join(ffmpegcmd.split())
+                        
+                        # Bereinige doppelte Leerzeichen und splitte in Array
+                        ffmpegcmd = " ".join(ffmpegcmd.split())
                         ffmpegcmd = ffmpegcmd.split()
                         return Response(
                             streamData(), mimetype="application/octet-stream"
