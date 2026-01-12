@@ -61,14 +61,11 @@ class ChannelCache:
         cache_key = f"{portal_id}_{mac}"
         
         with self.lock:
-            # Prüfe Cache
+            # Prüfe Cache (ohne Zeitlimit - unbegrenzt gültig)
             if cache_key in self.cache:
                 channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
+                logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels (cached since {timestamp})")
+                return channels
             
             # Cache miss - lade neu
             logger.info(f"Cache MISS für {cache_key} - loading from portal...")
@@ -77,7 +74,7 @@ class ChannelCache:
                 channels = stb.getAllChannels(url, mac, token, proxy)
                 if channels:
                     self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
+                    logger.info(f"Cached {len(channels)} channels für {cache_key} (permanent until manual refresh)")
                     return channels
             except Exception as e:
                 logger.error(f"Error loading channels for {cache_key}: {e}")
@@ -117,19 +114,10 @@ class ChannelCache:
                 logger.info(f"Complete cache invalidated ({count} entries)")
     
     def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
+        """Entferne abgelaufene Cache-Einträge - DEAKTIVIERT (unbegrenzter Cache)."""
+        # Keine automatische Bereinigung - Cache läuft unbegrenzt
+        # Nur manueller Refresh über Dashboard möglich
+        logger.debug("Cache cleanup skipped - unlimited cache duration")
     
     def get_cache_stats(self):
         """Hole Cache-Statistiken."""
@@ -368,11 +356,11 @@ hls_manager = None
 
 # Channel Cache für Performance-Optimierung
 class ChannelCache:
-    def __init__(self, cache_duration=43200):  # 12 Stunden (43200 Sekunden)
-        self.cache_duration = cache_duration
+    def __init__(self, cache_duration=None):  # Unbegrenzter Cache - nur manueller Refresh
+        self.cache_duration = cache_duration  # None = unbegrenzt
         self.cache = {}  # portal_mac -> (channels, timestamp)
         self.lock = threading.RLock()
-        logger.info(f"Channel cache initialized with {cache_duration/3600:.1f} hour duration")
+        logger.info("Channel cache initialized with unlimited duration - manual refresh only")
     
     def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
         """Hole Channels aus Cache oder lade sie neu."""
@@ -421,21 +409,6 @@ class ChannelCache:
             for key in keys_to_remove:
                 del self.cache[key]
             logger.info(f"Cache invalidated für Portal {portal_id}")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
 
 # Globaler Channel-Cache
 channel_cache = ChannelCache()
@@ -8952,7 +8925,8 @@ if __name__ == "__main__":
         logger.info("No channels in database, fetching from portals...")
         refresh_channels_cache()
     
-    start_refresh()
+    # Auto Line Refresh deaktiviert - wird über Settings konfiguriert
+    # start_refresh()  # Deaktiviert für v2.4.1
     
     # Initialize HLS stream manager with settings
     settings = getSettings()
@@ -8974,18 +8948,9 @@ if __name__ == "__main__":
     hls_manager.start_monitoring()
     logger.info(f"HLS Stream Manager initialized (max_streams={max_streams}, timeout={inactive_timeout}s)")
     
-    # Starte Channel-Cache Cleanup Task
-    def cache_cleanup_task():
-        """Background-Task der regelmäßig den Cache aufräumt."""
-        while True:
-            time.sleep(3600)  # Alle 1 Stunde (statt 5 Minuten)
-            try:
-                channel_cache.cleanup_expired()
-            except Exception as e:
-                logger.error(f"Error in cache cleanup: {e}")
-    
-    threading.Thread(target=cache_cleanup_task, daemon=True).start()
-    logger.info("Channel cache cleanup task started (runs every hour)")
+    # Channel-Cache läuft unbegrenzt - nur manueller Refresh über Dashboard
+    # Kein automatischer Cleanup - maximale Performance
+    logger.info("Channel cache runs indefinitely - manual refresh only via Dashboard")
     
     # Always use waitress for production in container
     logger.info("Starting Waitress server on 0.0.0.0:8001")
