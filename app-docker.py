@@ -27,10 +27,22 @@ else:
 
 # Create directories if they don't exist
 os.makedirs(log_dir, exist_ok=True)
-os.makedirs("/app/logs", exist_ok=True)
 
-# Log file path for container
-log_file_path = os.path.join("/app/logs", "MacReplay.log")
+# Try to create logs directory, fallback to data directory if permission denied
+try:
+    os.makedirs("/app/logs", exist_ok=True)
+    # Test write permission
+    test_file = "/app/logs/.write_test"
+    with open(test_file, 'w') as f:
+        f.write("test")
+    os.remove(test_file)
+    logs_dir = "/app/logs"
+except (PermissionError, OSError):
+    print("Warning: Cannot write to /app/logs, using data directory for logs")
+    logs_dir = log_dir
+
+# Log file path for container (use data directory for persistence)
+log_file_path = os.path.join(logs_dir, "MacReplayXC.log")
 
 # Set up logging
 fileHandler = logging.FileHandler(log_file_path)
@@ -7303,7 +7315,7 @@ def dashboard_stats():
 @app.route("/log")
 @authorise
 def log():
-    logFilePath = "/app/logs/MacReplay.log"
+    logFilePath = os.path.join(logs_dir, "MacReplayXC.log")
     
     try:
         with open(logFilePath) as f:
