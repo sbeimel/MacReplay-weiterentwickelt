@@ -408,7 +408,7 @@ defaultSettings = {
     "hls playlist size": "6",
     "hls max streams": "10",
     "hls inactive timeout": "30",
-    "ffmpeg timeout": "5",
+    "ffmpeg timeout": "30",
     "test streams": "true",
     "try all macs": "true",
     "use channel genres": "true",
@@ -8175,7 +8175,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                             logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(exit_code, mac, portalName))
                             moveMac(portalId, mac)
                         else:
-                            logger.debug(f"FFmpeg ended normally for MAC {mac}")
+                            logger.info(f"FFmpeg ended normally for MAC {mac}")
                         break
                     yield chunk
         except:
@@ -8312,10 +8312,6 @@ def stream_channel(portalId, channelId, xc_user=None):
                         # Bereinige doppelte Leerzeichen und splitte in Array
                         ffmpegcmd = " ".join(ffmpegcmd.split())
                         ffmpegcmd = ffmpegcmd.split()
-                        
-                        # Debug: Logge das FFmpeg-Kommando
-                        logger.debug(f"FFmpeg command: {' '.join(ffmpegcmd)}")
-                        logger.debug(f"Stream URL: {link}")
                         return Response(
                             streamData(), mimetype="application/octet-stream"
                         )
