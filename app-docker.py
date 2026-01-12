@@ -47,92 +47,7 @@ ffprobe_path = "ffprobe"
 import subprocess
 
 
-class ChannelCache:
-    """Intelligentes Channel-Caching für bessere Performance."""
-    
-    def __init__(self, cache_duration=1800):  # 30 Minuten
-        self.cache_duration = cache_duration
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info(f"ChannelCache initialized with {cache_duration}s duration")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache (ohne Zeitlimit - unbegrenzt gültig)
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels (cached since {timestamp})")
-                return channels
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                import stb
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key} (permanent until manual refresh)")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                logger.debug(f"Found channel {channel_id} in cache for {portal_id}_{mac}")
-                return channel
-        
-        logger.debug(f"Channel {channel_id} not found in cache for {portal_id}_{mac}")
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            if keys_to_remove:
-                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
-    
-    def invalidate_all(self):
-        """Lösche kompletten Cache."""
-        with self.lock:
-            count = len(self.cache)
-            self.cache.clear()
-            if count > 0:
-                logger.info(f"Complete cache invalidated ({count} entries)")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge - DEAKTIVIERT (unbegrenzter Cache)."""
-        # Keine automatische Bereinigung - Cache läuft unbegrenzt
-        # Nur manueller Refresh über Dashboard möglich
-        logger.debug("Cache cleanup skipped - unlimited cache duration")
-    
-    def get_cache_stats(self):
-        """Hole Cache-Statistiken."""
-        with self.lock:
-            total_entries = len(self.cache)
-            total_channels = sum(len(channels) for channels, _ in self.cache.values())
-            return {
-                "entries": total_entries,
-                "total_channels": total_channels,
-                "cache_duration": self.cache_duration
-            }
-
-
-# Globaler Channel-Cache
-channel_cache = ChannelCache()
+# Channel Cache wird weiter unten definiert
 
 def get_stream_url_with_auth(playlist_host, portal_id, channel_id):
     """
@@ -367,10 +282,15 @@ class ChannelCache:
         cache_key = f"{portal_id}_{mac}"
         
         with self.lock:
-            # Prüfe Cache
+            # Prüfe Cache (unbegrenzt gültig - keine Zeitprüfung bei None)
             if cache_key in self.cache:
                 channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
+                # Nur Zeitprüfung wenn cache_duration gesetzt ist
+                if self.cache_duration is None:
+                    # Unbegrenzter Cache - immer gültig
+                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels (unlimited cache)")
+                    return channels
+                elif time.time() - timestamp < self.cache_duration:
                     logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
                     return channels
                 else:
@@ -382,7 +302,8 @@ class ChannelCache:
                 channels = stb.getAllChannels(url, mac, token, proxy)
                 if channels:
                     self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
+                    cache_type = "unlimited" if self.cache_duration is None else f"{self.cache_duration}s"
+                    logger.info(f"Cached {len(channels)} channels für {cache_key} ({cache_type} cache)")
                     return channels
             except Exception as e:
                 logger.error(f"Error loading channels for {cache_key}: {e}")
@@ -408,7 +329,33 @@ class ChannelCache:
             keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
             for key in keys_to_remove:
                 del self.cache[key]
-            logger.info(f"Cache invalidated für Portal {portal_id}")
+            if keys_to_remove:
+                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
+    
+    def invalidate_all(self):
+        """Lösche kompletten Cache."""
+        with self.lock:
+            count = len(self.cache)
+            self.cache.clear()
+            if count > 0:
+                logger.info(f"Complete cache invalidated ({count} entries)")
+    
+    def cleanup_expired(self):
+        """Entferne abgelaufene Cache-Einträge - DEAKTIVIERT (unbegrenzter Cache)."""
+        # Keine automatische Bereinigung - Cache läuft unbegrenzt
+        # Nur manueller Refresh über Dashboard möglich
+        logger.debug("Cache cleanup skipped - unlimited cache duration")
+    
+    def get_cache_stats(self):
+        """Hole Cache-Statistiken."""
+        with self.lock:
+            total_entries = len(self.cache)
+            total_channels = sum(len(channels) for channels, _ in self.cache.values())
+            return {
+                "entries": total_entries,
+                "total_channels": total_channels,
+                "cache_duration": self.cache_duration
+            }
 
 # Globaler Channel-Cache
 channel_cache = ChannelCache()
