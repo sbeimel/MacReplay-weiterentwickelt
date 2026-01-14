@@ -8255,8 +8255,14 @@ def stream_channel(portalId, channelId, xc_user=None):
                 logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
         
         if not link:
-            logger.error(f"No stream link generated for MAC {mac}, channel {channelId}")
-            return make_response("No stream link available", 404)
+            logger.warning(f"No stream link generated for MAC {mac}, channel {channelId}")
+            # Markiere MAC als defekt und versuche nächste
+            logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
+            moveMac(portalId, mac)
+            
+            if not getSettings().get("try all macs", "true") == "true":
+                break
+            continue  # Versuche nächste MAC
 
         if link:
             if getSettings().get("test streams", "true") == "false" or testStream():
