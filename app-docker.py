@@ -3447,9 +3447,16 @@ def generate_portal_m3u(portal_id):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Determine group-title based on settings
+        if getSettings().get("use portal names as groups", "false") == "true":
+            # Use portal name as group
+            group_title = portals[portal_id].get("name", portal_id)
+        else:
+            # Use genre with optional portal prefix
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -3461,8 +3468,8 @@ def generate_portal_m3u(portal_id):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
@@ -3562,9 +3569,16 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Determine group-title based on settings
+        if getSettings().get("use portal names as groups", "false") == "true":
+            # Use portal name as group
+            group_title = portals[portal_id].get("name", portal_id)
+        else:
+            # Use genre with optional portal prefix
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -3576,8 +3590,8 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         
