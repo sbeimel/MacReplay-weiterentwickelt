@@ -5329,8 +5329,8 @@ def generate_playlist():
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
@@ -6482,10 +6482,17 @@ def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
             epg_id = db_channel['custom_epg_id'] if db_channel['custom_epg_id'] else channel_name
             logo = db_channel['logo'] or ""
             
-            # Apply portal prefix to genre only (for group-title organization)
-            portal_prefix = portal.get("portal prefix", "").strip()
-            if portal_prefix and genre:
-                genre = f"[{portal_prefix}] {genre}"
+            # Determine group-title based on settings
+            if getSettings().get("use portal names as groups", "false") == "true":
+                # Use portal name as group
+                group_title = portal.get("name", portal_id)
+            else:
+                # Use genre with optional portal prefix
+                portal_prefix = portal.get("portal prefix", "").strip()
+                if portal_prefix and genre:
+                    group_title = f"[{portal_prefix}] {genre}"
+                else:
+                    group_title = genre
             
             stream_id = f"{portal_id}_{channel_id}"
             # Standard XC API URL format for maximum compatibility
@@ -6496,7 +6503,7 @@ def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
             def escape_quotes(text):
                 return str(text).replace('"', '&quot;') if text else ""
             
-            m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(genre)}",{channel_name}\n'
+            m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(group_title)}",{channel_name}\n'
             m3u_content += f'{stream_url}\n'
     
     return m3u_content
