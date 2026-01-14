@@ -1,3 +1,17 @@
+GENRE zu Group-Title damit DIspatcharr das erkennt
+
+
+
+
+
+
+
+
+
+
+
+
+
 # MacReplayXC
 
 Proxy and management system for Stalker/MAC portals with XC API compatibility.
