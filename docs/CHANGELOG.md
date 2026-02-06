@@ -103,6 +103,13 @@
 - Keine manuelle Wartung mehr nötig
 - Transparente Logging-Ausgaben
 
+**Editor Performance**
+- Entfernt unnötige `refresh_lineup()` Aufrufe beim Speichern
+- Entfernt unnötige `refresh_xmltv()` Aufrufe bei Bulk-Operationen
+- Lineup wird nur bei Bedarf geladen (lazy loading)
+- EPG wird über "EPG Auto Refresh" Setting gesteuert
+- Massiv schnelleres Speichern von Channel-Edits
+
 **UI/UX**
 - Erweiterte Settings-Seite mit Cache-Optionen
 - Bessere Gruppierung und Hints

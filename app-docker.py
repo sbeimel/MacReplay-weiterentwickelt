@@ -4866,10 +4866,9 @@ def editor_portal_channels(portal_id):
 @authorise
 def editorSave():
     global last_playlist_host
-    # EPG refresh is controlled by EPG Auto Refresh setting
-    # Use Dashboard "Refresh EPG" button for manual refresh
+    # Force M3U playlist regeneration
     last_playlist_host = None
-    Thread(target=refresh_lineup).start()
+    # Lineup is lazy-loaded on /lineup.json request (no need to refresh here)
     
     enabledEdits = json.loads(request.form["enabledEdits"])
     numberEdits = json.loads(request.form["numberEdits"])
@@ -5145,10 +5144,9 @@ def editor_bulk_edit():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG (XC API queries database directly, so no separate cache to clear)
+        # Force M3U playlist regeneration (XMLTV is controlled by EPG Auto Refresh setting)
         global cached_xmltv, last_playlist_host
-        last_playlist_host = None  # Force M3U playlist regeneration
-        threading.Thread(target=refresh_xmltv, daemon=True).start()  # Refresh EPG
+        last_playlist_host = None
         
         logger.info(f"Bulk edit applied: {updated_count} channels updated")
         
@@ -5199,10 +5197,9 @@ def editor_bulk_edit_undo():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG
+        # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
         last_playlist_host = None
-        threading.Thread(target=refresh_xmltv, daemon=True).start()
         
         logger.info("Bulk edit undone successfully")
         
@@ -5328,10 +5325,9 @@ def editor_reset_all_customizations():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG
+        # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
         last_playlist_host = None
-        threading.Thread(target=refresh_xmltv, daemon=True).start()
         
         logger.info("All customizations reset to original values")
         
