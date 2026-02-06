@@ -1,5 +1,87 @@
 # Änderungen (Changelog)
 
+### [v3.0.0] - 06.02.2026 🎉
+
+#### 🆕 Neue Features
+
+**Advanced Channel Cache System**
+- 4 Cache-Modi: lazy-ram, ram, disk, hybrid
+- Bis zu 10x schnellere Channel-Zugriffe
+- Persistent über Container-Neustarts (disk/hybrid)
+- Intelligentes MAC-Fallback mit `find_channel_any_mac()`
+- Konfigurierbare Cache-Duration (unlimited, 1h, 2h, 24h)
+
+**Dashboard Cache-Management**
+- Rebuild Cache Button (lädt alle Kanäle neu)
+- Clear Cache Button (löscht kompletten Cache)
+- Live Cache-Statistiken (RAM/Disk Entries, Total Channels)
+- Auto-Update alle 30 Sekunden
+
+**XC API Portal-Filterung mit Namen**
+- Filterung nach Portal-ID ODER Portal-Name
+- Case-insensitive Namenssuche
+- Beispiel: `&portal_id=My%20Portal`
+
+**MAC-Regionen-Erkennung**
+- Automatische Flaggen-Anzeige (🇩🇪🇦🇹🇨🇭)
+- Basierend auf Genre-Namen
+- Anzeige in Portal-MAC-Tabelle
+
+**XC API M3U Copy Button**
+- Schnelles Kopieren der XC API URLs
+- Zeigt beide Varianten (ID + Name)
+- Automatische XC User Erkennung
+
+**Feature Wiki**
+- Neue Wiki-Seite mit allen Features
+- Performance-Vergleichstabelle
+- Links zu allen Dokumentationen
+- Erreichbar über Navigation
+
+#### 📚 Dokumentation
+
+- `docs/CACHE_MANAGEMENT.md` (3.500+ Zeilen)
+- `docs/XC_API_PORTAL_FILTERING.md` (500+ Zeilen)
+- `EPG_IMPROVEMENTS_SUMMARY.md` (300+ Zeilen)
+- `FEATURE_COMPARISON.md` (Detaillierter Vergleich)
+- `ORIGINAL_ADVANTAGES.txt` (Was ist im Original besser)
+
+#### 🔧 Verbesserungen
+
+**EPG-System (9 Verbesserungen)**
+- Raw XML Passthrough (alle Metadaten erhalten)
+- ID-based Matching (custom_epg_id Priorität)
+- M3U/XMLTV Alignment (100% Übereinstimmung)
+- Variant Deduplication (HD/FHD/UHD teilen EPG)
+- Portal EPG Enrichment (Kategorien, Regisseure, Schauspieler)
+- (lang=) Cleanup (entfernt Sprach-Artefakte)
+- Diagnostic Logging (EPG-Statistiken)
+
+**Stream-Performance**
+- Intelligentes MAC-Fallback
+- Cache-optimierte Channel-Suche
+- Automatische MAC-Auswahl
+- Besseres Logging für Debugging
+
+**UI/UX**
+- Erweiterte Settings-Seite mit Cache-Optionen
+- Bessere Gruppierung und Hints
+- Info-Cards mit Dokumentations-Links
+
+#### 🐛 Bugfixes
+
+- Syntax-Fehler behoben: `break`/`continue` außerhalb von Schleifen entfernt
+- Wiki-Navigation hinzugefügt
+
+#### 📊 Statistiken
+
+- +1.216 Zeilen Code (+14,8%)
+- +4.000 Zeilen Dokumentation
+- 8 neue Features
+- 3 verbesserte Features
+
+---
+
 ### [v2.3.1] - 14.12.2025
 
 #### Neue Funktionen
