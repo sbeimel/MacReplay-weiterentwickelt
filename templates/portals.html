@@ -179,12 +179,12 @@
 </div>
 
 <div class="page-body">
-    <div class="container-xl">
+    <div class="container-fluid" style="max-width: 1600px;">
 
         {% if portals %}
         <div class="row row-cards">
             {% for portal_id, portal in portals.items() %}
-            <div class="col-md-6 col-xl-4">
+            <div class="col-md-6 col-xl-3">
                 <div class="card portal-card">
                     <div class="card-body">
                         <div class="d-flex align-items-start mb-3">
@@ -231,7 +231,7 @@
                         <!-- Primary Actions Row -->
                         <div class="row g-2 mb-2">
                             <div class="col-6">
-                                <button class="btn btn-outline-success btn-sm w-100"
+                                <button class="btn btn-outline-success w-100"
                                     onclick="selectGenres('{{ portal_id }}', '{{ portal.name }}')">
                                     <i class="ti ti-filter me-1"></i>Select Genres
                                 </button>
@@ -240,22 +240,23 @@
                                 {% if settings.get('public playlist access', 'true') == 'true' %}
                                 <!-- Triple Button: Download M3U + Copy Legacy URL + Copy XC URL -->
                                 <div class="btn-group w-100" role="group">
-                                    <button class="btn btn-outline-info btn-sm"
-                                        onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
-                                        <i class="ti ti-download me-1"></i>Download M3U
+                                    <button class="btn btn-outline-info"
+                                        onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')"
+                                        title="Download M3U">
+                                        <i class="ti ti-download"></i>
                                     </button>
-                                    <button class="btn btn-outline-info btn-sm"
+                                    <button class="btn btn-outline-info"
                                         onclick="copyLegacyUrl('{{ portal_id }}')" title="Copy Legacy M3U URL">
                                         <i class="ti ti-copy"></i>
                                     </button>
-                                    <button class="btn btn-outline-success btn-sm"
+                                    <button class="btn btn-outline-success"
                                         onclick="copyXcUrl('{{ portal_id }}', '{{ portal.name }}')" title="Copy XC API M3U URL">
                                         <i class="ti ti-api"></i>
                                     </button>
                                 </div>
                                 {% else %}
                                 <!-- Single Button: Download M3U only -->
-                                <button class="btn btn-outline-info btn-sm w-100"
+                                <button class="btn btn-outline-info w-100"
                                     onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
                                     <i class="ti ti-download me-1"></i>Download M3U
                                 </button>
@@ -266,19 +267,19 @@
                         <!-- Secondary Actions Row -->
                         <div class="row g-2 mb-2">
                             <div class="col-4">
-                                <button class="btn btn-outline-warning btn-sm w-100"
+                                <button class="btn btn-outline-warning w-100"
                                     onclick="checkMacStatus('{{ portal_id }}', '{{ portal.name }}')">
                                     <i class="ti ti-activity me-1"></i>MAC Status
                                 </button>
                             </div>
                             <div class="col-4">
-                                <button class="btn btn-outline-primary btn-sm w-100"
+                                <button class="btn btn-outline-primary w-100"
                                     onclick="editPortal('{{ portal_id }}')">
                                     <i class="ti ti-edit me-1"></i>Edit
                                 </button>
                             </div>
                             <div class="col-4">
-                                <button class="btn btn-outline-danger btn-sm w-100"
+                                <button class="btn btn-outline-danger w-100"
                                     onclick="deletePortal('{{ portal_id }}', '{{ portal.name }}')">
                                     <i class="ti ti-trash me-1"></i>Delete
                                 </button>
@@ -542,7 +543,7 @@
                                                 <thead>
                                                     <tr>
                                                         <th>MAC</th>
-                                                        <th>Regions</th>
+                                                        <th>DE ?</th>
                                                         <th>Expires</th>
                                                         <th>Status</th>
                                                         <th>Activity</th>
@@ -1166,19 +1167,24 @@
         .then(data => {
             const macRegions = data.mac_regions || {};
             
-            // Update each row with flags
+            // Update each row with DE check (green checkmark if DE content found)
             for (const [mac, regions] of Object.entries(macRegions)) {
                 const flagCell = document.getElementById(`flags_${mac.replace(/:/g, '_')}`);
-                if (flagCell && regions.length > 0) {
-                    const flags = regions.map(region => {
-                        if (region === 'de') return '🇩🇪';
-                        if (region === 'at') return '🇦🇹';
-                        if (region === 'ch') return '🇨🇭';
-                        return '';
-                    }).join(' ');
-                    flagCell.innerHTML = flags || '<span class="text-muted">-</span>';
+                if (flagCell && regions && regions.length > 0) {
+                    // Nur prüfen ob DE vorhanden ist
+                    const hasDE = regions.some(region => {
+                        const r = String(region).toLowerCase().trim();
+                        return r === 'de' || r === 'ger' || r === 'german' || r === 'deutsch' || r === 'germany' || r === 'allemagne';
+                    });
+                    
+                    // Grüner Haken wenn DE gefunden, sonst leer
+                    if (hasDE) {
+                        flagCell.innerHTML = '<span class="text-success">✓</span>';
+                    } else {
+                        flagCell.innerHTML = '';
+                    }
                 } else if (flagCell) {
-                    flagCell.innerHTML = '<span class="text-muted">-</span>';
+                    flagCell.innerHTML = '';
                 }
             }
         })

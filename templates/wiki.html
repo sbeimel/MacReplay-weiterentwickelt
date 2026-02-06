@@ -12,7 +12,7 @@
     </div>
 </div>
 <div class="page-body">
-    <div class="container-xl">
+    <div class="container-fluid" style="max-width: 1400px;">
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title"><i class="ti ti-star me-2"></i>Übersicht v3.0.0</h3></div>
             <div class="card-body">
@@ -32,70 +32,200 @@
                 
                 <h5 class="mb-3">🔐 Sicherheit</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>Enable Security</strong></td><td>Aktiviert Login-Schutz für Web-Interface</td><td><span class="badge bg-warning">Empfohlen: true</span></td></tr>
-                        <tr><td><strong>Username</strong></td><td>Benutzername für Login</td><td>Standard: admin</td></tr>
-                        <tr><td><strong>Password</strong></td><td>Passwort für Login</td><td><span class="badge bg-danger">Ändern!</span></td></tr>
-                        <tr><td><strong>Public Playlist Access</strong></td><td>M3U/XMLTV ohne Login erreichbar</td><td>true = öffentlich, false = Login nötig</td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Enable Security</strong></td>
+                                <td>Aktiviert Login-Schutz für Web-Interface</td>
+                                <td><span class="badge bg-warning">Empfohlen: true</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Username</strong></td>
+                                <td>Benutzername für Login</td>
+                                <td>Standard: admin</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Password</strong></td>
+                                <td>Passwort für Login</td>
+                                <td><span class="badge bg-danger">Ändern!</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Public Playlist Access</strong></td>
+                                <td>M3U/XMLTV ohne Login erreichbar</td>
+                                <td>true = öffentlich<br>false = Login nötig</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
                 <h5 class="mb-3">⚡ Channel Cache (NEU in v3.0.0)</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>Cache Mode</strong></td><td>Wie Kanäle gecacht werden</td><td>
-                            <strong>lazy-ram:</strong> On-demand, minimal RAM<br>
-                            <strong>ram:</strong> Pre-Cache, schnell<br>
-                            <strong>disk:</strong> Persistent, spart RAM<br>
-                            <strong>hybrid:</strong> RAM+Disk, beste Performance
-                        </td></tr>
-                        <tr><td><strong>Cache Duration</strong></td><td>Wie lange Cache gültig bleibt</td><td>
-                            <strong>unlimited:</strong> Nie ablaufen<br>
-                            <strong>1h/2h/24h:</strong> Auto-Refresh
-                        </td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cache Mode</strong></td>
+                                <td>Wie Kanäle gecacht werden</td>
+                                <td>
+                                    <strong>lazy-ram:</strong> On-demand, minimal RAM<br>
+                                    <strong>ram:</strong> Pre-Cache, schnell<br>
+                                    <strong>disk:</strong> Persistent, spart RAM<br>
+                                    <strong>hybrid:</strong> RAM+Disk, beste Performance
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cache Duration</strong></td>
+                                <td>Wie lange Cache gültig bleibt</td>
+                                <td>
+                                    <strong>unlimited:</strong> Nie ablaufen<br>
+                                    <strong>1h/2h/24h:</strong> Auto-Refresh
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
                 <h5 class="mb-3">📺 Streaming</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>Stream Method</strong></td><td>Wie Streams weitergeleitet werden</td><td>
-                            <strong>ffmpeg:</strong> Re-encode (kompatibel)<br>
-                            <strong>redirect:</strong> Direkt (schneller)
-                        </td></tr>
-                        <tr><td><strong>FFmpeg Command</strong></td><td>FFmpeg-Parameter für Streaming</td><td>Standard funktioniert für die meisten</td></tr>
-                        <tr><td><strong>FFmpeg Timeout</strong></td><td>Timeout in Sekunden</td><td>Standard: 10s</td></tr>
-                        <tr><td><strong>Test Streams</strong></td><td>Streams vor Weiterleitung testen</td><td>true = sicherer, false = schneller</td></tr>
-                        <tr><td><strong>Try All MACs</strong></td><td>Alle MACs probieren bei Fehler</td><td><span class="badge bg-success">Empfohlen: true</span></td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Stream Method</strong></td>
+                                <td>Wie Streams weitergeleitet werden</td>
+                                <td>
+                                    <strong>ffmpeg:</strong> Re-encode (kompatibel)<br>
+                                    <strong>redirect:</strong> Direkt (schneller)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>FFmpeg Command</strong></td>
+                                <td>FFmpeg-Parameter für Streaming</td>
+                                <td>Standard funktioniert für die meisten</td>
+                            </tr>
+                            <tr>
+                                <td><strong>FFmpeg Timeout</strong></td>
+                                <td>Timeout in Sekunden</td>
+                                <td>Standard: 10s</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Test Streams</strong></td>
+                                <td>Streams vor Weiterleitung testen</td>
+                                <td>true = sicherer<br>false = schneller</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Try All MACs</strong></td>
+                                <td>Alle MACs probieren bei Fehler</td>
+                                <td><span class="badge bg-success">Empfohlen: true</span></td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
                 <h5 class="mb-3">📅 EPG (Electronic Program Guide)</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>EPG Auto Refresh</strong></td><td>EPG automatisch aktualisieren</td><td>
-                            <strong>manual:</strong> Nur per Button<br>
-                            <strong>auto:</strong> Automatisch nach Intervall
-                        </td></tr>
-                        <tr><td><strong>EPG Refresh Interval Days</strong></td><td>Wie oft EPG aktualisieren</td><td>Standard: 1 Tag</td></tr>
-                        <tr><td><strong>EPG Fallback Countries</strong></td><td>Fallback-EPG Länder (Komma-getrennt)</td><td>Beispiel: DE,AT,CH</td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>EPG Auto Refresh</strong></td>
+                                <td>EPG automatisch aktualisieren</td>
+                                <td>
+                                    <strong>manual:</strong> Nur per Button<br>
+                                    <strong>auto:</strong> Automatisch nach Intervall
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>EPG Refresh Interval Days</strong></td>
+                                <td>Wie oft EPG aktualisieren</td>
+                                <td>Standard: 1 Tag</td>
+                            </tr>
+                            <tr>
+                                <td><strong>EPG Fallback Countries</strong></td>
+                                <td>Fallback-EPG Länder (Komma-getrennt)</td>
+                                <td>Beispiel: DE,AT,CH</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
                 <h5 class="mb-3">🎬 VOD & Series</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>VOD Auto Refresh</strong></td><td>VOD-Kategorien automatisch laden</td><td>manual oder auto</td></tr>
-                        <tr><td><strong>VOD Refresh Interval Days</strong></td><td>Wie oft VOD aktualisieren</td><td>Standard: 7 Tage</td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>VOD Auto Refresh</strong></td>
+                                <td>VOD-Kategorien automatisch laden</td>
+                                <td>manual oder auto</td>
+                            </tr>
+                            <tr>
+                                <td><strong>VOD Refresh Interval Days</strong></td>
+                                <td>Wie oft VOD aktualisieren</td>
+                                <td>Standard: 7 Tage</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
                 <h5 class="mb-3">🌐 HDHomeRun</h5>
                 <div class="table-responsive mb-4">
-                    <table class="table table-sm">
-                        <tr><td><strong>Enable HDHR</strong></td><td>HDHomeRun-Emulation aktivieren</td><td>Für Plex/Emby/Jellyfin</td></tr>
-                        <tr><td><strong>HDHR Device ID</strong></td><td>Eindeutige Geräte-ID</td><td>Automatisch generiert</td></tr>
-                        <tr><td><strong>HDHR Friendly Name</strong></td><td>Anzeigename in Apps</td><td>Frei wählbar</td></tr>
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Enable HDHR</strong></td>
+                                <td>HDHomeRun-Emulation aktivieren</td>
+                                <td>Für Plex/Emby/Jellyfin</td>
+                            </tr>
+                            <tr>
+                                <td><strong>HDHR Device ID</strong></td>
+                                <td>Eindeutige Geräte-ID</td>
+                                <td>Automatisch generiert</td>
+                            </tr>
+                            <tr>
+                                <td><strong>HDHR Friendly Name</strong></td>
+                                <td>Anzeigename in Apps</td>
+                                <td>Frei wählbar</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
@@ -223,32 +353,31 @@
 
                 <div class="mb-4">
                     <h5><span class="badge bg-primary me-2">5</span>MAC-Regionen-Erkennung</h5>
-                    <p><strong>Automatische Flaggen-Anzeige basierend auf Genre-Namen:</strong></p>
-                    <div class="row g-2 text-center">
-                        <div class="col-md-4">
-                            <div class="border rounded p-2">
-                                <div style="font-size: 2em;">🇩🇪</div>
-                                <strong>Deutschland</strong><br>
-                                <small>DE, GER, GERMAN, DEUTSCH</small>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="border rounded p-2">
-                                <div style="font-size: 2em;">🇦🇹</div>
-                                <strong>Österreich</strong><br>
-                                <small>AT, AUSTRIA, ÖSTERREICH</small>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="border rounded p-2">
-                                <div style="font-size: 2em;">🇨🇭</div>
-                                <strong>Schweiz</strong><br>
-                                <small>CH, SWITZERLAND, SCHWEIZ</small>
+                    <p><strong>Automatische DE-Erkennung basierend auf Genre-Namen:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="row align-items-center">
+                                        <div class="col-auto">
+                                            <span style="font-size: 3em;">✓</span>
+                                        </div>
+                                        <div class="col">
+                                            <h6 class="mb-2">Deutsche Inhalte erkannt</h6>
+                                            <p class="text-muted mb-0">
+                                                Wenn Genre-Namen Keywords wie <strong>DE</strong>, <strong>GER</strong>, <strong>GERMAN</strong>, 
+                                                <strong>DEUTSCH</strong>, <strong>GERMANY</strong> oder <strong>ALLEMAGNE</strong> enthalten, 
+                                                wird ein grüner Haken in der Spalte "DE ?" angezeigt.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="alert alert-info mt-2 mb-0">
-                        <strong>Anzeige:</strong> Portals → Edit Portal → Current MACs → Spalte "Regions"
+                        <strong>Anzeige:</strong> Portals → Edit Portal → Current MACs → Spalte "DE ?"<br>
+                        <strong>Hinweis:</strong> AT und CH werden nicht mehr separat angezeigt - nur DE-Erkennung
                     </div>
                 </div>
 
