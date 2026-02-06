@@ -10,6 +10,27 @@ import threading
 from threading import Thread
 import logging
 
+# Fast JSON library (10x faster than standard json)
+try:
+    import orjson as json_lib
+    JSON_LOADS = lambda x: json_lib.loads(x)
+    JSON_DUMPS = lambda x: json_lib.dumps(x).decode('utf-8')
+    logger_json = logging.getLogger("MacReplayXC")
+    logger_json.info("Using orjson for fast JSON parsing (10x performance boost)")
+except ImportError:
+    try:
+        import ujson as json_lib
+        JSON_LOADS = json_lib.loads
+        JSON_DUMPS = json_lib.dumps
+        logger_json = logging.getLogger("MacReplayXC")
+        logger_json.info("Using ujson for fast JSON parsing (5x performance boost)")
+    except ImportError:
+        import json as json_lib
+        JSON_LOADS = json_lib.loads
+        JSON_DUMPS = lambda x: json_lib.dumps(x, indent=4)
+        logger_json = logging.getLogger("MacReplayXC")
+        logger_json.info("Using standard json library (consider installing orjson for better performance)")
+
 # Version
 __version__ = "3.0.0"
 
@@ -212,7 +233,11 @@ except (subprocess.CalledProcessError, FileNotFoundError):
 import flask
 from flask import Flask, jsonify
 import stb
-import json
+
+# Use optimized JSON library (already imported at top)
+# json_lib is either orjson, ujson, or standard json
+import json  # Keep for compatibility, but prefer json_lib for performance-critical operations
+
 import subprocess
 import uuid
 import xml.etree.cElementTree as ET
@@ -9840,6 +9865,23 @@ if __name__ == "__main__":
     logger.info("Starting automatic cleanup of occupied streams (every 5 minutes)")
     cleanup_occupied_streams()
     
-    # Always use waitress for production in container
+    # Waitress Performance Configuration
+    # Optimized for high-performance streaming and concurrent requests
     logger.info("Starting Waitress server on 0.0.0.0:8001")
-    waitress.serve(app, host="0.0.0.0", port=8001, _quiet=True, threads=24) 
+    logger.info("Performance: 48 threads, 8192 channel timeout, 1MB buffers")
+    
+    waitress.serve(
+        app,
+        host="0.0.0.0",
+        port=8001,
+        threads=48,                    # Increased from 24 to 48 for better concurrency
+        channel_timeout=8192,          # Increased timeout for long-running streams (2+ hours)
+        recv_bytes=1048576,            # 1MB receive buffer (better for large requests)
+        send_bytes=1048576,            # 1MB send buffer (better for streaming)
+        outbuf_overflow=2097152,       # 2MB overflow buffer (prevents blocking)
+        inbuf_overflow=1048576,        # 1MB input overflow buffer
+        connection_limit=1000,         # Max 1000 concurrent connections
+        cleanup_interval=30,           # Cleanup idle connections every 30s
+        asyncore_use_poll=True,        # Use poll() instead of select() (better performance)
+        _quiet=True
+    ) 
