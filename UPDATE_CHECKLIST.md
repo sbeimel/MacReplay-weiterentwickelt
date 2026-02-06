@@ -31,6 +31,7 @@
 - [x] Dashboard Cache-Management
 - [x] Feature Wiki
 - [x] CloudScraper Status-Monitoring
+- [x] Automatic Log Cleanup (24h)
 
 ### Dokumentation
 - [x] CACHE_MANAGEMENT.md

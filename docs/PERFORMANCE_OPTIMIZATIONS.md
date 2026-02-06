@@ -281,12 +281,38 @@ ENV PYTHONDONTWRITEBYTECODE=1
 - Entfernt abgelaufene Streams (>2h)
 - Verhindert Memory-Leaks
 
-### 3. Connection Pooling
+### 3. Automatic Log Cleanup
+- **Automatisches Löschen alter Log-Dateien**
+- Löscht Logs älter als 24 Stunden
+- Läuft alle 6 Stunden
+- Verhindert Disk-Space-Probleme
+- Keine manuelle Wartung nötig
+
+**Implementierung:**
+```python
+def cleanup_old_logs():
+    """Delete log files older than 24 hours."""
+    # Löscht alle *.log und *.log.old Dateien älter als 24h
+    # Loggt gelöschte Dateien mit Alter
+
+def schedule_log_cleanup():
+    """Schedule periodic log cleanup every 6 hours."""
+    cleanup_old_logs()  # Sofort beim Start
+    threading.Timer(6 * 60 * 60, schedule_log_cleanup).start()
+```
+
+**Vorteile:**
+- Keine manuellen Log-Rotationen mehr nötig
+- Verhindert volle Festplatten
+- Automatische Bereinigung im Hintergrund
+- Transparente Logging-Ausgaben
+
+### 4. Connection Pooling
 - Requests verwendet Connection-Pooling
 - Wiederverwendung von HTTP-Connections
 - Schnellere API-Calls
 
-### 4. Async Operations
+### 5. Async Operations
 - EPG-Refresh läuft asynchron
 - VOD-Refresh läuft asynchron
 - Blockiert nicht den Haupt-Thread

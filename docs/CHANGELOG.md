@@ -96,6 +96,13 @@
 - Automatische MAC-Auswahl
 - Besseres Logging für Debugging
 
+**Automatic Log Cleanup**
+- Automatisches Löschen von Log-Dateien älter als 24 Stunden
+- Läuft alle 6 Stunden im Hintergrund
+- Verhindert Disk-Space-Probleme
+- Keine manuelle Wartung mehr nötig
+- Transparente Logging-Ausgaben
+
 **UI/UX**
 - Erweiterte Settings-Seite mit Cache-Optionen
 - Bessere Gruppierung und Hints

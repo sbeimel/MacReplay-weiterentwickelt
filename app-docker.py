@@ -64,6 +64,40 @@ consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(consoleFormat)
 logger.addHandler(consoleHandler)
 
+# Log cleanup function
+def cleanup_old_logs():
+    """Delete log files older than 24 hours."""
+    try:
+        log_dir = "/app/logs"
+        if not os.path.exists(log_dir):
+            return
+        
+        now = time.time()
+        cutoff_time = now - (24 * 60 * 60)  # 24 hours in seconds
+        
+        deleted_count = 0
+        for filename in os.listdir(log_dir):
+            if filename.endswith('.log') or filename.endswith('.log.old'):
+                filepath = os.path.join(log_dir, filename)
+                try:
+                    file_mtime = os.path.getmtime(filepath)
+                    if file_mtime < cutoff_time:
+                        os.remove(filepath)
+                        deleted_count += 1
+                        logger.info(f"Deleted old log file: {filename} (age: {(now - file_mtime) / 3600:.1f} hours)")
+                except Exception as e:
+                    logger.error(f"Error deleting log file {filename}: {e}")
+        
+        if deleted_count > 0:
+            logger.info(f"Log cleanup completed: {deleted_count} old log file(s) deleted")
+    except Exception as e:
+        logger.error(f"Error in log cleanup: {e}")
+
+def schedule_log_cleanup():
+    """Schedule periodic log cleanup every 6 hours."""
+    cleanup_old_logs()  # Run immediately on startup
+    threading.Timer(6 * 60 * 60, schedule_log_cleanup).start()  # Schedule next run in 6 hours
+
 # Docker-optimized ffmpeg paths (system-installed)
 ffmpeg_path = "ffmpeg"
 ffprobe_path = "ffprobe"
@@ -4832,7 +4866,8 @@ def editor_portal_channels(portal_id):
 @authorise
 def editorSave():
     global last_playlist_host
-    threading.Thread(target=refresh_xmltv, daemon=True).start()
+    # EPG refresh is controlled by EPG Auto Refresh setting
+    # Use Dashboard "Refresh EPG" button for manual refresh
     last_playlist_host = None
     Thread(target=refresh_lineup).start()
     
@@ -5474,6 +5509,8 @@ def proxy_test_page():
 @app.route("/settings/save", methods=["POST"])
 @authorise
 def save():
+    global channel_cache
+    
     settings = {}
 
     for setting, _ in defaultSettings.items():
@@ -5492,7 +5529,31 @@ def save():
 
     saveSettings(settings)
     logger.info("Settings saved!")
-    Thread(target=refresh_xmltv).start()
+    
+    # Reinitialize channel cache if cache settings changed
+    old_cache_mode = channel_cache.mode if channel_cache else None
+    old_cache_duration = channel_cache.cache_duration if channel_cache else None
+    new_cache_mode = settings.get("channel cache mode", "lazy-ram")
+    new_cache_duration_str = settings.get("channel cache duration", "unlimited")
+    
+    if new_cache_duration_str == "unlimited":
+        new_cache_duration = None
+    else:
+        try:
+            new_cache_duration = int(new_cache_duration_str)
+        except:
+            new_cache_duration = None
+    
+    # Reinitialize cache if mode or duration changed
+    if old_cache_mode != new_cache_mode or old_cache_duration != new_cache_duration:
+        logger.info(f"Cache settings changed: {old_cache_mode} → {new_cache_mode}, {old_cache_duration} → {new_cache_duration}")
+        logger.info("Reinitializing channel cache...")
+        channel_cache = init_channel_cache()
+        logger.info(f"Channel cache reinitialized: mode={channel_cache.mode}, duration={channel_cache.cache_duration or 'unlimited'}")
+    
+    # EPG refresh is controlled by EPG Auto Refresh setting
+    # Use Dashboard "Refresh EPG" button for manual refresh
+    
     flash("Settings saved!", "success")
     return redirect("/settings", code=302)
 
@@ -9440,7 +9501,7 @@ def dashboard_stats():
         "xmltv_in_ram": False,  # XMLTV no longer cached in RAM
         "occupied_streams": len(occupied),
         "occupied_portals": len(occupied.keys()),
-        "channel_cache_entries": len(channel_cache.cache) if channel_cache else 0,
+        "channel_cache_entries": len(channel_cache.ram_cache) if channel_cache and channel_cache.ram_cache else 0,
         "hls_active_streams": len(hls_manager.streams) if hls_manager else 0,
     }
     
@@ -9869,6 +9930,10 @@ if __name__ == "__main__":
     # Channel-Cache läuft unbegrenzt - nur manueller Refresh über Dashboard
     # Kein automatischer Cleanup - maximale Performance
     logger.info("Channel cache runs indefinitely - manual refresh only via Dashboard")
+    
+    # Start automatic log cleanup (every 6 hours, deletes logs older than 24 hours)
+    logger.info("Starting automatic log cleanup (every 6 hours, deletes logs older than 24 hours)")
+    schedule_log_cleanup()
     
     # Start automatic cleanup of occupied streams dictionary (memory leak prevention)
     logger.info("Starting automatic cleanup of occupied streams (every 5 minutes)")
