@@ -818,8 +818,8 @@ def init_channel_cache():
     
     return ChannelCache(mode=cache_mode, cache_duration=cache_duration)
 
-# Globaler Channel-Cache
-channel_cache = init_channel_cache()
+# Globaler Channel-Cache (wird später initialisiert nach getSettings() Definition)
+channel_cache = None
 
 # EPG refresh progress tracking
 epg_refresh_progress = {
@@ -1310,6 +1310,11 @@ def saveSettings(settings):
     except Exception as e:
         logger.error(f"Error saving settings: {e}")
         raise
+
+
+# Initialize Channel Cache after getSettings is defined
+channel_cache = init_channel_cache()
+logger.info(f"Channel cache initialized: mode={channel_cache.mode}, duration={channel_cache.cache_duration or 'unlimited'}")
 
 
 def get_db_connection():
