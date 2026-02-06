@@ -1,7 +1,9 @@
+# Modern Docker Compose (version tag is deprecated since Compose v2)
+# Automatically uses latest Compose specification
 services:
   macreplayxc:
     build: .
-    # image: ghcr.io/un1x-dev/macreplayxc:latest
+    image: macreplayxc:3.0.0
     container_name: MacReplayXC
     ports:
       - "8001:8001"
@@ -15,10 +17,19 @@ services:
     environment:
       - HOST=0.0.0.0:8001
       - CONFIG=/app/data/MacReplayXC.json
+      # Python 3.13 Performance Optimizations
+      - PYTHONOPTIMIZE=2
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/dashboard/stats"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s  # More time for Python 3.13 + Cache initialization
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
