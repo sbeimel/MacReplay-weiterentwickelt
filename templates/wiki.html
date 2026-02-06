@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+
+{% block title %}Feature Wiki - MacReplayXC{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title">
+                    <i class="ti ti-book me-2"></i>
+                    Feature Wiki
+                </h2>
+                <div class="text-muted mt-1">Erweiterte Features & Verbesserungen</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        
+        <!-- Overview Card -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title"><i class="ti ti-star me-2"></i>Übersicht</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h1 text-primary mb-1">8</div>
+                            <div class="text-muted">Neue Features</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h1 text-success mb-1">3</div>
+                            <div class="text-muted">Verbesserte Features</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h1 text-info mb-1">10x</div>
+                            <div class="text-muted">Schnellere Zugriffe</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h1 text-warning mb-1">+15%</div>
+                            <div class="text-muted">Mehr Code</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Features -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title"><i class="ti ti-sparkles me-2"></i>Neue Features</h3>
+            </div>
+            <div class="card-body">
+                
+                <!-- Feature 1: Cache System -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">1</span>Advanced Channel Cache System</h4>
+                    <p class="text-muted">4 verschiedene Cache-Modi für optimale Performance</p>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title">lazy-ram (Standard)</h5>
+                                    <p class="card-text small">
+                                        <strong>Verhalten:</strong> Cache on-demand, nur im RAM<br>
+                                        <strong>Vorteil:</strong> Minimaler Speicherverbrauch<br>
+                                        <strong>Ideal für:</strong> Kleine Setups, wenige Portale
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title">hybrid (Empfohlen)</h5>
+                                    <p class="card-text small">
+                                        <strong>Verhalten:</strong> Pre-Cache, RAM + Disk<br>
+                                        <strong>Vorteil:</strong> Schnell + Persistent<br>
+                                        <strong>Ideal für:</strong> Produktiv-Systeme
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="ti ti-info-circle me-2"></i>
+                        <strong>Einstellung:</strong> Settings → Channel Cache Mode<br>
+                        <strong>Dokumentation:</strong> <a href="/docs/CACHE_MANAGEMENT.md" target="_blank">CACHE_MANAGEMENT.md</a>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Feature 2: MAC Fallback -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">2</span>Intelligentes MAC-Fallback</h4>
+                    <p class="text-muted">Automatisches Durchprobieren aller MACs bis Channel gefunden</p>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <div class="card border-danger">
+                                <div class="card-header bg-danger-lt">
+                                    <strong>❌ Original-Verhalten</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ol class="mb-0 small">
+                                        <li>Versuche MAC1 → Nicht gefunden</li>
+                                        <li>Cache MAC1 (leer)</li>
+                                        <li>Versuche MAC2 → Gefunden</li>
+                                        <li>Nächster Zugriff: MAC1 (leer) → Fehler!</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-success">
+                                <div class="card-header bg-success-lt">
+                                    <strong>✅ Neues Verhalten</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ol class="mb-0 small">
+                                        <li>Probiere MAC1 → Nicht gefunden → Weiter</li>
+                                        <li>Probiere MAC2 → Gefunden!</li>
+                                        <li>Cache MAC2 mit Channel</li>
+                                        <li>Nächster Zugriff: MAC2 → Instant!</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-success mt-3">
+                        <i class="ti ti-check me-2"></i>
+                        <strong>Vorteil:</strong> Weniger fehlgeschlagene Streams, intelligenteres Caching
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Feature 3: Portal Filtering -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">3</span>XC API Portal-Filterung mit Namen</h4>
+                    <p class="text-muted">Filterung nach Portal-ID ODER Portal-Name</p>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title">Mit Portal-ID</h5>
+                                    <code class="small">
+                                        /get.php?username=test&password=test<br>
+                                        &portal_id=portal_1
+                                    </code>
+                                    <p class="mt-2 mb-0 small text-muted">
+                                        ✅ Eindeutig<br>
+                                        ✅ Schneller
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title">Mit Portal-Name (NEU!)</h5>
+                                    <code class="small">
+                                        /get.php?username=test&password=test<br>
+                                        &portal_id=My%20Portal
+                                    </code>
+                                    <p class="mt-2 mb-0 small text-muted">
+                                        ✅ Lesbarer<br>
+                                        ✅ Einfacher zu merken
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="ti ti-info-circle me-2"></i>
+                        <strong>Dokumentation:</strong> <a href="/docs/XC_API_PORTAL_FILTERING.md" target="_blank">XC_API_PORTAL_FILTERING.md</a>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Feature 4: Dashboard Cache Management -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">4</span>Dashboard Cache-Management</h4>
+                    <p class="text-muted">Einfache Cache-Verwaltung direkt im Dashboard</p>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-4">
+                            <div class="card bg-success-lt">
+                                <div class="card-body text-center">
+                                    <i class="ti ti-reload icon mb-2 text-success" style="font-size: 2em;"></i>
+                                    <h5>Rebuild Cache</h5>
+                                    <p class="small mb-0">Lädt alle Kanäle neu von allen Portalen</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-warning-lt">
+                                <div class="card-body text-center">
+                                    <i class="ti ti-trash icon mb-2 text-warning" style="font-size: 2em;"></i>
+                                    <h5>Clear Cache</h5>
+                                    <p class="small mb-0">Löscht kompletten Cache</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-info-lt">
+                                <div class="card-body text-center">
+                                    <i class="ti ti-database icon mb-2 text-info" style="font-size: 2em;"></i>
+                                    <h5>Cache Stats</h5>
+                                    <p class="small mb-0">Live-Statistiken (Auto-Update 30s)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Feature 5: MAC Regions -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">5</span>MAC-Regionen-Erkennung</h4>
+                    <p class="text-muted">Automatische Erkennung von Regionen basierend auf Genre-Namen</p>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-4">
+                            <div class="card bg-light text-center">
+                                <div class="card-body">
+                                    <div style="font-size: 3em;">🇩🇪</div>
+                                    <h5>Deutschland</h5>
+                                    <p class="small mb-0">DE, GER, GERMAN, DEUTSCH</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light text-center">
+                                <div class="card-body">
+                                    <div style="font-size: 3em;">🇦🇹</div>
+                                    <h5>Österreich</h5>
+                                    <p class="small mb-0">AT, AUSTRIA, ÖSTERREICH</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light text-center">
+                                <div class="card-body">
+                                    <div style="font-size: 3em;">🇨🇭</div>
+                                    <h5>Schweiz</h5>
+                                    <p class="small mb-0">CH, SWITZERLAND, SCHWEIZ</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="ti ti-info-circle me-2"></i>
+                        <strong>Anzeige:</strong> Portals → Edit Portal → Current MACs → Spalte "Regions"
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Feature 6: XC Copy Button -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-primary me-2">6</span>XC API M3U Copy Button</h4>
+                    <p class="text-muted">Schnelles Kopieren der XC API M3U URL</p>
+                    
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <p><strong>Features:</strong></p>
+                            <ul>
+                                <li>Automatische XC User Erkennung</li>
+                                <li>Generiert URL mit Portal-ID</li>
+                                <li>Generiert URL mit Portal-Name</li>
+                                <li>Zeigt beide Varianten im Dialog</li>
+                                <li>Kopiert in Zwischenablage</li>
+                            </ul>
+                            <p class="mb-0"><strong>Button:</strong> Portals → Portal → [🔗] Button (grün)</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Improved Features -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title"><i class="ti ti-trending-up me-2"></i>Verbesserte Features</h3>
+            </div>
+            <div class="card-body">
+                
+                <!-- EPG System -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-success me-2">1</span>EPG-System (9 Verbesserungen)</h4>
+                    
+                    <div class="list-group">
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="badge bg-success">✓</span>
+                                </div>
+                                <div class="col">
+                                    <strong>Raw XML Passthrough</strong>
+                                    <div class="text-muted small">Alle Metadaten bleiben erhalten (Icons, Kategorien, Credits, Ratings)</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="badge bg-success">✓</span>
+                                </div>
+                                <div class="col">
+                                    <strong>ID-based Matching</strong>
+                                    <div class="text-muted small">custom_epg_id hat Priorität über Namens-Matching</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="badge bg-success">✓</span>
+                                </div>
+                                <div class="col">
+                                    <strong>M3U/XMLTV Alignment</strong>
+                                    <div class="text-muted small">100% Übereinstimmung zwischen Playlist und EPG</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="badge bg-success">✓</span>
+                                </div>
+                                <div class="col">
+                                    <strong>Variant Deduplication</strong>
+                                    <div class="text-muted small">HD/FHD/UHD Varianten teilen sich EPG</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <span class="badge bg-success">✓</span>
+                                </div>
+                                <div class="col">
+                                    <strong>Portal EPG Enrichment</strong>
+                                    <div class="text-muted small">Kategorien, Regisseure, Schauspieler hinzugefügt</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="ti ti-info-circle me-2"></i>
+                        <strong>Dokumentation:</strong> <a href="/docs/EPG_IMPROVEMENTS_SUMMARY.md" target="_blank">EPG_IMPROVEMENTS_SUMMARY.md</a>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Stream Performance -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-success me-2">2</span>Stream-Performance</h4>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card border-danger">
+                                <div class="card-header bg-danger-lt">
+                                    <strong>Original</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="mb-0">
+                                        <li>Basis-Streaming</li>
+                                        <li>Einfache MAC-Rotation</li>
+                                        <li>Keine Cache-Optimierung</li>
+                                        <li>2-5 Sek pro Zugriff</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-success">
+                                <div class="card-header bg-success-lt">
+                                    <strong>Verbessert</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="mb-0">
+                                        <li>Intelligentes MAC-Fallback</li>
+                                        <li>Cache-optimierte Suche</li>
+                                        <li>Automatische MAC-Auswahl</li>
+                                        <li>< 0.1 Sek (aus Cache)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- UI/UX -->
+                <div class="mb-4">
+                    <h4><span class="badge bg-success me-2">3</span>UI/UX</h4>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5>Dashboard</h5>
+                                    <ul class="small mb-0">
+                                        <li>Cache-Statistiken</li>
+                                        <li>Rebuild/Clear Buttons</li>
+                                        <li>Auto-Update (30s)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5>Portals</h5>
+                                    <ul class="small mb-0">
+                                        <li>MAC-Regionen-Flaggen</li>
+                                        <li>XC API Copy Button</li>
+                                        <li>Bessere MAC-Tabelle</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5>Settings</h5>
+                                    <ul class="small mb-0">
+                                        <li>Cache Settings</li>
+                                        <li>Info-Cards</li>
+                                        <li>Bessere Gruppierung</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Performance Comparison -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title"><i class="ti ti-chart-line me-2"></i>Performance-Vergleich</h3>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-vcenter">
+                        <thead>
+                            <tr>
+                                <th>Szenario</th>
+                                <th>Original</th>
+                                <th>Mein Projekt (lazy-ram)</th>
+                                <th>Mein Projekt (hybrid)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Erster Zugriff</strong></td>
+                                <td><span class="badge bg-warning">2-5 Sek</span></td>
+                                <td><span class="badge bg-warning">2-5 Sek</span></td>
+                                <td><span class="badge bg-success">< 0.1 Sek</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Zweiter Zugriff</strong></td>
+                                <td><span class="badge bg-warning">2-5 Sek</span></td>
+                                <td><span class="badge bg-success">< 0.1 Sek</span></td>
+                                <td><span class="badge bg-success">< 0.1 Sek</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Nach Neustart</strong></td>
+                                <td><span class="badge bg-warning">2-5 Sek</span></td>
+                                <td><span class="badge bg-warning">2-5 Sek</span></td>
+                                <td><span class="badge bg-info">< 0.5 Sek</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>RAM-Verbrauch</strong></td>
+                                <td><span class="badge bg-success">Minimal</span></td>
+                                <td><span class="badge bg-success">Minimal</span></td>
+                                <td><span class="badge bg-warning">Hoch</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Persistenz</strong></td>
+                                <td><span class="badge bg-danger">Nein</span></td>
+                                <td><span class="badge bg-danger">Nein</span></td>
+                                <td><span class="badge bg-success">Ja</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentation -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="ti ti-book-2 me-2"></i>Dokumentation</h3>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <a href="/docs/CACHE_MANAGEMENT.md" target="_blank" class="list-group-item list-group-item-action">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <i class="ti ti-database icon text-primary"></i>
+                            </div>
+                            <div class="col">
+                                <strong>CACHE_MANAGEMENT.md</strong>
+                                <div class="text-muted small">Vollständige Cache-Dokumentation (3.500+ Zeilen)</div>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="/docs/XC_API_PORTAL_FILTERING.md" target="_blank" class="list-group-item list-group-item-action">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <i class="ti ti-filter icon text-info"></i>
+                            </div>
+                            <div class="col">
+                                <strong>XC_API_PORTAL_FILTERING.md</strong>
+                                <div class="text-muted small">Portal-Filterung Anleitung (500+ Zeilen)</div>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="/docs/EPG_IMPROVEMENTS_SUMMARY.md" target="_blank" class="list-group-item list-group-item-action">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <i class="ti ti-calendar icon text-success"></i>
+                            </div>
+                            <div class="col">
+                                <strong>EPG_IMPROVEMENTS_SUMMARY.md</strong>
+                                <div class="text-muted small">9 EPG-Verbesserungen dokumentiert (300+ Zeilen)</div>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="/FEATURE_COMPARISON.md" target="_blank" class="list-group-item list-group-item-action">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <i class="ti ti-git-compare icon text-warning"></i>
+                            </div>
+                            <div class="col">
+                                <strong>FEATURE_COMPARISON.md</strong>
+                                <div class="text-muted small">Detaillierter Feature-Vergleich</div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

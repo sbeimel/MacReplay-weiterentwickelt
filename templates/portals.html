@@ -238,7 +238,7 @@
                             </div>
                             <div class="col-6">
                                 {% if settings.get('public playlist access', 'true') == 'true' %}
-                                <!-- Dual Button: Download M3U + Copy URL -->
+                                <!-- Triple Button: Download M3U + Copy Legacy URL + Copy XC URL -->
                                 <div class="btn-group w-100" role="group">
                                     <button class="btn btn-outline-info btn-sm"
                                         onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
@@ -247,6 +247,10 @@
                                     <button class="btn btn-outline-info btn-sm"
                                         onclick="copyLegacyUrl('{{ portal_id }}')" title="Copy Legacy M3U URL">
                                         <i class="ti ti-copy"></i>
+                                    </button>
+                                    <button class="btn btn-outline-success btn-sm"
+                                        onclick="copyXcUrl('{{ portal_id }}', '{{ portal.name }}')" title="Copy XC API M3U URL">
+                                        <i class="ti ti-api"></i>
                                     </button>
                                 </div>
                                 {% else %}
@@ -538,6 +542,7 @@
                                                 <thead>
                                                     <tr>
                                                         <th>MAC</th>
+                                                        <th>Regions</th>
                                                         <th>Expires</th>
                                                         <th>Status</th>
                                                         <th>Activity</th>
@@ -1016,6 +1021,60 @@
         }
     }
 
+    function copyXcUrl(portalId, portalName) {
+        // Generate the XC API M3U URL with portal filtering
+        const baseUrl = window.location.origin;
+        
+        // Get first XC user credentials (if available)
+        fetch('/xc-users/list')
+            .then(response => response.json())
+            .then(data => {
+                if (data.users && data.users.length > 0) {
+                    const firstUser = data.users[0];
+                    const username = firstUser.username;
+                    const password = firstUser.password;
+                    
+                    // Generate XC URL with portal_id (using portal ID)
+                    const xcUrlById = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts&portal_id=${portalId}`;
+                    
+                    // Generate XC URL with portal_id (using portal name - URL encoded)
+                    const portalNameEncoded = encodeURIComponent(portalName);
+                    const xcUrlByName = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts&portal_id=${portalNameEncoded}`;
+                    
+                    // Copy the URL by ID (recommended)
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(xcUrlById).then(() => {
+                            showCopySuccess(event.target.closest('button'));
+                            showConfirm(
+                                `XC API M3U URL copied to clipboard!<br><br>` +
+                                `<strong>By Portal ID (Recommended):</strong><br>` +
+                                `<code style="font-size: 0.8em; word-break: break-all;">${xcUrlById}</code><br><br>` +
+                                `<strong>By Portal Name (Alternative):</strong><br>` +
+                                `<code style="font-size: 0.8em; word-break: break-all;">${xcUrlByName}</code>`,
+                                'XC API URL Copied',
+                                null,
+                                null,
+                                'success',
+                                'OK',
+                                null
+                            );
+                        }).catch(err => {
+                            console.error('Clipboard API failed:', err);
+                            fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                        });
+                    } else {
+                        fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                    }
+                } else {
+                    showAlert('No XC API users found. Please create an XC user first in the XC Users page.', 'Error', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching XC users:', error);
+                showAlert('Error fetching XC users. Please try again.', 'Error', 'danger');
+            });
+    }
+
     function fallbackCopyToClipboard(text, btn) {
         // Create temporary textarea element
         const textArea = document.createElement('textarea');
@@ -1096,6 +1155,37 @@
         macTableBody.innerHTML = '';
 
         const now = Date.now();
+        
+        // Load MAC regions (flags) asynchronously
+        fetch('/portal/mac-regions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal_id: portalId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const macRegions = data.mac_regions || {};
+            
+            // Update each row with flags
+            for (const [mac, regions] of Object.entries(macRegions)) {
+                const flagCell = document.getElementById(`flags_${mac.replace(/:/g, '_')}`);
+                if (flagCell && regions.length > 0) {
+                    const flags = regions.map(region => {
+                        if (region === 'de') return '🇩🇪';
+                        if (region === 'at') return '🇦🇹';
+                        if (region === 'ch') return '🇨🇭';
+                        return '';
+                    }).join(' ');
+                    flagCell.innerHTML = flags || '<span class="text-muted">-</span>';
+                } else if (flagCell) {
+                    flagCell.innerHTML = '<span class="text-muted">-</span>';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading MAC regions:', error);
+        });
+        
         for (const [mac, expiry] of Object.entries(portal.macs)) {
             const row = document.createElement('tr');
             const expires = Date.parse(expiry);
@@ -1115,6 +1205,9 @@
 
             row.innerHTML = `
             <td><code>${mac.toUpperCase()}</code></td>
+            <td id="flags_${mac.replace(/:/g, '_')}" style="font-size: 1.2em;">
+                <span class="spinner-border spinner-border-sm text-muted" role="status"></span>
+            </td>
             <td class="text-muted small">${expiry}</td>
             <td>${statusBadge}</td>
             <td>

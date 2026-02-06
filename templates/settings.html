@@ -193,9 +193,32 @@
                 <div class="col-lg-6">
                     <div class="card h-100">
                         <div class="card-header">
-                            <h3 class="card-title">EPG Fallback</h3>
+                            <h3 class="card-title">EPG Settings</h3>
                         </div>
                         <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">EPG Auto-Refresh</label>
+                                <select class="form-select" name="epg auto refresh">
+                                    <option value="manual" {{ 'selected' if settings.get('epg auto refresh', 'manual') == 'manual' }}>Manual Only (Recommended)</option>
+                                    <option value="auto" {{ 'selected' if settings.get('epg auto refresh') == 'auto' }}>Automatic</option>
+                                </select>
+                                <small class="form-hint">Manual: EPG only refreshes when you click "Refresh EPG" button. Automatic: EPG refreshes based on interval below.</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Auto-Refresh Interval (Days)</label>
+                                <select class="form-select" name="epg refresh interval days">
+                                    <option value="1" {{ 'selected' if settings.get('epg refresh interval days', '1') == '1' }}>Daily (1 day)</option>
+                                    <option value="2" {{ 'selected' if settings.get('epg refresh interval days') == '2' }}>Every 2 days</option>
+                                    <option value="3" {{ 'selected' if settings.get('epg refresh interval days') == '3' }}>Every 3 days</option>
+                                    <option value="7" {{ 'selected' if settings.get('epg refresh interval days') == '7' }}>Weekly (7 days)</option>
+                                    <option value="14" {{ 'selected' if settings.get('epg refresh interval days') == '14' }}>Every 14 days</option>
+                                </select>
+                                <small class="form-hint">Only applies when Auto-Refresh is enabled</small>
+                            </div>
+                            
+                            <hr>
+                            
                             <div class="mb-3">
                                 <label class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="epg fallback enabled" value="true" {{ 'checked' if settings.get('epg fallback enabled') == 'true' }}>
@@ -341,6 +364,79 @@
                                 <label class="form-label">FFmpeg Command</label>
                                 <textarea class="form-control font-monospace" name="ffmpeg command" rows="8">{{ settings['ffmpeg command'] }}</textarea>
                                 <small class="form-hint">Placeholders: &lt;url&gt;, &lt;proxy&gt;, &lt;timeout&gt;</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Cache Settings -->
+            <div class="row row-cards mb-4">
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Channel Cache</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Cache Mode</label>
+                                <select class="form-select" name="channel cache mode">
+                                    <option value="lazy-ram" {{ 'selected' if settings.get('channel cache mode', 'lazy-ram') == 'lazy-ram' }}>Lazy RAM (On-Demand)</option>
+                                    <option value="ram" {{ 'selected' if settings.get('channel cache mode') == 'ram' }}>RAM (Pre-Cache)</option>
+                                    <option value="disk" {{ 'selected' if settings.get('channel cache mode') == 'disk' }}>Disk (Persistent)</option>
+                                    <option value="hybrid" {{ 'selected' if settings.get('channel cache mode') == 'hybrid' }}>Hybrid (RAM + Disk)</option>
+                                </select>
+                                <small class="form-hint">
+                                    <strong>lazy-ram:</strong> Minimal RAM, auto-load on access<br>
+                                    <strong>ram:</strong> Fast, all channels pre-cached in RAM<br>
+                                    <strong>disk:</strong> Persistent, low RAM usage<br>
+                                    <strong>hybrid:</strong> Fast + persistent (recommended)
+                                </small>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label">Cache Duration</label>
+                                <select class="form-select" name="channel cache duration">
+                                    <option value="unlimited" {{ 'selected' if settings.get('channel cache duration', 'unlimited') == 'unlimited' }}>Unlimited (Recommended)</option>
+                                    <option value="3600" {{ 'selected' if settings.get('channel cache duration') == '3600' }}>1 Hour</option>
+                                    <option value="7200" {{ 'selected' if settings.get('channel cache duration') == '7200' }}>2 Hours</option>
+                                    <option value="86400" {{ 'selected' if settings.get('channel cache duration') == '86400' }}>24 Hours</option>
+                                </select>
+                                <small class="form-hint">Unlimited = manual refresh only (best performance)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Cache Information</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info mb-0">
+                                <div class="d-flex">
+                                    <div><i class="ti ti-info-circle icon alert-icon"></i></div>
+                                    <div>
+                                        <h4 class="alert-title">Cache Management</h4>
+                                        <div class="text-muted small">
+                                            <strong>What is cached:</strong><br>
+                                            Only channels from <strong>selected genres</strong> are cached.<br>
+                                            <br>
+                                            <strong>Cache location:</strong><br>
+                                            • RAM: In-memory (fast, lost on restart)<br>
+                                            • Disk: /app/data/channel_cache.db<br>
+                                            <br>
+                                            <strong>Rebuild cache:</strong><br>
+                                            Dashboard → "Rebuild Cache" button<br>
+                                            <br>
+                                            <strong>View statistics:</strong><br>
+                                            Dashboard → "Cache Statistics" card<br>
+                                            <br>
+                                            <a href="/docs/CACHE_MANAGEMENT.md" class="alert-link" target="_blank">Full Documentation →</a>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

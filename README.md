@@ -128,10 +128,22 @@ Password: your-password
 http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts
 ```
 
+**Playlist URL (filtered by portal):**
+```
+http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=PORTAL_ID
+```
+
+**Or use Portal Name:**
+```
+http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=My%20Portal
+```
+
 **EPG URL:**
 ```
 http://your-server:8001/xmltv.php?username=USER&password=PASS
 ```
+
+**Note:** Portal filtering supports both Portal ID and Portal Name (case-insensitive). See [XC API Portal Filtering](docs/XC_API_PORTAL_FILTERING.md) for details.
 
 ### M3U Playlist
 
