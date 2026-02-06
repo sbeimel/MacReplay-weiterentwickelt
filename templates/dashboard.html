@@ -270,7 +270,7 @@
         
         <!-- Cache Statistics -->
         <div class="row row-cards mb-3">
-            <div class="col-12">
+            <div class="col-md-8">
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title"><i class="ti ti-database me-2"></i>Cache Statistics</h3>
@@ -292,6 +292,25 @@
                             <div class="col-md-3">
                                 <div class="subheader">Total Channels</div>
                                 <div class="h3 mb-0" id="cacheTotalChannels">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title"><i class="ti ti-shield-check me-2"></i>CloudScraper Status</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="subheader">Cloudflare Bypass</div>
+                                <div class="h3 mb-0" id="cloudscraperStatus">
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    Loading...
+                                </div>
+                                <div class="text-muted small mt-1" id="cloudscraperVersion"></div>
                             </div>
                         </div>
                     </div>
@@ -830,6 +849,20 @@ function loadDashboardStats() {
             // Update server uptime
             if (data.uptime_seconds) {
                 document.getElementById('serverUptime').textContent = formatUptime(data.uptime_seconds);
+            }
+            
+            // Update CloudScraper status
+            if (data.cloudscraper) {
+                const statusEl = document.getElementById('cloudscraperStatus');
+                const versionEl = document.getElementById('cloudscraperVersion');
+                
+                if (data.cloudscraper.available) {
+                    statusEl.innerHTML = '<span class="badge bg-success">✅ Active</span>';
+                    versionEl.textContent = `Version: ${data.cloudscraper.version || 'unknown'}`;
+                } else {
+                    statusEl.innerHTML = '<span class="badge bg-danger">❌ Not Available</span>';
+                    versionEl.textContent = 'Install: pip install cloudscraper';
+                }
             }
         })
         .catch(error => {

@@ -9427,6 +9427,14 @@ def dashboard_stats():
     if os.path.exists(xmltv_file):
         xmltv_file_mb = round(os.path.getsize(xmltv_file) / (1024*1024), 2)
     
+    # CloudScraper status
+    import stb
+    cloudscraper_status = {
+        "available": stb.CLOUDSCRAPER_AVAILABLE,
+        "version": stb.CLOUDSCRAPER_VERSION if stb.CLOUDSCRAPER_AVAILABLE else None,
+        "status": "✅ Active" if stb.CLOUDSCRAPER_AVAILABLE else "❌ Not Available"
+    }
+    
     memory_info = {
         "xmltv_file_mb": xmltv_file_mb,  # File size, not RAM
         "xmltv_in_ram": False,  # XMLTV no longer cached in RAM
@@ -9440,7 +9448,8 @@ def dashboard_stats():
         "total_channels": total_channels,
         "last_updated": last_update_time,
         "uptime_seconds": uptime_seconds,
-        "memory_info": memory_info
+        "memory_info": memory_info,
+        "cloudscraper": cloudscraper_status
     })
 
 @app.route("/log")
