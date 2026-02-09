@@ -1,7 +1,7 @@
 # ============================================================================
-# MacReplayXC - Unified Requirements
+# MacReplayXC - Production Requirements
 # Python 3.9+ Compatible
-# Last Updated: 2026-02-08
+# Last Updated: 2026-02-09
 # ============================================================================
 
 # ============================================================================
@@ -21,24 +21,16 @@ PySocks==1.7.1                  # SOCKS proxy implementation
 urllib3==2.6.3                  # HTTP client (requests dependency)
 
 # ============================================================================
-# ASYNC HTTP CLIENT
+# CLOUDFLARE BYPASS
 # ============================================================================
-aiohttp==3.11.11                # Async HTTP client/server (latest stable)
-# aiodns removed - causes getaddrinfo() compatibility issues with aiohttp 3.11+
-aiohttp-socks>=0.9.0            # SOCKS proxy support for aiohttp
-
-# ============================================================================
-# CLOUDFLARE BYPASS & WEB SCRAPING
-# ============================================================================
-cloudscraper==1.2.71            # Cloudflare challenge solver
-cfscrape>=2.1.1                 # Alternative Cloudflare bypass
+cloudscraper==1.2.71            # Cloudflare challenge solver (used in stb.py)
 
 # ============================================================================
 # PROXY & ENCRYPTION
 # ============================================================================
-shadowsocks==2.8.2              # Shadowsocks proxy support
-cryptography>=46.0.4            # Cryptographic recipes
-pycryptodome>=3.23.0            # Cryptographic library
+shadowsocks==2.8.2              # Shadowsocks proxy support (optional)
+cryptography>=46.0.4            # Cryptographic recipes (shadowsocks dependency)
+pycryptodome>=3.23.0            # Cryptographic library (shadowsocks dependency)
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION
@@ -47,46 +39,11 @@ orjson==3.11.0                  # Fast JSON (10x faster than stdlib)
 ujson==5.10.0                   # Alternative fast JSON (fallback)
 
 # ============================================================================
-# ASYNC SUPPORT (Optional)
-# ============================================================================
-gevent>=24.2.1                  # Coroutine-based networking library
-
-# ============================================================================
-# TESTING FRAMEWORK
-# ============================================================================
-pytest==8.3.4                   # Testing framework (Python 3.9+ compatible)
-pytest-mock==3.14.0             # Mock plugin for pytest
-pytest-aiohttp>=1.0.5           # Pytest plugin for aiohttp
-pytest-flask>=1.3.0             # Pytest plugin for Flask
-
-# ============================================================================
-# UTILITIES
-# ============================================================================
-colorama>=0.4.6                 # Colored terminal output
-emoji-country-flag>=1.3.2       # Country flag emojis
-semver>=3.0.2                   # Semantic versioning
-
-# ============================================================================
-# OPTIONAL: ALTERNATIVE SERVERS
-# ============================================================================
-# granian==2.7.0                # Rust-based HTTP/2 server (high performance)
-# gunicorn>=22.0.0              # Python WSGI HTTP Server
-
-# ============================================================================
-# DEVELOPMENT DEPENDENCIES (Optional)
-# ============================================================================
-# black>=24.0.0                 # Code formatter
-# flake8>=7.0.0                 # Linter
-# mypy>=1.8.0                   # Type checker
-# isort>=5.13.0                 # Import sorter
-
-# ============================================================================
 # NOTES
 # ============================================================================
 # - All versions are tested and compatible with Python 3.9+
-# - For Python 3.10+, you can use pytest==9.0.0 and pytest-mock==3.15.1
-# - Cloudscraper provides automatic Cloudflare bypass
-# - orjson provides 10x faster JSON parsing than stdlib
-# - aiohttp enables async operations
-# - shadowsocks support is optional but recommended for proxy diversity
+# - Cloudscraper provides automatic Cloudflare bypass for portals
+# - orjson/ujson provide 10x faster JSON parsing than stdlib
+# - Shadowsocks support is optional but recommended for proxy diversity
+# - For development/testing, see requirements-dev.txt
 # ============================================================================

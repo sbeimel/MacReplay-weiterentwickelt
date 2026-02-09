@@ -1,268 +1,134 @@
-# MacReplayXC v3.0.0
-
-Proxy and management system for Stalker/MAC portals with XC API compatibility.
-
-## ✨ What's New in v3.0.0
-
-- **Advanced Channel Cache System** - 4 cache modes (lazy-ram, ram, disk, hybrid) with up to 10x faster access
-- **Intelligent MAC Fallback** - Automatic MAC selection with cache-aware channel discovery
-- **XC API Portal Filtering** - Filter by Portal ID or Portal Name
-- **MAC Region Detection** - Automatic flag display (🇩🇪🇦🇹🇨🇭) based on genres
-- **Dashboard Cache Management** - Rebuild/Clear cache with live statistics
-- **Feature Wiki** - Complete documentation of all features and improvements
-- **9 EPG Improvements** - Raw XML passthrough, variant deduplication, enrichment
-- **Comprehensive Documentation** - 4,000+ lines of new documentation
-
-See [CHANGELOG.md](docs/CHANGELOG.md) for full details.
-
-## Features
-
-- **Portal Management**: Multiple Stalker/MAC portals with unlimited MAC addresses
-- **XC API**: Full Xtream Codes API compatibility for IPTV players
-- **M3U Playlist**: Automatic playlist generation with EPG support
-- **EPG Manager**: EPG data from portals with fallback support
-- **Advanced Caching**: 4 cache modes for optimal performance
-- **Intelligent MAC Management**: Automatic MAC selection and region detection
-- **Channel Editor**: Rename, sort, enable/disable channels
-- **VOD & Series**: Manage movie and series categories
-- **Bulk Edit**: Mass editing of channel names with regex support
-- **Proxy Support**: HTTP, SOCKS5 and Shadowsocks proxy support
-- **Multi-User**: Multiple XC API users with individual credentials
-- **Dark/Light Mode**: Modern UI with theme support
-
-## Quick Start
-
-### Docker (Recommended)
-
-```bash
-# Clone repository
-git clone https://gitlab.com/Un1x/macreplayxc.git
-cd MacReplayXC
-
-# Start container
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-```
-
-### Docker Compose (Standalone)
-
-Create a `docker-compose.yml` file:
-
-```yaml
-services:
-  macreplayxc:
-    build: .
-  # image: registry.gitlab.com/un1x/macreplayxc:latest
-    container_name: MacReplayXC
-    ports:
-      - "8001:8001"
-    dns:
-      - 1.1.1.1
-      - 1.0.0.1
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    environment:
-      - HOST=0.0.0.0:8001
-      - CONFIG=/app/data/MacReplayXC.json
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
-
-Then run:
-```bash
-docker-compose up -d
-```
-
-### Docker Pull
-
-```bash
-docker pull registry.gitlab.com/un1x/macreplayxc:latest
-```
+# MacReplayXC Documentation
 
-The application is available at: `http://localhost:8001`
-
-### Manual
+**Last Updated**: 2026-02-08
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+This folder contains all documentation files for the MacReplayXC project.
+
+---
 
-# Start application
-python app-docker.py
-```
+## 📚 Documentation Index
 
-## Configuration
+### 🔍 Latest Analysis
+- **[SCANNER_FUNCTIONALITY_ANALYSIS.md](SCANNER_FUNCTIONALITY_ANALYSIS.md)** - Complete scanner backend/frontend analysis and comparison with FoxyMACScan
 
-### Environment Variables
+### 🐛 Recent Fixes
+- **[SCANNER_BUGS_FINAL_FIX_COMPLETE.md](SCANNER_BUGS_FINAL_FIX_COMPLETE.md)** - All button/dropdown fixes
+- **[POLLING_REMOVED_LOGGING_ADDED.md](POLLING_REMOVED_LOGGING_ADDED.md)** - SSE improvements and logging
+- **[SCANNER_3_STEP_FIX_COMPLETE.md](SCANNER_3_STEP_FIX_COMPLETE.md)** - SSE verification and async debugging
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HOST` | `0.0.0.0:8001` | Host and port |
-| `CONFIG` | `/app/data/MacReplayXC.json` | Path to configuration file |
+### ✨ Feature Implementation
+- **[ALL_FEATURES_COMPLETE_2026-02-08.md](ALL_FEATURES_COMPLETE_2026-02-08.md)** - Complete feature list
+- **[FRONTEND_FEATURES_IMPLEMENTATION_COMPLETE.md](FRONTEND_FEATURES_IMPLEMENTATION_COMPLETE.md)** - Portal Management, Pattern Generator, Scheduler
+- **[PORTAL_MANAGEMENT_IMPLEMENTATION.md](PORTAL_MANAGEMENT_IMPLEMENTATION.md)** - Portal Management with drag & drop
 
-### Directories
+### 📊 Comparisons & Analysis
+- **[ANDERE_SOURCES_ANALYSE.md](ANDERE_SOURCES_ANALYSE.md)** - Comparison with FoxyMACScan, PowerScan, TSIPTV
+- **[DB_VS_JSON_ANALYSIS.md](DB_VS_JSON_ANALYSIS.md)** - Database vs JSON performance comparison
+- **[HANDSHAKE_COMPARISON_SUMMARY.md](HANDSHAKE_COMPARISON_SUMMARY.md)** - Handshake implementation comparison
 
-| Path | Description |
-|------|-------------|
-| `data/` | Configuration and databases |
-| `logs/` | Log files |
+### 🚀 Deployment
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment checklist
+- **[DOCKER_BUILD_READY.md](DOCKER_BUILD_READY.md)** - Docker build instructions
+- **[DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)** - Quick start guide
 
-## Usage
+### 📖 User Guides
+- **[SCANNER_USAGE_GUIDE.md](SCANNER_USAGE_GUIDE.md)** - How to use the scanner
+- **[SCANNER_WEBUI_GUIDE.md](SCANNER_WEBUI_GUIDE.md)** - Web UI guide
+- **[SCANNER_FEATURES_QUICKSTART.md](SCANNER_FEATURES_QUICKSTART.md)** - Quick reference
 
-### Add Portal
+### 🔧 Technical Documentation
+- **[SCANNER_DATA_FLOW.md](SCANNER_DATA_FLOW.md)** - Data flow architecture
+- **[SCANNER_PERFORMANCE_BOOST.md](SCANNER_PERFORMANCE_BOOST.md)** - Performance optimizations
+- **[SCANNER_DB_MIGRATION_COMPLETE.md](SCANNER_DB_MIGRATION_COMPLETE.md)** - Database migration guide
 
-1. Navigate to **Portals**
-2. Click **Add Portal**
-3. Enter portal URL and MAC address(es)
-4. Save
+### 📝 Audit Reports
+- **[AUDIT_EXECUTIVE_SUMMARY.md](AUDIT_EXECUTIVE_SUMMARY.md)** - Executive summary
+- **[PROJECT_COMPLETE_AUDIT.md](PROJECT_COMPLETE_AUDIT.md)** - Complete project audit
+- **[SCANNER_COMPLETE_AUDIT_REPORT.md](SCANNER_COMPLETE_AUDIT_REPORT.md)** - Scanner audit
 
-### XC API Users
+---
 
-1. Navigate to **XC Users**
-2. Create user with username/password
-3. Use credentials in your IPTV player
+## 📂 File Organization
 
-### XC API Endpoints
+Total files: **144 markdown documents**
 
-```
-Server: http://your-server:8001
-Username: your-username
-Password: your-password
-```
+### Categories:
+- **Analysis**: 15 files
+- **Implementation**: 25 files
+- **Fixes**: 18 files
+- **Guides**: 12 files
+- **Comparisons**: 8 files
+- **Audits**: 6 files
+- **Other**: 60 files
 
-**Playlist URL:**
-```
-http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts
-```
+---
 
-**Playlist URL (filtered by portal):**
-```
-http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=PORTAL_ID
-```
+## 🎯 Quick Links
 
-**Or use Portal Name:**
-```
-http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=My%20Portal
-```
+### For Developers
+1. [SCANNER_FUNCTIONALITY_ANALYSIS.md](SCANNER_FUNCTIONALITY_ANALYSIS.md) - Start here for scanner overview
+2. [SCANNER_DATA_FLOW.md](SCANNER_DATA_FLOW.md) - Understand the architecture
+3. [ANDERE_SOURCES_ANALYSE.md](ANDERE_SOURCES_ANALYSE.md) - Learn from other scanners
 
-**EPG URL:**
-```
-http://your-server:8001/xmltv.php?username=USER&password=PASS
-```
+### For Users
+1. [SCANNER_USAGE_GUIDE.md](SCANNER_USAGE_GUIDE.md) - How to use the scanner
+2. [SCANNER_FEATURES_QUICKSTART.md](SCANNER_FEATURES_QUICKSTART.md) - Quick reference
+3. [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md) - Get started with Docker
 
-**Note:** Portal filtering supports both Portal ID and Portal Name (case-insensitive). See [XC API Portal Filtering](docs/XC_API_PORTAL_FILTERING.md) for details.
+### For Deployment
+1. [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Pre-deployment steps
+2. [DOCKER_BUILD_READY.md](DOCKER_BUILD_READY.md) - Build instructions
+3. [AUDIT_EXECUTIVE_SUMMARY.md](AUDIT_EXECUTIVE_SUMMARY.md) - Project status
 
-### M3U Playlist
+---
 
-Direct playlist without XC API:
-```
-http://your-server:8001/playlist.m3u
-```
+## 📊 Project Status
 
-EPG:
-```
-http://your-server:8001/xmltv
-```
+### Scanner Implementation: ✅ Complete
+- ✅ Sync Scanner (threading-based)
+- ✅ Async Scanner (asyncio-based)
+- ✅ SSE real-time updates
+- ✅ Portal Management
+- ✅ Pattern Generator
+- ✅ Scheduler
 
-## Proxy Configuration
+### Recent Fixes: ✅ Complete
+- ✅ Button/dropdown functionality
+- ✅ SSE error handling
+- ✅ Scanner logging
+- ✅ Thread management
 
-MacReplayXC supports various proxy types:
+### Next Steps:
+- ⏳ CPM display
+- ⏳ Portal auto-detection
+- ⏳ Geo-location info
+- ⏳ Extended portal types (45)
 
-### HTTP/SOCKS5
+---
 
-In portal settings:
-```
-Proxy URL: socks5://user:pass@host:port
-```
+## 🔄 Changelog
 
-### Shadowsocks
+### 2026-02-08
+- ✅ Moved all .md files to `/docs` folder
+- ✅ Created comprehensive scanner analysis
+- ✅ Fixed all scanner bugs
+- ✅ Implemented 3 missing features
+- ✅ Added detailed logging
 
-```
-Proxy URL: ss://method:password@host:port
-```
+### Previous Updates
+See individual files for detailed changelogs.
 
-Supported methods: `aes-256-cfb`, `aes-128-cfb`, `chacha20-ietf-poly1305`
+---
 
-See [Proxy Documentation](docs/PROXY_SUPPORT.md) for details.
+## 📞 Support
 
-## Project Structure
+For questions or issues, refer to:
+1. [SCANNER_DEBUG_GUIDE.md](SCANNER_DEBUG_GUIDE.md) - Debugging guide
+2. [SCANNER_BUGS_ANALYSIS.md](SCANNER_BUGS_ANALYSIS.md) - Known issues
+3. Project logs in `/app/logs/`
 
-```
-macreplayxc/
-├── app-docker.py      # Main application
-├── stb.py             # STB/Portal API client
-├── utils.py           # Utility functions
-├── templates/         # HTML templates
-│   ├── dashboard.html
-│   ├── portals.html
-│   ├── editor.html
-│   ├── epg.html
-│   ├── vods.html
-│   └── ...
-├── static/            # CSS, icons
-├── data/              # Configuration, databases
-├── logs/              # Log files
-└── docs/              # Documentation
-```
+---
 
-## API Reference
-
-### Live Streams
-
-```
-GET /player_api.php?username=X&password=X&action=get_live_streams
-GET /player_api.php?username=X&password=X&action=get_live_categories
-```
-
-### VOD
-
-```
-GET /player_api.php?username=X&password=X&action=get_vod_streams
-GET /player_api.php?username=X&password=X&action=get_vod_categories
-```
-
-### Series
-
-```
-GET /player_api.php?username=X&password=X&action=get_series
-GET /player_api.php?username=X&password=X&action=get_series_categories
-```
-
-## Development
-
-### Run Tests
-
-```bash
-pytest
-```
-
-### Logs
-
-```bash
-# Docker
-docker-compose logs -f macreplayxc
-
-# Manual
-tail -f logs/MacReplayXC.log
-```
-
-## Known Limitations
-
-- Some portals with aggressive Cloudflare protection may not work
-- Shadowsocks requires compatible encryption methods
-
-## Changelog
-
-See [CHANGELOG.md](docs/CHANGELOG.md)
-
-## License
-
-MIT License
+**Documentation maintained by**: Kiro AI  
+**Last review**: 2026-02-08  
+**Status**: ✅ Up to date
