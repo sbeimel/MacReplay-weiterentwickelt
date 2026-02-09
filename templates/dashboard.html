@@ -268,30 +268,29 @@
             </div>
         </div>
         
-        <!-- Cache Statistics -->
+        <!-- Database Statistics -->
         <div class="row row-cards mb-3">
             <div class="col-md-8">
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title"><i class="ti ti-database me-2"></i>Cache Statistics</h3>
+                        <h3 class="card-title"><i class="ti ti-database me-2"></i>Database Statistics</h3>
                     </div>
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-3">
-                                <div class="subheader">Cache Mode</div>
+                            <div class="col-md-4">
+                                <div class="subheader">Storage Mode</div>
                                 <div class="h3 mb-0" id="cacheMode">-</div>
+                                <small class="text-muted">Direct SQLite access</small>
                             </div>
-                            <div class="col-md-3">
-                                <div class="subheader">RAM Entries</div>
-                                <div class="h3 mb-0" id="cacheRamEntries">-</div>
+                            <div class="col-md-4">
+                                <div class="subheader">Cached Channels</div>
+                                <div class="h3 mb-0" id="cachedChannels">-</div>
+                                <small class="text-muted">With stream data</small>
                             </div>
-                            <div class="col-md-3">
-                                <div class="subheader">Disk Entries</div>
-                                <div class="h3 mb-0" id="cacheDiskEntries">-</div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="subheader">Total Channels</div>
-                                <div class="h3 mb-0" id="cacheTotalChannels">-</div>
+                            <div class="col-md-4">
+                                <div class="subheader">Persistence</div>
+                                <div class="h3 mb-0" id="cacheDuration">-</div>
+                                <small class="text-muted">Survives restarts</small>
                             </div>
                         </div>
                     </div>
@@ -411,7 +410,7 @@
                             </button>
                             <button class="btn btn-success btn-lg" onclick="rebuildCache()">
                                 <i class="ti ti-reload me-2"></i>
-                                Rebuild Cache
+                                Refresh Channels
                             </button>
                             <button class="btn btn-warning btn-lg" onclick="clearCache()">
                                 <i class="ti ti-trash me-2"></i>
@@ -674,8 +673,8 @@ function rebuildCache() {
     const button = event.target.closest('button');
     
     showConfirm(
-        'This will rebuild the cache from all portals. This may take several minutes. Continue?',
-        'Rebuild Cache',
+        'This will refresh all channels from all portals and update the database. This may take several minutes. Continue?',
+        'Refresh Channels',
         function() {
             // User confirmed
             const originalHtml = button.innerHTML;
@@ -707,7 +706,7 @@ function rebuildCache() {
                                         button.classList.remove('btn-success');
                                         button.classList.add('btn-success');
                                         
-                                        showToast('Cache rebuild completed!', 'success');
+                                        showToast('Channel refresh completed!', 'success');
                                         
                                         // Reload cache stats
                                         loadDashboardStats();
@@ -733,7 +732,7 @@ function rebuildCache() {
                     button.classList.remove('btn-success');
                     button.classList.add('btn-danger');
                     
-                    showAlert(`Error rebuilding cache: ${error.message}`, 'Error', 'danger');
+                    showAlert(`Error refreshing channels: ${error.message}`, 'Error', 'danger');
                     
                     setTimeout(() => {
                         button.innerHTML = originalHtml;
@@ -745,7 +744,7 @@ function rebuildCache() {
         },
         null,
         'info',
-        'Rebuild',
+        'Refresh',
         'Cancel'
     );
 }
@@ -869,20 +868,19 @@ function loadDashboardStats() {
             console.error('Error loading dashboard stats:', error);
         });
     
-    // Load cache statistics
+    // Load database statistics
     fetch('/cache/stats')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.stats) {
                 const stats = data.stats;
-                document.getElementById('cacheMode').textContent = stats.mode || '-';
-                document.getElementById('cacheRamEntries').textContent = stats.ram_entries || '0';
-                document.getElementById('cacheDiskEntries').textContent = stats.disk_entries || '0';
-                document.getElementById('cacheTotalChannels').textContent = stats.total_channels || '0';
+                document.getElementById('cacheMode').textContent = stats.mode || 'db-direct';
+                document.getElementById('cachedChannels').textContent = stats.cached_channels || '0';
+                document.getElementById('cacheDuration').textContent = stats.cache_duration || 'persistent';
             }
         })
         .catch(error => {
-            console.error('Error loading cache stats:', error);
+            console.error('Error loading database stats:', error);
         });
 }
 

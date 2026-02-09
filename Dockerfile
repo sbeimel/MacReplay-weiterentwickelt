@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for data persistence
-RUN mkdir -p /app/data /app/logs
+RUN mkdir -p /app/data /app/logs /app/data/vavoo_playlists
 
 # Copy Python dependencies file
 COPY requirements.txt .
@@ -37,9 +37,23 @@ RUN pip install --no-cache-dir \
 # Copy application files
 COPY app-docker.py app.py
 COPY stb.py .
+COPY stb_scanner.py .
+COPY stb_async.py .
 COPY utils.py .
+COPY scanner.py .
+COPY scanner_async.py .
+COPY scanner_scheduler.py .
+COPY mac_pattern_generator.py .
+COPY migrate_vpn_detection.py .
 COPY templates/ templates/
 COPY static/ static/
+
+# Copy Vavoo files
+COPY vavoo/ vavoo/
+
+# Copy startup script
+COPY start.sh .
+RUN chmod +x start.sh
 
 # Copy documentation files (optional)
 COPY docs/ docs/
@@ -52,6 +66,7 @@ RUN useradd -m -u 1000 macreplayxc && \
 #USER macreplay
 
 # Set environment variables for containerized deployment
+# Note: HOST will be overridden by docker-compose.yml with your public URL
 ENV HOST=0.0.0.0:8001
 ENV CONFIG=/app/data/MacReplayXC.json
 ENV PYTHONUNBUFFERED=1
@@ -60,12 +75,13 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=2
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Expose the application port
+# Expose the application ports
 EXPOSE 8001
+EXPOSE 4323
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/ || exit 1
 
-# Run the application
-CMD ["python", "app.py"] 
+# Run both applications via startup script
+CMD ["./start.sh"] 

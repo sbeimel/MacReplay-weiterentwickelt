@@ -1,5 +1,34 @@
 # Änderungen (Changelog)
 
+### [v3.1.0] - 07.02.2026 🚀
+
+#### ⚡ Performance-Optimierungen
+
+**DB-Based Streaming (Major Optimization)**
+- Streaming nutzt jetzt `channels.db` direkt statt Channel Cache
+- Neue DB-Spalten: `stream_cmd`, `available_macs`
+- Intelligentes MAC-Routing: Probiert nur MACs die den Channel haben
+- Kein `getAllChannels()` mehr beim Streaming (nur beim Editor Refresh)
+- Persistent über Neustarts: DB bleibt gefüllt (kein Cache-Warmup nötig)
+- Automatisches Fallback mit Auto-Learning für neue Channels
+- Bis zu 30x schneller bei Cache-Miss Szenarien
+- Weniger API-Calls = weniger Last auf Portal
+
+**Vorteile:**
+- Channel-Wechsel: 0.2-0.3s (statt 2-10s bei Cache-Miss)
+- Nach Neustart: Sofort schnell (DB persistent)
+- Gezieltes MAC-Routing: Keine unnötigen Token-Calls
+- Einfacherer Code: Weniger Cache-Komplexität
+
+**Migration:**
+- Automatisch: DB-Spalten werden beim Start hinzugefügt
+- Editor Refresh füllt `stream_cmd` und `available_macs`
+- Channel Cache bleibt für Backwards-Compatibility (deprecated)
+
+Siehe [DB_STREAMING_OPTIMIZATION.md](DB_STREAMING_OPTIMIZATION.md) für Details.
+
+---
+
 ### [v3.0.0] - 06.02.2026 🎉
 
 #### 🆕 Neue Features

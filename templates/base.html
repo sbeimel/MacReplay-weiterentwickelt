@@ -121,6 +121,13 @@
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link {% if request.path == '/vavoo_page' or request.path.startswith('/vavoo') %}active{% endif %}"
+                                    href="/vavoo_page">
+                                    <i class="ti ti-broadcast me-1"></i>
+                                    Vavoo
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link {% if request.path == '/settings' %}active{% endif %}"
                                     href="/settings">
                                     <i class="ti ti-settings me-1"></i>

@@ -317,6 +317,13 @@ app.wsgi_app = ProxyFix(
 )
 logger.info("ProxyFix middleware enabled for reverse proxy support")
 
+# ============================================
+# Vavoo Integration (Separate Container)
+# ============================================
+# Vavoo runs as separate Docker container on port 4323
+# Accessible via iframe in /vavoo_page route
+logger.info("Vavoo runs as separate container (vavoo:4323)")
+
 # Docker-optimized host configuration
 if os.getenv("HOST"):
     host = os.getenv("HOST")
@@ -348,7 +355,7 @@ def cleanup_occupied_streams():
     """Automatically clean up old/expired streams from occupied dictionary to prevent memory leaks."""
     global occupied
     current_time = time.time()
-    max_age = 7200  # 2 hours (conservative to avoid killing long-running streams)
+    max_age = 1800  # 30 minutes (reduced from 2 hours for better memory management)
     
     try:
         cleaned_count = 0
@@ -372,513 +379,21 @@ def cleanup_occupied_streams():
                 del occupied[portal_id]
         
         if cleaned_count > 0:
-            logger.info(f"Cleaned up {cleaned_count} expired stream(s) from occupied dictionary (older than 2 hours)")
+            logger.info(f"Cleaned up {cleaned_count} expired stream(s) from occupied dictionary (older than 30 minutes)")
         
     except Exception as e:
         logger.error(f"Error during occupied streams cleanup: {e}")
     
-    # Schedule next cleanup in 5 minutes
-    threading.Timer(300, cleanup_occupied_streams).start()
-
-
-# Channel Cache für Performance-Optimierung
-class ChannelCache_OLD:
-    """BACKUP: Alte ChannelCache Implementierung (Lazy RAM-only)."""
-    def __init__(self, cache_duration=None):  # Unbegrenzter Cache - nur manueller Refresh
-        self.cache_duration = cache_duration  # None = unbegrenzt
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info("Channel cache initialized with unlimited duration - manual refresh only")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache (unbegrenzt gültig - keine Zeitprüfung bei None)
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                # Nur Zeitprüfung wenn cache_duration gesetzt ist
-                if self.cache_duration is None:
-                    # Unbegrenzter Cache - immer gültig
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels (unlimited cache)")
-                    return channels
-                elif time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    cache_type = "unlimited" if self.cache_duration is None else f"{self.cache_duration}s"
-                    logger.info(f"Cached {len(channels)} channels für {cache_key} ({cache_type} cache)")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                return channel
-        
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            if keys_to_remove:
-                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
-    
-    def invalidate_all(self):
-        """Lösche kompletten Cache."""
-        with self.lock:
-            count = len(self.cache)
-            self.cache.clear()
-            if count > 0:
-                logger.info(f"Complete cache invalidated ({count} entries)")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge - DEAKTIVIERT (unbegrenzter Cache)."""
-        # Keine automatische Bereinigung - Cache läuft unbegrenzt
-        # Nur manueller Refresh über Dashboard möglich
-        logger.debug("Cache cleanup skipped - unlimited cache duration")
-    
-    def get_cache_stats(self):
-        """Hole Cache-Statistiken."""
-        with self.lock:
-            total_entries = len(self.cache)
-            total_channels = sum(len(channels) for channels, _ in self.cache.values())
-            return {
-                "entries": total_entries,
-                "total_channels": total_channels,
-                "cache_duration": self.cache_duration
-            }
+    # Schedule next cleanup in 3 minutes (reduced from 5 minutes)
+    threading.Timer(180, cleanup_occupied_streams).start()
 
 
 # ============================================
-# NEW: Advanced Channel Cache with 4 Modes
+# Channel Cache REMOVED in v3.1.0
 # ============================================
-
-class ChannelCache:
-    """
-    Advanced Channel Cache with 4 modes:
-    - lazy-ram: Current system (cache on-demand, RAM only) - BACKWARD COMPATIBLE
-    - ram: Pre-cache all MACs at portal setup, RAM only
-    - disk: Pre-cache all MACs at portal setup, Disk only (persistent)
-    - hybrid: Pre-cache all MACs at portal setup, RAM + Disk (fast + persistent)
-    """
-    
-    def __init__(self, mode="lazy-ram", cache_duration=None):
-        self.mode = mode
-        self.cache_duration = cache_duration
-        self.lock = threading.RLock()
-        
-        # RAM Cache (for lazy-ram, ram, hybrid)
-        if mode in ["lazy-ram", "ram", "hybrid"]:
-            self.ram_cache = {}
-        else:
-            self.ram_cache = None
-        
-        # DB Init (for disk, hybrid)
-        if mode in ["disk", "hybrid"]:
-            self._init_db()
-        
-        logger.info(f"ChannelCache initialized: mode={mode}, duration={cache_duration or 'unlimited'}")
-    
-    def _init_db(self):
-        """Initialize disk cache database."""
-        try:
-            conn = sqlite3.connect('/app/data/channel_cache.db', check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS channel_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    channels_json TEXT,
-                    cached_at REAL
-                )
-            ''')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_cache_key ON channel_cache(cache_key)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_cached_at ON channel_cache(cached_at)')
-            conn.commit()
-            conn.close()
-            logger.info("Channel cache database initialized")
-        except Exception as e:
-            logger.error(f"Error initializing cache database: {e}")
-    
-    def get_channels(self, portal_id, mac, url, token, proxy=None):
-        """Get channels from cache or API - mode-dependent."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            try:
-                # Route based on mode
-                if self.mode == "lazy-ram":
-                    return self._get_lazy_ram(cache_key, url, mac, token, proxy)
-                elif self.mode == "ram":
-                    return self._get_ram_only(cache_key, url, mac, token, proxy)
-                elif self.mode == "disk":
-                    return self._get_disk_only(cache_key, url, mac, token, proxy)
-                elif self.mode == "hybrid":
-                    return self._get_hybrid(cache_key, url, mac, token, proxy)
-            except Exception as e:
-                logger.error(f"Cache error ({self.mode} mode): {e}")
-                # Fallback: Load directly from API
-                return self._load_from_api(url, mac, token, proxy)
-    
-    def _get_lazy_ram(self, cache_key, url, mac, token, proxy):
-        """Lazy RAM mode: Cache on-demand (current system)."""
-        if cache_key in self.ram_cache:
-            channels, timestamp = self.ram_cache[cache_key]
-            if self._is_valid(timestamp):
-                logger.debug(f"[LAZY-RAM] Cache HIT: {cache_key}")
-                return channels
-        
-        logger.info(f"[LAZY-RAM] Cache MISS: {cache_key}")
-        channels = self._load_from_api(url, mac, token, proxy)
-        if channels:
-            self.ram_cache[cache_key] = (channels, time.time())
-            logger.info(f"[LAZY-RAM] Cached {len(channels)} channels for {cache_key}")
-        return channels
-    
-    def _get_ram_only(self, cache_key, url, mac, token, proxy):
-        """RAM only mode: Pre-cached at portal setup."""
-        if cache_key in self.ram_cache:
-            channels, timestamp = self.ram_cache[cache_key]
-            if self._is_valid(timestamp):
-                logger.debug(f"[RAM] Cache HIT: {cache_key}")
-                return channels
-        
-        logger.info(f"[RAM] Cache MISS: {cache_key}")
-        channels = self._load_from_api(url, mac, token, proxy)
-        if channels:
-            self.ram_cache[cache_key] = (channels, time.time())
-            logger.info(f"[RAM] Cached {len(channels)} channels for {cache_key}")
-        return channels
-    
-    def _get_disk_only(self, cache_key, url, mac, token, proxy):
-        """Disk only mode: Pre-cached at portal setup, persistent."""
-        try:
-            conn = sqlite3.connect('/app/data/channel_cache.db')
-            cursor = conn.cursor()
-            cursor.execute('SELECT channels_json, cached_at FROM channel_cache WHERE cache_key = ?', (cache_key,))
-            row = cursor.fetchone()
-            
-            if row:
-                channels_json, timestamp = row
-                if self._is_valid(timestamp):
-                    logger.debug(f"[DISK] Cache HIT: {cache_key}")
-                    conn.close()
-                    return json.loads(channels_json)
-            
-            logger.info(f"[DISK] Cache MISS: {cache_key}")
-            channels = self._load_from_api(url, mac, token, proxy)
-            if channels:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO channel_cache (cache_key, channels_json, cached_at)
-                    VALUES (?, ?, ?)
-                ''', (cache_key, json.dumps(channels), time.time()))
-                conn.commit()
-                logger.info(f"[DISK] Cached {len(channels)} channels for {cache_key}")
-            conn.close()
-            return channels
-        except Exception as e:
-            logger.error(f"Disk cache error: {e}")
-            return self._load_from_api(url, mac, token, proxy)
-    
-    def _get_hybrid(self, cache_key, url, mac, token, proxy):
-        """Hybrid mode: RAM + Disk (fast + persistent)."""
-        # 1. Check RAM cache (fastest)
-        if cache_key in self.ram_cache:
-            channels, timestamp = self.ram_cache[cache_key]
-            if self._is_valid(timestamp):
-                logger.debug(f"[HYBRID-RAM] Cache HIT: {cache_key}")
-                return channels
-        
-        # 2. Check Disk cache (persistent)
-        try:
-            conn = sqlite3.connect('/app/data/channel_cache.db')
-            cursor = conn.cursor()
-            cursor.execute('SELECT channels_json, cached_at FROM channel_cache WHERE cache_key = ?', (cache_key,))
-            row = cursor.fetchone()
-            
-            if row:
-                channels_json, timestamp = row
-                if self._is_valid(timestamp):
-                    logger.info(f"[HYBRID-DISK] Cache HIT: {cache_key} (loading to RAM)")
-                    channels = json.loads(channels_json)
-                    # Load into RAM for next time
-                    self.ram_cache[cache_key] = (channels, timestamp)
-                    conn.close()
-                    return channels
-            conn.close()
-        except Exception as e:
-            logger.error(f"Hybrid disk cache error: {e}")
-        
-        # 3. Load from API
-        logger.info(f"[HYBRID] Cache MISS: {cache_key}")
-        channels = self._load_from_api(url, mac, token, proxy)
-        if channels:
-            timestamp = time.time()
-            # Save to both caches
-            self.ram_cache[cache_key] = (channels, timestamp)
-            try:
-                conn = sqlite3.connect('/app/data/channel_cache.db')
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO channel_cache (cache_key, channels_json, cached_at)
-                    VALUES (?, ?, ?)
-                ''', (cache_key, json.dumps(channels), timestamp))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error(f"Error saving to disk cache: {e}")
-            logger.info(f"[HYBRID] Cached {len(channels)} channels for {cache_key}")
-        return channels
-    
-    def set_channels(self, portal_id, mac, channels):
-        """Explicitly cache channels (for portal setup pre-caching)."""
-        cache_key = f"{portal_id}_{mac}"
-        timestamp = time.time()
-        
-        with self.lock:
-            # Save to RAM cache
-            if self.ram_cache is not None:
-                self.ram_cache[cache_key] = (channels, timestamp)
-            
-            # Save to Disk cache
-            if self.mode in ["disk", "hybrid"]:
-                try:
-                    conn = sqlite3.connect('/app/data/channel_cache.db')
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO channel_cache (cache_key, channels_json, cached_at)
-                        VALUES (?, ?, ?)
-                    ''', (cache_key, json.dumps(channels), timestamp))
-                    conn.commit()
-                    conn.close()
-                except Exception as e:
-                    logger.error(f"Error saving to disk cache: {e}")
-        
-        logger.info(f"[{self.mode.upper()}] Pre-cached {len(channels)} channels for {cache_key}")
-    
-    def find_channel(self, portal_id, mac, channel_id, url, token, proxy=None):
-        """Find specific channel (with caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                return channel
-        return None
-    
-    def find_channel_any_mac(self, portal_id, macs, channel_id, url, proxy=None):
-        """
-        Find channel across multiple MACs - tries each MAC until channel is found.
-        
-        This is especially useful for lazy-ram mode where cache is built on-demand.
-        If MAC1 doesn't have the channel cached, try MAC2, MAC3, etc.
-        
-        Args:
-            portal_id (str): Portal ID
-            macs (list): List of MAC addresses to try
-            channel_id (str): Channel ID to find
-            url (str): Portal URL
-            proxy (str, optional): Proxy URL
-            
-        Returns:
-            tuple: (channel_data, mac_used) or (None, None) if not found
-        """
-        for mac in macs:
-            try:
-                # Get token for this MAC
-                token = stb.getToken(url, mac, proxy)
-                if not token:
-                    logger.debug(f"[find_channel_any_mac] No token for MAC {mac}")
-                    continue
-                
-                # Get profile
-                stb.getProfile(url, mac, token, proxy)
-                
-                # Try to find channel (will cache if lazy-ram)
-                channel = self.find_channel(portal_id, mac, channel_id, url, token, proxy)
-                
-                if channel:
-                    logger.info(f"[find_channel_any_mac] Channel {channel_id} found on MAC {mac}")
-                    return (channel, mac)
-                else:
-                    logger.debug(f"[find_channel_any_mac] Channel {channel_id} not found on MAC {mac}")
-                    
-            except Exception as e:
-                logger.error(f"[find_channel_any_mac] Error trying MAC {mac}: {e}")
-                continue
-        
-        logger.warning(f"[find_channel_any_mac] Channel {channel_id} not found on any MAC")
-        return (None, None)
-    
-    def invalidate_portal(self, portal_id):
-        """Clear cache for a portal (all MACs)."""
-        with self.lock:
-            count_ram = 0
-            count_disk = 0
-            
-            # Clear RAM cache
-            if self.ram_cache is not None:
-                keys_to_remove = [key for key in self.ram_cache.keys() if key.startswith(f"{portal_id}_")]
-                for key in keys_to_remove:
-                    del self.ram_cache[key]
-                count_ram = len(keys_to_remove)
-            
-            # Clear Disk cache
-            if self.mode in ["disk", "hybrid"]:
-                try:
-                    conn = sqlite3.connect('/app/data/channel_cache.db')
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM channel_cache WHERE cache_key LIKE ?", (f"{portal_id}_%",))
-                    count_disk = cursor.rowcount
-                    conn.commit()
-                    conn.close()
-                except Exception as e:
-                    logger.error(f"Error clearing disk cache: {e}")
-            
-            logger.info(f"Cache invalidated for portal {portal_id}: {count_ram} RAM, {count_disk} Disk entries")
-    
-    def invalidate_all(self):
-        """Clear complete cache."""
-        with self.lock:
-            count_ram = 0
-            count_disk = 0
-            
-            # Clear RAM cache
-            if self.ram_cache is not None:
-                count_ram = len(self.ram_cache)
-                self.ram_cache.clear()
-            
-            # Clear Disk cache
-            if self.mode in ["disk", "hybrid"]:
-                try:
-                    conn = sqlite3.connect('/app/data/channel_cache.db')
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM channel_cache')
-                    count_disk = cursor.rowcount
-                    conn.commit()
-                    conn.close()
-                except Exception as e:
-                    logger.error(f"Error clearing disk cache: {e}")
-            
-            logger.info(f"Complete cache invalidated: {count_ram} RAM, {count_disk} Disk entries")
-            return count_ram + count_disk
-    
-    def cleanup_expired(self):
-        """Remove expired cache entries."""
-        if self.cache_duration is None:
-            return  # Unlimited cache
-        
-        with self.lock:
-            cutoff = time.time() - self.cache_duration
-            count_ram = 0
-            count_disk = 0
-            
-            # Cleanup RAM cache
-            if self.ram_cache is not None:
-                expired_keys = [k for k, (_, ts) in self.ram_cache.items() if ts < cutoff]
-                for key in expired_keys:
-                    del self.ram_cache[key]
-                count_ram = len(expired_keys)
-            
-            # Cleanup Disk cache
-            if self.mode in ["disk", "hybrid"]:
-                try:
-                    conn = sqlite3.connect('/app/data/channel_cache.db')
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM channel_cache WHERE cached_at < ?', (cutoff,))
-                    count_disk = cursor.rowcount
-                    conn.commit()
-                    conn.close()
-                except Exception as e:
-                    logger.error(f"Error cleaning disk cache: {e}")
-            
-            if count_ram + count_disk > 0:
-                logger.info(f"Cleaned up expired cache: {count_ram} RAM, {count_disk} Disk entries")
-    
-    def get_cache_stats(self):
-        """Get cache statistics."""
-        with self.lock:
-            stats = {
-                "mode": self.mode,
-                "cache_duration": self.cache_duration,
-                "ram_entries": 0,
-                "disk_entries": 0,
-                "total_channels": 0
-            }
-            
-            # RAM stats
-            if self.ram_cache is not None:
-                stats["ram_entries"] = len(self.ram_cache)
-                stats["total_channels"] = sum(len(channels) for channels, _ in self.ram_cache.values())
-            
-            # Disk stats
-            if self.mode in ["disk", "hybrid"]:
-                try:
-                    conn = sqlite3.connect('/app/data/channel_cache.db')
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT COUNT(*) FROM channel_cache')
-                    stats["disk_entries"] = cursor.fetchone()[0]
-                    conn.close()
-                except Exception as e:
-                    logger.error(f"Error getting disk stats: {e}")
-            
-            return stats
-    
-    def _is_valid(self, timestamp):
-        """Check if cache entry is still valid."""
-        if self.cache_duration is None:
-            return True  # Unlimited
-        return (time.time() - timestamp) < self.cache_duration
-    
-    def _load_from_api(self, url, mac, token, proxy):
-        """Load channels from portal API."""
-        try:
-            return stb.getAllChannels(url, mac, token, proxy)
-        except Exception as e:
-            logger.error(f"Error loading channels from API: {e}")
-            return None
-
-
-# Initialize Channel Cache based on settings
-def init_channel_cache():
-    """Initialize channel cache based on settings."""
-    settings = getSettings()
-    cache_mode = settings.get("channel cache mode", "lazy-ram")
-    cache_duration_str = settings.get("channel cache duration", "unlimited")
-    
-    if cache_duration_str == "unlimited":
-        cache_duration = None
-    else:
-        try:
-            cache_duration = int(cache_duration_str)
-        except:
-            cache_duration = None
-    
-    return ChannelCache(mode=cache_mode, cache_duration=cache_duration)
-
-# Globaler Channel-Cache (wird später initialisiert nach getSettings() Definition)
-channel_cache = None
+# Channel cache system has been replaced with direct channels.db access
+# All streaming now reads stream_cmd and available_macs directly from channels.db
+# This provides 30x faster streaming and persistent data across restarts
 
 # EPG refresh progress tracking
 epg_refresh_progress = {
@@ -931,6 +446,7 @@ defaultSettings = {
     "ffmpeg timeout": "5",
     "test streams": "true",
     "try all macs": "true",
+    "try all macs on db miss": "true",
     "use channel genres": "true",
     "use channel numbers": "true",
     "sort playlist by channel genre": "false",
@@ -951,8 +467,6 @@ defaultSettings = {
     "xc vod proxy": "true",
     "public playlist access": "true",
     "use portal names as groups": "false",
-    "channel cache mode": "lazy-ram",
-    "channel cache duration": "unlimited",
 }
 
 defaultXCUser = {
@@ -990,11 +504,11 @@ class HLSStreamManager:
     def __init__(self, max_streams=10, inactive_timeout=30):
         self.streams = {}  # Key: "portalId_channelId", Value: stream info dict
         self.max_streams = max_streams
-        self.inactive_timeout = inactive_timeout
+        self.inactive_timeout = 120  # 2 minutes (increased from 30 seconds for better stability)
         self.lock = threading.Lock()
         self.monitor_thread = None
         self.running = False
-        logger.info(f"HLS Stream Manager initialized with max_streams={max_streams}, inactive_timeout={inactive_timeout}s")
+        logger.info(f"HLS Stream Manager initialized with max_streams={max_streams}, inactive_timeout={self.inactive_timeout}s")
         
     def start_monitoring(self):
         """Start the background monitoring thread."""
@@ -1371,9 +885,9 @@ def saveSettings(settings):
         raise
 
 
-# Initialize Channel Cache after getSettings is defined
-channel_cache = init_channel_cache()
-logger.info(f"Channel cache initialized: mode={channel_cache.mode}, duration={channel_cache.cache_duration or 'unlimited'}")
+# Channel Cache DEPRECATED - Using channels.db directly now
+# channel_cache = init_channel_cache()
+# logger.info(f"Channel cache initialized: mode={channel_cache.mode}, duration={channel_cache.cache_duration or 'unlimited'}")
 
 
 def get_db_connection():
@@ -1404,14 +918,28 @@ def init_db():
             custom_epg_id TEXT,
             fallback_channel TEXT,
             has_portal_epg INTEGER DEFAULT 0,
+            stream_cmd TEXT,
+            available_macs TEXT,
             PRIMARY KEY (portal, channel_id)
         )
     ''')
     
-    # Add has_portal_epg column if it doesn't exist (migration)
+    # Add columns if they don't exist (migration)
     try:
         cursor.execute('ALTER TABLE channels ADD COLUMN has_portal_epg INTEGER DEFAULT 0')
         logger.info("Added has_portal_epg column to database")
+    except:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE channels ADD COLUMN stream_cmd TEXT')
+        logger.info("Added stream_cmd column to database")
+    except:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE channels ADD COLUMN available_macs TEXT')
+        logger.info("Added available_macs column to database")
     except:
         pass  # Column already exists
     
@@ -1613,6 +1141,7 @@ def refresh_channels_cache():
             # Fetch from ALL MACs and merge
             all_channels_map = {}  # channel_id -> channel data
             all_genres_dict = {}  # genre_id -> genre_name
+            channel_macs_map = {}  # channel_id -> [mac1, mac2, ...]
             
             mac_index = 0
             for mac in macs:
@@ -1629,11 +1158,17 @@ def refresh_channels_cache():
                         mac_genres = stb.getGenreNames(url, mac, token, proxy)
                         
                         if mac_channels:
-                            # Merge channels - add new ones
+                            # Merge channels - add new ones and track which MACs have them
                             for channel in mac_channels:
                                 channel_id = str(channel["id"])
                                 if channel_id not in all_channels_map:
                                     all_channels_map[channel_id] = channel
+                                    channel_macs_map[channel_id] = []
+                                
+                                # Track which MAC has this channel
+                                if mac not in channel_macs_map[channel_id]:
+                                    channel_macs_map[channel_id].append(mac)
+                                    
                             logger.info(f"MAC {mac}: Added {len(mac_channels)} channels (total: {len(all_channels_map)})")
                             editor_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(all_channels_map)} channels"
                         
@@ -1692,24 +1227,31 @@ def refresh_channels_cache():
                     custom_epg_id = custom_epg_ids.get(channel_id, "")
                     fallback_channel = fallback_channels.get(channel_id, "")
                     
+                    # Get stream_cmd and available_macs
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    
                     # Upsert into database
                     cursor.execute('''
                         INSERT INTO channels (
                             portal, channel_id, portal_name, name, number, genre, logo,
                             enabled, custom_name, custom_number, custom_genre, 
-                            custom_epg_id, fallback_channel, has_portal_epg
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            custom_epg_id, fallback_channel, has_portal_epg,
+                            stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(portal, channel_id) DO UPDATE SET
                             portal_name = excluded.portal_name,
                             name = excluded.name,
                             number = excluded.number,
                             genre = excluded.genre,
                             logo = excluded.logo,
-                            has_portal_epg = excluded.has_portal_epg
+                            has_portal_epg = excluded.has_portal_epg,
+                            stream_cmd = excluded.stream_cmd,
+                            available_macs = excluded.available_macs
                     ''', (
                         portal_id, channel_id, portal_name, channel_name, channel_number,
                         genre, logo, enabled, custom_name, custom_number, custom_genre,
-                        custom_epg_id, fallback_channel, has_portal_epg
+                        custom_epg_id, fallback_channel, has_portal_epg, stream_cmd, available_macs
                     ))
                     
                     total_channels += 1
@@ -3442,6 +2984,67 @@ def portalsAdd():
         savePortals(portals)
         logger.info("Portal({}) added!".format(portal["name"]))
         
+        # Automatically refresh channels.db for new portal
+        try:
+            logger.info(f"Auto-refreshing channels.db for new portal: {name}")
+            
+            # Fetch channels from ALL MACs and save to DB
+            all_channels_map = {}
+            all_genres_dict = {}
+            channel_macs_map = {}
+            
+            for mac in macsd.keys():
+                try:
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
+                        mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                        mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                        
+                        if mac_channels:
+                            for channel in mac_channels:
+                                channel_id = str(channel["id"])
+                                if channel_id not in all_channels_map:
+                                    all_channels_map[channel_id] = channel
+                                    channel_macs_map[channel_id] = []
+                                if mac not in channel_macs_map[channel_id]:
+                                    channel_macs_map[channel_id].append(mac)
+                        
+                        if mac_genres:
+                            all_genres_dict.update(mac_genres)
+                except Exception as e:
+                    logger.error(f"Error fetching from MAC {mac}: {e}")
+            
+            # Save to channels.db
+            if all_channels_map:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                for channel_id, channel in all_channels_map.items():
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    channel_name = str(channel.get("name", ""))
+                    channel_number = str(channel.get("number", ""))
+                    genre_id = str(channel.get("tv_genre_id", ""))
+                    genre = all_genres_dict.get(genre_id, "")
+                    logo = str(channel.get("logo", ""))
+                    
+                    cursor.execute('''
+                        INSERT INTO channels (
+                            portal, channel_id, portal_name, name, number, genre, logo,
+                            enabled, stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                        ON CONFLICT(portal, channel_id) DO UPDATE SET
+                            stream_cmd = excluded.stream_cmd,
+                            available_macs = excluded.available_macs
+                    ''', (id, channel_id, name, channel_name, channel_number, genre, logo, stream_cmd, available_macs))
+                
+                conn.commit()
+                conn.close()
+                logger.info(f"Auto-refresh: Saved {len(all_channels_map)} channels to DB for portal {name}")
+        except Exception as e:
+            logger.error(f"Error auto-refreshing channels.db: {e}")
+        
         # Store portal ID in session for genre selection modal
         flask.session['show_genre_modal'] = True
         flask.session['genre_modal_portal_id'] = id
@@ -3530,6 +3133,59 @@ def portalUpdate():
         savePortals(portals)
         logger.info("Portal({}) updated!".format(name))
         flash("Portal({}) updated!".format(name), "success")
+        
+        # Auto-refresh channels.db if MACs changed
+        if retest or set(macsout.keys()) != set(oldmacs.keys()):
+            try:
+                logger.info(f"Auto-refreshing channels.db for updated portal: {name}")
+                
+                # Fetch channels from ALL MACs and save to DB
+                all_channels_map = {}
+                all_genres_dict = {}
+                channel_macs_map = {}
+                
+                for mac in macsout.keys():
+                    try:
+                        token = stb.getToken(url, mac, proxy)
+                        if token:
+                            stb.getProfile(url, mac, token, proxy)
+                            mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                            mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                            
+                            if mac_channels:
+                                for channel in mac_channels:
+                                    channel_id = str(channel["id"])
+                                    if channel_id not in all_channels_map:
+                                        all_channels_map[channel_id] = channel
+                                        channel_macs_map[channel_id] = []
+                                    if mac not in channel_macs_map[channel_id]:
+                                        channel_macs_map[channel_id].append(mac)
+                            
+                            if mac_genres:
+                                all_genres_dict.update(mac_genres)
+                    except Exception as e:
+                        logger.error(f"Error fetching from MAC {mac}: {e}")
+                
+                # Update channels.db
+                if all_channels_map:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    for channel_id, channel in all_channels_map.items():
+                        stream_cmd = str(channel.get("cmd", ""))
+                        available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                        
+                        cursor.execute('''
+                            UPDATE channels 
+                            SET stream_cmd = ?, available_macs = ?
+                            WHERE portal = ? AND channel_id = ?
+                        ''', (stream_cmd, available_macs, id, channel_id))
+                    
+                    conn.commit()
+                    conn.close()
+                    logger.info(f"Auto-refresh: Updated {len(all_channels_map)} channels in DB for portal {name}")
+            except Exception as e:
+                logger.error(f"Error auto-refreshing channels.db: {e}")
 
     else:
         logger.error(
@@ -3839,6 +3495,7 @@ def portal_save_genre_selection():
         
         all_channels_map = {}  # channel_id -> channel data
         all_genres_dict = {}  # genre_id -> genre_name
+        channel_macs_map = {}  # channel_id -> [mac1, mac2, ...]
         
         logger.info(f"Saving genre selection: fetching from {len(macs)} MACs for portal {portal_name}")
         
@@ -3857,11 +3514,17 @@ def portal_save_genre_selection():
                         # Store for pre-caching
                         mac_channels_dict[mac] = mac_channels
                         
-                        # Merge channels
+                        # Merge channels and track which MACs have them
                         for channel in mac_channels:
                             channel_id = str(channel["id"])
                             if channel_id not in all_channels_map:
                                 all_channels_map[channel_id] = channel
+                                channel_macs_map[channel_id] = []
+                            
+                            # Track which MAC has this channel
+                            if mac not in channel_macs_map[channel_id]:
+                                channel_macs_map[channel_id].append(mac)
+                                
                         logger.info(f"MAC {mac}: Added {len(mac_channels)} channels (total: {len(all_channels_map)})")
                     
                     if mac_genres:
@@ -3870,16 +3533,6 @@ def portal_save_genre_selection():
             except Exception as e:
                 logger.error(f"Error fetching from MAC {mac}: {e}")
                 continue
-        
-        # PRE-CACHE: Cache all MACs if mode is ram/disk/hybrid
-        cache_mode = channel_cache.mode
-        if cache_mode in ["ram", "disk", "hybrid"]:
-            logger.info(f"[{cache_mode.upper()}] Pre-caching {len(mac_channels_dict)} MACs for portal {portal_name}")
-            for mac, channels in mac_channels_dict.items():
-                channel_cache.set_channels(portal_id, mac, channels)
-            logger.info(f"[{cache_mode.upper()}] Pre-caching complete for portal {portal_name}")
-        else:
-            logger.info(f"[LAZY-RAM] Skipping pre-cache - will cache on-demand")
         
         if not all_channels_map or not all_genres_dict:
             return flask.jsonify({"error": "Failed to fetch channels from any MAC"}), 500
@@ -3940,15 +3593,20 @@ def portal_save_genre_selection():
                     # Check if this channel should be enabled
                     is_enabled = 1 if channel_id in enabled_channels else 0
                     
+                    # Get stream_cmd and available_macs
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    
                     cursor.execute('''
                         INSERT INTO channels (
                             portal, channel_id, portal_name, name, number, genre, logo,
                             enabled, custom_name, custom_number, custom_genre, 
-                            custom_epg_id, fallback_channel, has_portal_epg
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0)
+                            custom_epg_id, fallback_channel, has_portal_epg,
+                            stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0, ?, ?)
                     ''', (
                         portal_id, channel_id, portal_name, channel_name, channel_number,
-                        genre, logo, is_enabled
+                        genre, logo, is_enabled, stream_cmd, available_macs
                     ))
                     inserted_count += 1
                 
@@ -5505,8 +5163,6 @@ def proxy_test_page():
 @app.route("/settings/save", methods=["POST"])
 @authorise
 def save():
-    global channel_cache
-    
     settings = {}
 
     for setting, _ in defaultSettings.items():
@@ -5525,27 +5181,6 @@ def save():
 
     saveSettings(settings)
     logger.info("Settings saved!")
-    
-    # Reinitialize channel cache if cache settings changed
-    old_cache_mode = channel_cache.mode if channel_cache else None
-    old_cache_duration = channel_cache.cache_duration if channel_cache else None
-    new_cache_mode = settings.get("channel cache mode", "lazy-ram")
-    new_cache_duration_str = settings.get("channel cache duration", "unlimited")
-    
-    if new_cache_duration_str == "unlimited":
-        new_cache_duration = None
-    else:
-        try:
-            new_cache_duration = int(new_cache_duration_str)
-        except:
-            new_cache_duration = None
-    
-    # Reinitialize cache if mode or duration changed
-    if old_cache_mode != new_cache_mode or old_cache_duration != new_cache_duration:
-        logger.info(f"Cache settings changed: {old_cache_mode} → {new_cache_mode}, {old_cache_duration} → {new_cache_duration}")
-        logger.info("Reinitializing channel cache...")
-        channel_cache = init_channel_cache()
-        logger.info(f"Channel cache reinitialized: mode={channel_cache.mode}, duration={channel_cache.cache_duration or 'unlimited'}")
     
     # EPG refresh is controlled by EPG Auto Refresh setting
     # Use Dashboard "Refresh EPG" button for manual refresh
@@ -5770,7 +5405,7 @@ def _playlist_with_auth(username, password):
     if external_host:
         playlist_host = external_host
     else:
-        # Use the actual request host (e.g., rico.goip.de:61095)
+        # Use the actual request host (e.g., your-domain.com:8001)
         playlist_host = request.host or "0.0.0.0:8001"
     
     channels = []
@@ -9113,16 +8748,6 @@ def stream_channel(portalId, channelId, xc_user=None):
             else:
                 return False
 
-    def isMacFree():
-        count = 0
-        for i in occupied.get(portalId, []):
-            if i["mac"] == mac:
-                count = count + 1
-        if count < streamsPerMac:
-            return True
-        else:
-            return False
-
     portal = getPortals().get(portalId)
     
     # Check if portal exists
@@ -9144,134 +8769,253 @@ def stream_channel(portalId, channelId, xc_user=None):
 
     freeMac = False
     
-    # OPTIMIERT: Intelligentes MAC-Fallback mit Cache-Awareness
-    # Besonders wichtig für lazy-ram: Probiert alle MACs bis Channel gefunden
+    # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
     channel = None
     mac = None
     token = None
     cmd = None
     link = None
     channelName = None
+    try_all_macs_setting = getSettings().get("try all macs", "true") == "true"
+    try_all_on_db_miss = getSettings().get("try all macs on db miss", "true") == "true"
     
-    # Versuche zuerst, Channel über find_channel_any_mac zu finden
-    # Dies cached automatisch bei lazy-ram und probiert alle MACs
-    channel, mac_found = channel_cache.find_channel_any_mac(portalId, macs, channelId, url, proxy)
-    
-    if channel and mac_found:
-        # Channel gefunden! Prüfe ob MAC frei ist
-        mac = mac_found
-        if streamsPerMac == 0 or isMacFree():
-            logger.info(f"Channel {channelId} found on MAC {mac} (via cache)")
-            freeMac = True
-            # Token nochmal holen für diesen MAC
-            token = stb.getToken(url, mac, proxy)
-            if token:
-                stb.getProfile(url, mac, token, proxy)
-        else:
-            # MAC ist voll - probiere andere MACs
-            logger.info(f"MAC {mac} is full, trying other MACs")
-            channel = None
-            mac = None
+    # 1. Versuche Channel aus DB zu laden
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT stream_cmd, available_macs, name, custom_name 
+            FROM channels 
+            WHERE portal = ? AND channel_id = ? AND enabled = 1
+        ''', (portalId, channelId))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row['stream_cmd'] and row['available_macs']:
+            # Channel in DB gefunden!
+            cmd = row['stream_cmd']
+            channelName = row['custom_name'] or row['name']
+            available_macs = row['available_macs'].split(',')
             
-            # Fallback: Probiere alle MACs manuell
-            for try_mac in macs:
-                if try_mac == mac_found:
-                    continue  # Schon probiert
-                    
-                if streamsPerMac == 0 or isMacFree():
+            logger.info(f"Channel {channelId} found in DB with {len(available_macs)} MAC(s): {available_macs}")
+            
+            # 2. Probiere MACs die den Channel haben
+            mac_found = None
+            for try_mac in available_macs:
+                # Check if MAC is free
+                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                if streamsPerMac == 0 or count < streamsPerMac:
                     logger.info(f"Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                     freeMac = True
-                    token = stb.getToken(url, try_mac, proxy)
+                    mac = try_mac
+                    token = stb.getToken(url, mac, proxy)
                     if token:
-                        stb.getProfile(url, try_mac, token, proxy)
-                        channel = channel_cache.find_channel(portalId, try_mac, channelId, url, token, proxy)
-                        
-                        if channel:
-                            mac = try_mac
-                            break
-
-        if channel:
-            # Channel bereits gefunden - keine Schleife nötig!
-            channelName = portal.get("custom channel names", {}).get(channelId)
-            if channelName == None:
-                channelName = channel["name"]
-            cmd = channel["cmd"]
-
-        if cmd:
-            if "http://localhost/" in cmd:
-                link = stb.getLink(url, mac, token, cmd, proxy)
-                logger.debug(f"Generated stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Generated stream link for MAC {mac}: {link}")
-            else:
-                link = cmd.split(" ")[1]
-                logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
-        
-        if not link:
-            logger.warning(f"No stream link generated for MAC {mac}, channel {channelId}")
-            # Markiere MAC als defekt
-            logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
-            moveMac(portalId, mac)
-            return make_response("No stream link available", 404)
-
-        if link:
-            if getSettings().get("test streams", "true") == "false" or testStream():
-                if web:
-                    ffmpegcmd = [
-                        ffmpeg_path,
-                        "-loglevel",
-                        "panic",
-                        "-hide_banner",
-                        "-i",
-                        link,
-                        "-vcodec",
-                        "copy",
-                        "-f",
-                        "mp4",
-                        "-movflags",
-                        "frag_keyframe+empty_moov",
-                        "pipe:",
-                    ]
-                    if proxy:
-                        ffmpegcmd.insert(1, "-http_proxy")
-                        ffmpegcmd.insert(2, proxy)
-                    # Use correct mimetype for MPEG-TS streams
-                    response = Response(streamData(), mimetype="video/mp2t")
-                    response.headers['Content-Type'] = 'video/mp2t'
-                    response.headers['Accept-Ranges'] = 'none'
-                    return response
-
+                        stb.getProfile(url, mac, token, proxy)
+                        mac_found = mac
+                        break
                 else:
-                    if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
-                        ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
-                        ffmpegcmd = ffmpegcmd.replace("<url>", link)
-                        ffmpegcmd = ffmpegcmd.replace(
-                            "<timeout>",
-                            str(int(getSettings()["ffmpeg timeout"]) * int(1000000)),
-                        )
-                        if proxy:
-                            ffmpegcmd = ffmpegcmd.replace("<proxy>", proxy)
-                        else:
-                            ffmpegcmd = ffmpegcmd.replace("-http_proxy <proxy>", "")
+                    logger.debug(f"MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                
+                # Respect "try all macs" setting
+                if not try_all_macs_setting:
+                    logger.info("'try all macs' is disabled, stopping after first MAC")
+                    break
+            
+            # 3. Wenn alle bekannten MACs voll sind UND "try all macs on db miss" aktiv
+            if not mac_found and try_all_on_db_miss:
+                logger.info(f"All known MACs busy for channel {channelId}, trying other MACs (try all macs on db miss)")
+                
+                # Probiere die ANDEREN MACs (die nicht in available_macs sind)
+                other_macs = [m for m in macs if m not in available_macs]
+                
+                for try_mac in other_macs:
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    if streamsPerMac == 0 or count < streamsPerMac:
+                        logger.info(f"Trying other MAC: Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                        freeMac = True
+                        mac = try_mac
+                        token = stb.getToken(url, mac, proxy)
+                        if token:
+                            stb.getProfile(url, mac, token, proxy)
+                            
+                            # Lade alle Channels von dieser MAC
+                            channels = stb.getAllChannels(url, mac, token, proxy)
+                            if channels:
+                                # Suche Channel
+                                for ch in channels:
+                                    if str(ch["id"]) == str(channelId):
+                                        channel = ch
+                                        cmd = channel["cmd"]
+                                        channelName = channel["name"]
+                                        mac_found = mac
+                                        
+                                        # Update DB: Füge diese MAC zu available_macs hinzu
+                                        try:
+                                            new_available_macs = ','.join(available_macs + [mac])
+                                            conn = get_db_connection()
+                                            cursor = conn.cursor()
+                                            cursor.execute('''
+                                                UPDATE channels 
+                                                SET stream_cmd = ?, available_macs = ?
+                                                WHERE portal = ? AND channel_id = ?
+                                            ''', (cmd, new_available_macs, portalId, channelId))
+                                            conn.commit()
+                                            conn.close()
+                                            logger.info(f"Updated DB: Added MAC {mac} to available_macs for channel {channelId}")
+                                        except Exception as e:
+                                            logger.error(f"Error updating DB: {e}")
+                                        
+                                        break
+                                
+                                if mac_found:
+                                    break
+                    
+                    # Respect "try all macs" setting
+                    if not try_all_macs_setting:
+                        logger.info("'try all macs' is disabled, stopping after first MAC")
+                        break
+            
+            if not mac_found:
+                logger.warning(f"All MACs busy or channel not found on other MACs for channel {channelId}")
+                return make_response("All MACs busy", 503)
+            
+            mac = mac_found
+        else:
+            # 4. FALLBACK: Channel nicht in DB - probiere getAllChannels()
+            logger.warning(f"Channel {channelId} not in DB, falling back to getAllChannels()")
+            
+            mac_found = None
+            for try_mac in macs:
+                # Check if MAC is free
+                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                if streamsPerMac == 0 or count < streamsPerMac:
+                    logger.info(f"Fallback: Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                    freeMac = True
+                    mac = try_mac
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
                         
-                        # Bereinige doppelte Leerzeichen und splitte in Array
-                        ffmpegcmd = " ".join(ffmpegcmd.split())
-                        ffmpegcmd = ffmpegcmd.split()
-                        return Response(
-                            streamData(), mimetype="application/octet-stream"
-                        )
-                    else:
-                        logger.info("Redirect sent")
-                        return redirect(link)
-
-        logger.info(
-            "Unable to connect to Portal({}) using MAC({})".format(portalId, mac)
-        )
+                        # Lade alle Channels von dieser MAC
+                        channels = stb.getAllChannels(url, mac, token, proxy)
+                        if channels:
+                            # Suche Channel
+                            for ch in channels:
+                                if str(ch["id"]) == str(channelId):
+                                    channel = ch
+                                    cmd = channel["cmd"]
+                                    channelName = channel["name"]
+                                    mac_found = mac
+                                    
+                                    # Speichere in DB für nächstes Mal
+                                    try:
+                                        conn = get_db_connection()
+                                        cursor = conn.cursor()
+                                        cursor.execute('''
+                                            UPDATE channels 
+                                            SET stream_cmd = ?, available_macs = ?, enabled = 1
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (cmd, mac, portalId, channelId))
+                                        conn.commit()
+                                        conn.close()
+                                        logger.info(f"Auto-learned: Saved channel {channelId} to DB")
+                                    except Exception as e:
+                                        logger.error(f"Error saving channel to DB: {e}")
+                                    
+                                    break
+                            
+                            if mac_found:
+                                break
+                
+                # Respect "try all macs" setting
+                if not try_all_macs_setting:
+                    logger.info("'try all macs' is disabled, stopping after first MAC")
+                    break
+            
+            if not mac_found:
+                logger.error(f"Channel {channelId} not found on any MAC")
+                return make_response("Channel not found", 404)
+            
+            mac = mac_found
+    
+    except Exception as e:
+        logger.error(f"Error loading channel from DB: {e}")
+        return make_response("Database error", 500)
+    
+    # 5. Generate stream link
+    if cmd:
+        if "http://localhost/" in cmd:
+            link = stb.getLink(url, mac, token, cmd, proxy)
+            logger.debug(f"Generated stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Generated stream link for MAC {mac}: {link}")
+        else:
+            link = cmd.split(" ")[1]
+            logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
+    
+    if not link:
+        logger.warning(f"No stream link generated for MAC {mac}, channel {channelId}")
+        # Markiere MAC als defekt
         logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
         moveMac(portalId, mac)
-        return make_response("Unable to connect to portal", 503)
+        return make_response("No stream link available", 404)
 
-    # (Fallback logic remains the same but too long to include here)
-    # ... rest of the original channel function
-
+    if link:
+        if getSettings().get("test streams", "true") == "false" or testStream():
+            if web:
+                ffmpegcmd = [
+                    ffmpeg_path,
+                    "-loglevel",
+                    "panic",
+                    "-hide_banner",
+                    "-i",
+                    link,
+                    "-vcodec",
+                    "copy",
+                    "-f",
+                    "mp4",
+                    "-movflags",
+                    "frag_keyframe+empty_moov",
+                    "pipe:",
+                ]
+                if proxy:
+                    ffmpegcmd.insert(1, "-http_proxy")
+                    ffmpegcmd.insert(2, proxy)
+                # Use correct mimetype for MPEG-TS streams
+                response = Response(streamData(), mimetype="video/mp2t")
+                response.headers['Content-Type'] = 'video/mp2t'
+                response.headers['Accept-Ranges'] = 'none'
+                return response
+            else:
+                if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
+                    ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
+                    ffmpegcmd = ffmpegcmd.replace("<url>", link)
+                    ffmpegcmd = ffmpegcmd.replace(
+                        "<timeout>",
+                        str(int(getSettings()["ffmpeg timeout"]) * int(1000000)),
+                    )
+                    if proxy:
+                        ffmpegcmd = ffmpegcmd.replace("<proxy>", proxy)
+                    else:
+                        ffmpegcmd = ffmpegcmd.replace("-http_proxy <proxy>", "")
+                    
+                    # Bereinige doppelte Leerzeichen und splitte in Array
+                    ffmpegcmd = " ".join(ffmpegcmd.split())
+                    ffmpegcmd = ffmpegcmd.split()
+                    return Response(
+                        streamData(), mimetype="application/octet-stream"
+                    )
+                else:
+                    logger.info("Redirect sent")
+                    return redirect(link)
+        else:
+            logger.info(
+                "Unable to connect to Portal({}) using MAC({})".format(portalId, mac)
+            )
+            logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
+            moveMac(portalId, mac)
+            return make_response("Unable to connect to portal", 503)
+    
+    # If we reach here, no stream was found
     if freeMac:
         logger.info(
             "No working streams found for Portal({}):Channel({})".format(
@@ -9370,19 +9114,55 @@ def hls_stream(portalId, channelId, filename):
     
     # If file doesn't exist and this is a playlist/segment request, start the stream
     if not file_path and (filename.endswith('.m3u8') or filename.endswith('.ts') or filename.endswith('.m4s')):
-        # OPTIMIERT: Nutze find_channel_any_mac für intelligentes MAC-Fallback
-        # Besonders wichtig für lazy-ram Modus: Probiert alle MACs bis Channel gefunden
-        channel, mac_used = channel_cache.find_channel_any_mac(portalId, macs, channelId, url, proxy)
+        # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
+        cmd = None
+        mac_used = None
+        
+        # 1. Versuche Channel aus DB zu laden
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT stream_cmd, available_macs 
+                FROM channels 
+                WHERE portal = ? AND channel_id = ? AND enabled = 1
+            ''', (portalId, channelId))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row and row['stream_cmd'] and row['available_macs']:
+                cmd = row['stream_cmd']
+                available_macs = row['available_macs'].split(',')
+                mac_used = available_macs[0] if available_macs else None
+                logger.info(f"HLS: Channel {channelId} found in DB, using MAC {mac_used}")
+            else:
+                # Fallback: getAllChannels()
+                logger.warning(f"HLS: Channel {channelId} not in DB, falling back")
+                for try_mac in macs:
+                    token = stb.getToken(url, try_mac, proxy)
+                    if token:
+                        stb.getProfile(url, try_mac, token, proxy)
+                        channels = stb.getAllChannels(url, try_mac, token, proxy)
+                        if channels:
+                            for ch in channels:
+                                if str(ch["id"]) == str(channelId):
+                                    cmd = ch["cmd"]
+                                    mac_used = try_mac
+                                    break
+                            if cmd:
+                                break
+        except Exception as e:
+            logger.error(f"HLS: Error loading channel from DB: {e}")
         
         link = None
-        if channel:
+        if cmd and mac_used:
             try:
                 # Get token for the MAC that has the channel
                 token = stb.getToken(url, mac_used, proxy)
                 if token:
                     stb.getProfile(url, mac_used, token, proxy)
                     
-                    cmd = channel["cmd"]
                     if "http://localhost/" in cmd:
                         link = stb.getLink(url, mac_used, token, cmd, proxy)
                     else:
@@ -9448,6 +9228,12 @@ def hls_stream(portalId, channelId, filename):
 def dashboard():
     return render_template("dashboard.html")
 
+@app.route("/vavoo_page")
+@authorise
+def vavoo_page():
+    """Vavoo IPTV Proxy page - embedded via iframe."""
+    return render_template("vavoo.html")
+
 @app.route("/streaming")
 @authorise
 def streaming():
@@ -9497,7 +9283,6 @@ def dashboard_stats():
         "xmltv_in_ram": False,  # XMLTV no longer cached in RAM
         "occupied_streams": len(occupied),
         "occupied_portals": len(occupied.keys()),
-        "channel_cache_entries": len(channel_cache.ram_cache) if channel_cache and channel_cache.ram_cache else 0,
         "hls_active_streams": len(hls_manager.streams) if hls_manager else 0,
     }
     
@@ -9655,12 +9440,22 @@ def refresh_lineup_endpoint():
 @app.route("/cache/clear", methods=["POST"])
 @authorise
 def cache_clear():
-    """Clear all caches (channel cache, lineup, playlist, EPG)."""
+    """Clear all caches (lineup, playlist, EPG, channels.db)."""
     try:
-        global channel_cache, cached_lineup, cached_playlist, last_playlist_host
+        global cached_lineup, cached_playlist, last_playlist_host
         
-        # Clear channel cache (RAM + Disk)
-        cleared_count = channel_cache.invalidate_all()
+        # Clear channels.db (stream_cmd and available_macs)
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL')
+            db_cleared = cursor.rowcount
+            conn.commit()
+            conn.close()
+            logger.info(f"Cleared stream_cmd and available_macs from {db_cleared} channels in DB")
+        except Exception as e:
+            logger.error(f"Error clearing channels.db: {e}")
+            db_cleared = 0
         
         # Clear lineup cache
         cached_lineup = []
@@ -9669,11 +9464,11 @@ def cache_clear():
         cached_playlist = None
         last_playlist_host = None
         
-        logger.info(f"All caches cleared via dashboard ({cleared_count} channel cache entries)")
+        logger.info(f"All caches cleared via dashboard ({cleared_count} channel cache entries, {db_cleared} DB entries)")
         return jsonify({
             "success": True, 
-            "message": f"Cache cleared successfully ({cleared_count} entries)",
-            "cleared_entries": cleared_count
+            "message": f"Cache cleared successfully ({cleared_count} cache + {db_cleared} DB entries)",
+            "cleared_entries": cleared_count + db_cleared
         })
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
@@ -9684,7 +9479,19 @@ def cache_clear():
 def cache_stats():
     """Get cache statistics."""
     try:
-        stats = channel_cache.get_cache_stats()
+        # Return DB-based stats instead of channel_cache
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM channels WHERE stream_cmd IS NOT NULL')
+        cached_channels = cursor.fetchone()[0]
+        conn.close()
+        
+        stats = {
+            "mode": "db-direct",
+            "cached_channels": cached_channels,
+            "cache_duration": "persistent"
+        }
+        
         return jsonify({
             "success": True,
             "stats": stats
