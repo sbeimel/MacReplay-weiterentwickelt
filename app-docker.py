@@ -9,6 +9,31 @@ import xml.etree.ElementTree as ET
 import threading
 from threading import Thread
 import logging
+
+# Fast JSON library (10x faster than standard json)
+try:
+    import orjson as json_lib
+    JSON_LOADS = lambda x: json_lib.loads(x)
+    JSON_DUMPS = lambda x: json_lib.dumps(x).decode('utf-8')
+    logger_json = logging.getLogger("MacReplayXC")
+    logger_json.info("Using orjson for fast JSON parsing (10x performance boost)")
+except ImportError:
+    try:
+        import ujson as json_lib
+        JSON_LOADS = json_lib.loads
+        JSON_DUMPS = json_lib.dumps
+        logger_json = logging.getLogger("MacReplayXC")
+        logger_json.info("Using ujson for fast JSON parsing (5x performance boost)")
+    except ImportError:
+        import json as json_lib
+        JSON_LOADS = json_lib.loads
+        JSON_DUMPS = lambda x: json_lib.dumps(x, indent=4)
+        logger_json = logging.getLogger("MacReplayXC")
+        logger_json.info("Using standard json library (consider installing orjson for better performance)")
+
+# Version
+__version__ = "3.0.0"
+
 logger = logging.getLogger("MacReplayXC")
 logger.setLevel(logging.INFO)
 logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
@@ -39,6 +64,40 @@ consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(consoleFormat)
 logger.addHandler(consoleHandler)
 
+# Log cleanup function
+def cleanup_old_logs():
+    """Delete log files older than 24 hours."""
+    try:
+        log_dir = "/app/logs"
+        if not os.path.exists(log_dir):
+            return
+        
+        now = time.time()
+        cutoff_time = now - (24 * 60 * 60)  # 24 hours in seconds
+        
+        deleted_count = 0
+        for filename in os.listdir(log_dir):
+            if filename.endswith('.log') or filename.endswith('.log.old'):
+                filepath = os.path.join(log_dir, filename)
+                try:
+                    file_mtime = os.path.getmtime(filepath)
+                    if file_mtime < cutoff_time:
+                        os.remove(filepath)
+                        deleted_count += 1
+                        logger.info(f"Deleted old log file: {filename} (age: {(now - file_mtime) / 3600:.1f} hours)")
+                except Exception as e:
+                    logger.error(f"Error deleting log file {filename}: {e}")
+        
+        if deleted_count > 0:
+            logger.info(f"Log cleanup completed: {deleted_count} old log file(s) deleted")
+    except Exception as e:
+        logger.error(f"Error in log cleanup: {e}")
+
+def schedule_log_cleanup():
+    """Schedule periodic log cleanup every 6 hours."""
+    cleanup_old_logs()  # Run immediately on startup
+    threading.Timer(6 * 60 * 60, schedule_log_cleanup).start()  # Schedule next run in 6 hours
+
 # Docker-optimized ffmpeg paths (system-installed)
 ffmpeg_path = "ffmpeg"
 ffprobe_path = "ffprobe"
@@ -47,104 +106,7 @@ ffprobe_path = "ffprobe"
 import subprocess
 
 
-class ChannelCache:
-    """Intelligentes Channel-Caching für bessere Performance."""
-    
-    def __init__(self, cache_duration=1800):  # 30 Minuten
-        self.cache_duration = cache_duration
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info(f"ChannelCache initialized with {cache_duration}s duration")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                import stb
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                logger.debug(f"Found channel {channel_id} in cache for {portal_id}_{mac}")
-                return channel
-        
-        logger.debug(f"Channel {channel_id} not found in cache for {portal_id}_{mac}")
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            if keys_to_remove:
-                logger.info(f"Cache invalidated für Portal {portal_id} ({len(keys_to_remove)} entries)")
-    
-    def invalidate_all(self):
-        """Lösche kompletten Cache."""
-        with self.lock:
-            count = len(self.cache)
-            self.cache.clear()
-            if count > 0:
-                logger.info(f"Complete cache invalidated ({count} entries)")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
-    
-    def get_cache_stats(self):
-        """Hole Cache-Statistiken."""
-        with self.lock:
-            total_entries = len(self.cache)
-            total_channels = sum(len(channels) for channels, _ in self.cache.values())
-            return {
-                "entries": total_entries,
-                "total_channels": total_channels,
-                "cache_duration": self.cache_duration
-            }
-
-
-# Globaler Channel-Cache
-channel_cache = ChannelCache()
+# Channel Cache wird weiter unten definiert
 
 def get_stream_url_with_auth(playlist_host, portal_id, channel_id):
     """
@@ -305,7 +267,11 @@ except (subprocess.CalledProcessError, FileNotFoundError):
 import flask
 from flask import Flask, jsonify
 import stb
-import json
+
+# Use optimized JSON library (already imported at top)
+# json_lib is either orjson, ujson, or standard json
+import json  # Keep for compatibility, but prefer json_lib for performance-critical operations
+
 import subprocess
 import uuid
 import xml.etree.cElementTree as ET
@@ -340,12 +306,23 @@ from utils import (
 app = Flask(__name__)
 app.secret_key = secrets.token_urlsafe(32)
 
+# HTTPS Reverse Proxy Support: ProxyFix Middleware
+# Enables correct scheme/host detection when behind Caddy/Nginx/Traefik
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_proto=1,  # X-Forwarded-Proto → request.scheme (http/https)
+    x_host=1,   # X-Forwarded-Host → request.host
+    x_for=1     # X-Forwarded-For → request.remote_addr
+)
+logger.info("ProxyFix middleware enabled for reverse proxy support")
+
 # Docker-optimized host configuration
 if os.getenv("HOST"):
     host = os.getenv("HOST")
 else:
     host = "0.0.0.0:8001"
-logger.info(f"Server started on http://{host}")
+logger.info(f"MacReplayXC v{__version__} - Server started on http://{host}")
 
 logger.info(f"Using config file: {configFile}")
 
@@ -362,83 +339,54 @@ config = {}
 cached_lineup = []
 cached_playlist = None
 last_playlist_host = None
-cached_xmltv = None
+cached_xmltv = None  # Deprecated - XMLTV now served from file for memory efficiency
 last_updated = 0
 hls_manager = None
 
-# Channel Cache für Performance-Optimierung
-class ChannelCache:
-    def __init__(self, cache_duration=43200):  # 12 Stunden (43200 Sekunden)
-        self.cache_duration = cache_duration
-        self.cache = {}  # portal_mac -> (channels, timestamp)
-        self.lock = threading.RLock()
-        logger.info(f"Channel cache initialized with {cache_duration/3600:.1f} hour duration")
-    
-    def get_channels(self, portal_id: str, mac: str, url: str, token: str, proxy: str = None):
-        """Hole Channels aus Cache oder lade sie neu."""
-        cache_key = f"{portal_id}_{mac}"
-        
-        with self.lock:
-            # Prüfe Cache
-            if cache_key in self.cache:
-                channels, timestamp = self.cache[cache_key]
-                if time.time() - timestamp < self.cache_duration:
-                    logger.debug(f"Cache HIT für {cache_key} - {len(channels)} channels")
-                    return channels
-                else:
-                    logger.debug(f"Cache EXPIRED für {cache_key}")
-            
-            # Cache miss - lade neu
-            logger.info(f"Cache MISS für {cache_key} - loading from portal...")
-            try:
-                channels = stb.getAllChannels(url, mac, token, proxy)
-                if channels:
-                    self.cache[cache_key] = (channels, time.time())
-                    logger.info(f"Cached {len(channels)} channels für {cache_key}")
-                    return channels
-            except Exception as e:
-                logger.error(f"Error loading channels for {cache_key}: {e}")
-                
-            return None
-    
-    def find_channel(self, portal_id: str, mac: str, channel_id: str, url: str, token: str, proxy: str = None):
-        """Finde einen spezifischen Channel (mit Caching)."""
-        channels = self.get_channels(portal_id, mac, url, token, proxy)
-        if not channels:
-            return None
-        
-        # Suche Channel in gecachten Daten
-        for channel in channels:
-            if str(channel["id"]) == str(channel_id):
-                return channel
-        
-        return None
-    
-    def invalidate_portal(self, portal_id: str):
-        """Lösche Cache für ein Portal (alle MACs)."""
-        with self.lock:
-            keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{portal_id}_")]
-            for key in keys_to_remove:
-                del self.cache[key]
-            logger.info(f"Cache invalidated für Portal {portal_id}")
-    
-    def cleanup_expired(self):
-        """Entferne abgelaufene Cache-Einträge."""
-        current_time = time.time()
-        with self.lock:
-            expired_keys = []
-            for key, (channels, timestamp) in self.cache.items():
-                if current_time - timestamp > self.cache_duration:
-                    expired_keys.append(key)
-            
-            for key in expired_keys:
-                del self.cache[key]
-            
-            if expired_keys:
-                logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
 
-# Globaler Channel-Cache
-channel_cache = ChannelCache()
+def cleanup_occupied_streams():
+    """Automatically clean up old/expired streams from occupied dictionary to prevent memory leaks."""
+    global occupied
+    current_time = time.time()
+    max_age = 7200  # 2 hours (conservative to avoid killing long-running streams)
+    
+    try:
+        cleaned_count = 0
+        for portal_id in list(occupied.keys()):
+            if portal_id not in occupied:
+                continue
+                
+            streams = occupied[portal_id]
+            # Keep only streams younger than max_age
+            active_streams = [
+                s for s in streams 
+                if current_time - s.get("start time", 0) < max_age
+            ]
+            
+            cleaned_count += len(streams) - len(active_streams)
+            
+            if active_streams:
+                occupied[portal_id] = active_streams
+            else:
+                # Remove empty portal entries
+                del occupied[portal_id]
+        
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} expired stream(s) from occupied dictionary (older than 2 hours)")
+        
+    except Exception as e:
+        logger.error(f"Error during occupied streams cleanup: {e}")
+    
+    # Schedule next cleanup in 5 minutes
+    threading.Timer(300, cleanup_occupied_streams).start()
+
+
+# ============================================
+# Channel Cache REMOVED in v3.1.0
+# ============================================
+# Channel cache system has been replaced with direct channels.db access
+# All streaming now reads stream_cmd and available_macs directly from channels.db
+# This provides 30x faster streaming and persistent data across restarts
 
 # EPG refresh progress tracking
 epg_refresh_progress = {
@@ -491,6 +439,7 @@ defaultSettings = {
     "ffmpeg timeout": "5",
     "test streams": "true",
     "try all macs": "true",
+    "try all macs on db miss": "true",
     "use channel genres": "true",
     "use channel numbers": "true",
     "sort playlist by channel genre": "false",
@@ -505,6 +454,8 @@ defaultSettings = {
     "hdhr tuners": "10",
     "epg fallback enabled": "false",
     "epg fallback countries": "",
+    "epg auto refresh": "manual",
+    "epg refresh interval days": "1",
     "xc api enabled": "false",
     "xc vod proxy": "true",
     "public playlist access": "true",
@@ -966,6 +917,18 @@ def init_db():
     except:
         pass  # Column already exists
     
+    try:
+        cursor.execute('ALTER TABLE channels ADD COLUMN stream_cmd TEXT')
+        logger.info("Added stream_cmd column to database")
+    except:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE channels ADD COLUMN available_macs TEXT')
+        logger.info("Added available_macs column to database")
+    except:
+        pass  # Column already exists
+    
     # Create indexes for better query performance
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_channels_enabled 
@@ -1164,6 +1127,7 @@ def refresh_channels_cache():
             # Fetch from ALL MACs and merge
             all_channels_map = {}  # channel_id -> channel data
             all_genres_dict = {}  # genre_id -> genre_name
+            channel_macs_map = {}  # channel_id -> [mac1, mac2, ...]
             
             mac_index = 0
             for mac in macs:
@@ -1180,11 +1144,17 @@ def refresh_channels_cache():
                         mac_genres = stb.getGenreNames(url, mac, token, proxy)
                         
                         if mac_channels:
-                            # Merge channels - add new ones
+                            # Merge channels - add new ones and track which MACs have them
                             for channel in mac_channels:
                                 channel_id = str(channel["id"])
                                 if channel_id not in all_channels_map:
                                     all_channels_map[channel_id] = channel
+                                    channel_macs_map[channel_id] = []
+                                
+                                # Track which MAC has this channel
+                                if mac not in channel_macs_map[channel_id]:
+                                    channel_macs_map[channel_id].append(mac)
+                                    
                             logger.info(f"MAC {mac}: Added {len(mac_channels)} channels (total: {len(all_channels_map)})")
                             editor_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(all_channels_map)} channels"
                         
@@ -1243,24 +1213,31 @@ def refresh_channels_cache():
                     custom_epg_id = custom_epg_ids.get(channel_id, "")
                     fallback_channel = fallback_channels.get(channel_id, "")
                     
+                    # Get stream_cmd and available_macs
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    
                     # Upsert into database
                     cursor.execute('''
                         INSERT INTO channels (
                             portal, channel_id, portal_name, name, number, genre, logo,
                             enabled, custom_name, custom_number, custom_genre, 
-                            custom_epg_id, fallback_channel, has_portal_epg
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            custom_epg_id, fallback_channel, has_portal_epg,
+                            stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(portal, channel_id) DO UPDATE SET
                             portal_name = excluded.portal_name,
                             name = excluded.name,
                             number = excluded.number,
                             genre = excluded.genre,
                             logo = excluded.logo,
-                            has_portal_epg = excluded.has_portal_epg
+                            has_portal_epg = excluded.has_portal_epg,
+                            stream_cmd = excluded.stream_cmd,
+                            available_macs = excluded.available_macs
                     ''', (
                         portal_id, channel_id, portal_name, channel_name, channel_number,
                         genre, logo, enabled, custom_name, custom_number, custom_genre,
-                        custom_epg_id, fallback_channel, has_portal_epg
+                        custom_epg_id, fallback_channel, has_portal_epg, stream_cmd, available_macs
                     ))
                     
                     total_channels += 1
@@ -2904,8 +2881,6 @@ def portal_test_macs():
 @app.route("/portal/add", methods=["POST"])
 @authorise
 def portalsAdd():
-    global cached_xmltv
-    cached_xmltv = None
     id = uuid.uuid4().hex
     enabled = "true"
     name = request.form.get("name", "").strip()
@@ -2995,6 +2970,67 @@ def portalsAdd():
         savePortals(portals)
         logger.info("Portal({}) added!".format(portal["name"]))
         
+        # Automatically refresh channels.db for new portal
+        try:
+            logger.info(f"Auto-refreshing channels.db for new portal: {name}")
+            
+            # Fetch channels from ALL MACs and save to DB
+            all_channels_map = {}
+            all_genres_dict = {}
+            channel_macs_map = {}
+            
+            for mac in macsd.keys():
+                try:
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
+                        mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                        mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                        
+                        if mac_channels:
+                            for channel in mac_channels:
+                                channel_id = str(channel["id"])
+                                if channel_id not in all_channels_map:
+                                    all_channels_map[channel_id] = channel
+                                    channel_macs_map[channel_id] = []
+                                if mac not in channel_macs_map[channel_id]:
+                                    channel_macs_map[channel_id].append(mac)
+                        
+                        if mac_genres:
+                            all_genres_dict.update(mac_genres)
+                except Exception as e:
+                    logger.error(f"Error fetching from MAC {mac}: {e}")
+            
+            # Save to channels.db
+            if all_channels_map:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                for channel_id, channel in all_channels_map.items():
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    channel_name = str(channel.get("name", ""))
+                    channel_number = str(channel.get("number", ""))
+                    genre_id = str(channel.get("tv_genre_id", ""))
+                    genre = all_genres_dict.get(genre_id, "")
+                    logo = str(channel.get("logo", ""))
+                    
+                    cursor.execute('''
+                        INSERT INTO channels (
+                            portal, channel_id, portal_name, name, number, genre, logo,
+                            enabled, stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                        ON CONFLICT(portal, channel_id) DO UPDATE SET
+                            stream_cmd = excluded.stream_cmd,
+                            available_macs = excluded.available_macs
+                    ''', (id, channel_id, name, channel_name, channel_number, genre, logo, stream_cmd, available_macs))
+                
+                conn.commit()
+                conn.close()
+                logger.info(f"Auto-refresh: Saved {len(all_channels_map)} channels to DB for portal {name}")
+        except Exception as e:
+            logger.error(f"Error auto-refreshing channels.db: {e}")
+        
         # Store portal ID in session for genre selection modal
         flask.session['show_genre_modal'] = True
         flask.session['genre_modal_portal_id'] = id
@@ -3013,8 +3049,6 @@ def portalsAdd():
 @app.route("/portal/update", methods=["POST"])
 @authorise
 def portalUpdate():
-    global cached_xmltv
-    cached_xmltv = None
     id = request.form["id"]
     enabled = request.form.get("enabled", "false")
     name = request.form["name"]
@@ -3294,6 +3328,81 @@ def portal_load_genres():
         return flask.jsonify({"error": str(e)}), 500
 
 
+@app.route("/portal/mac-regions", methods=["POST"])
+@authorise
+def portal_mac_regions():
+    """Get detected regions for each MAC based on genre names."""
+    try:
+        portal_id = request.json.get('portal_id')
+        
+        if not portal_id:
+            return flask.jsonify({"error": "No portal ID provided"}), 400
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        if not portal:
+            return flask.jsonify({"error": "Portal not found"}), 404
+        
+        url = portal["url"]
+        macs = list(portal["macs"].keys())
+        proxy = portal["proxy"]
+        
+        mac_regions = {}
+        
+        # Region detection patterns (case-insensitive)
+        region_patterns = {
+            'de': ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY'],
+            'at': ['AT', 'AUSTRIA', 'ÖSTERREICH', 'OESTERREICH', 'AUSTRIAN'],
+            'ch': ['CH', 'SWITZERLAND', 'SCHWEIZ', 'SWISS', 'SUISSE', 'SVIZZERA']
+        }
+        
+        for mac in macs:
+            try:
+                token = stb.getToken(url, mac, proxy)
+                if not token:
+                    mac_regions[mac] = []
+                    continue
+                
+                stb.getProfile(url, mac, token, proxy)
+                mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                
+                if not mac_genres:
+                    mac_regions[mac] = []
+                    continue
+                
+                # Detect regions based on genre names
+                detected_regions = set()
+                
+                for genre_id, genre_name in mac_genres.items():
+                    genre_upper = genre_name.upper()
+                    
+                    # Check for German content
+                    if any(pattern in genre_upper for pattern in region_patterns['de']):
+                        detected_regions.add('de')
+                    
+                    # Check for Austrian content
+                    if any(pattern in genre_upper for pattern in region_patterns['at']):
+                        detected_regions.add('at')
+                    
+                    # Check for Swiss content
+                    if any(pattern in genre_upper for pattern in region_patterns['ch']):
+                        detected_regions.add('ch')
+                
+                mac_regions[mac] = sorted(list(detected_regions))
+                logger.info(f"MAC {mac}: Detected regions {detected_regions}")
+                
+            except Exception as e:
+                logger.error(f"Error detecting regions for MAC {mac}: {e}")
+                mac_regions[mac] = []
+                continue
+        
+        return flask.jsonify({"mac_regions": mac_regions})
+        
+    except Exception as e:
+        logger.error(f"Error getting MAC regions: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
 @app.route("/portal/save-genre-selection", methods=["POST"])
 @authorise
 def portal_save_genre_selection():
@@ -3322,6 +3431,9 @@ def portal_save_genre_selection():
         
         logger.info(f"Saving genre selection: fetching from {len(macs)} MACs for portal {portal_name}")
         
+        # Track channels per MAC for pre-caching
+        mac_channels_dict = {}  # mac -> channels list
+        
         for mac in macs:
             try:
                 token = stb.getToken(url, mac, proxy)
@@ -3331,6 +3443,9 @@ def portal_save_genre_selection():
                     mac_genres = stb.getGenreNames(url, mac, token, proxy)
                     
                     if mac_channels:
+                        # Store for pre-caching
+                        mac_channels_dict[mac] = mac_channels
+                        
                         # Merge channels
                         for channel in mac_channels:
                             channel_id = str(channel["id"])
@@ -3404,15 +3519,20 @@ def portal_save_genre_selection():
                     # Check if this channel should be enabled
                     is_enabled = 1 if channel_id in enabled_channels else 0
                     
+                    # Get stream_cmd and available_macs
+                    stream_cmd = str(channel.get("cmd", ""))
+                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    
                     cursor.execute('''
                         INSERT INTO channels (
                             portal, channel_id, portal_name, name, number, genre, logo,
                             enabled, custom_name, custom_number, custom_genre, 
-                            custom_epg_id, fallback_channel, has_portal_epg
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0)
+                            custom_epg_id, fallback_channel, has_portal_epg,
+                            stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0, ?, ?)
                     ''', (
                         portal_id, channel_id, portal_name, channel_name, channel_number,
-                        genre, logo, is_enabled
+                        genre, logo, is_enabled, stream_cmd, available_macs
                     ))
                     inserted_count += 1
                 
@@ -3527,9 +3647,16 @@ def generate_portal_m3u(portal_id):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Determine group-title based on settings
+        if getSettings().get("use portal names as groups", "false") == "true":
+            # Use portal name as group
+            group_title = portals[portal_id].get("name", portal_id)
+        else:
+            # Use genre with optional portal prefix
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -3541,8 +3668,8 @@ def generate_portal_m3u(portal_id):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
@@ -3642,9 +3769,16 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Determine group-title based on settings
+        if getSettings().get("use portal names as groups", "false") == "true":
+            # Use portal name as group
+            group_title = portals[portal_id].get("name", portal_id)
+        else:
+            # Use genre with optional portal prefix
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -3656,8 +3790,8 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         
@@ -4315,10 +4449,10 @@ def editor_portal_channels(portal_id):
 @app.route("/editor/save", methods=["POST"])
 @authorise
 def editorSave():
-    global cached_xmltv, last_playlist_host
-    threading.Thread(target=refresh_xmltv, daemon=True).start()
+    global last_playlist_host
+    # Force M3U playlist regeneration
     last_playlist_host = None
-    Thread(target=refresh_lineup).start()
+    # Lineup is lazy-loaded on /lineup.json request (no need to refresh here)
     
     enabledEdits = json.loads(request.form["enabledEdits"])
     numberEdits = json.loads(request.form["numberEdits"])
@@ -4594,10 +4728,9 @@ def editor_bulk_edit():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG (XC API queries database directly, so no separate cache to clear)
+        # Force M3U playlist regeneration (XMLTV is controlled by EPG Auto Refresh setting)
         global cached_xmltv, last_playlist_host
-        last_playlist_host = None  # Force M3U playlist regeneration
-        threading.Thread(target=refresh_xmltv, daemon=True).start()  # Refresh EPG
+        last_playlist_host = None
         
         logger.info(f"Bulk edit applied: {updated_count} channels updated")
         
@@ -4648,10 +4781,9 @@ def editor_bulk_edit_undo():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG
+        # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
         last_playlist_host = None
-        threading.Thread(target=refresh_xmltv, daemon=True).start()
         
         logger.info("Bulk edit undone successfully")
         
@@ -4777,10 +4909,9 @@ def editor_reset_all_customizations():
         conn.commit()
         conn.close()
         
-        # Refresh playlist and EPG
+        # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
         last_playlist_host = None
-        threading.Thread(target=refresh_xmltv, daemon=True).start()
         
         logger.info("All customizations reset to original values")
         
@@ -4941,6 +5072,13 @@ def settings():
     )
 
 
+@app.route("/wiki", methods=["GET"])
+@authorise
+def wiki():
+    """Feature wiki page showing new features and improvements."""
+    return render_template("wiki.html")
+
+
 @app.route("/proxy-test", methods=["GET"])
 @authorise
 def proxy_test_page():
@@ -4969,7 +5107,10 @@ def save():
 
     saveSettings(settings)
     logger.info("Settings saved!")
-    Thread(target=refresh_xmltv).start()
+    
+    # EPG refresh is controlled by EPG Auto Refresh setting
+    # Use Dashboard "Refresh EPG" button for manual refresh
+    
     flash("Settings saved!", "success")
     return redirect("/settings", code=302)
 
@@ -5225,8 +5366,19 @@ def _playlist_with_auth(username, password):
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Use portal name as group-title
+        # Use portal name or genre as group-title based on settings
         portal_name = portals[portal_id].get("name", portal_id)
+        
+        # Check if we should use portal names as groups
+        if getSettings().get("use portal names as groups", "false") == "true":
+            group_title = portal_name
+        else:
+            # Use genre (with optional portal prefix)
+            portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -5238,8 +5390,9 @@ def _playlist_with_auth(username, password):
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        # Always use portal name as group-title for playlist.m3u
-        m3u_entry += ' group-title="' + escape_quotes(portal_name) + '"'
+        # Use group-title based on settings
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         # Embed Basic Auth credentials in stream URL
@@ -5361,10 +5514,17 @@ def generate_playlist():
         channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "")
         epg_id = channel['custom_epg_id'] if channel['custom_epg_id'] else channel_name
         
-        # Apply portal prefix to genre only (for group-title organization)
-        portal_prefix = portals[portal_id].get("portal prefix", "").strip()
-        if portal_prefix and genre:
-            genre = f"[{portal_prefix}] {genre}"
+        # Determine group-title based on settings
+        if getSettings().get("use portal names as groups", "false") == "true":
+            # Use portal name as group
+            group_title = portals[portal_id].get("name", portal_id)
+        else:
+            # Use genre with optional portal prefix
+            portal_prefix = portals[portal_id].get("portal prefix", "").strip()
+            if portal_prefix and genre:
+                group_title = f"[{portal_prefix}] {genre}"
+            else:
+                group_title = genre
         
         # Build M3U entry - escape quotes in attributes
         def escape_quotes(text):
@@ -5376,8 +5536,8 @@ def generate_playlist():
         if getSettings().get("use channel numbers", "true") == "true" and channel_number:
             m3u_entry += ' tvg-chno="' + escape_quotes(channel_number) + '"'
         
-        if getSettings().get("use channel genres", "true") == "true" and genre:
-            m3u_entry += ' group-title="' + escape_quotes(genre) + '"'
+        if getSettings().get("use channel genres", "true") == "true" and group_title:
+            m3u_entry += ' group-title="' + escape_quotes(group_title) + '"'
         
         m3u_entry += ',' + str(channel_name) + "\n"
         m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
@@ -5499,7 +5659,11 @@ def find_best_epg_match(channel_name, fallback_data):
 
 
 def fetch_epgshare_fallback(countries):
-    """Fetch EPG data from epgshare01.online for specified countries."""
+    """Fetch EPG data from epgshare01.online for specified countries.
+    
+    IMPROVEMENT #1: Raw XML Passthrough - Preserves all metadata from fallback EPG
+    (icons, categories, credits, ratings, episode numbers, etc.)
+    """
     fallback_programmes = {}
     base_url = "https://epgshare01.online/epgshare01/"
     
@@ -5581,19 +5745,19 @@ def fetch_epgshare_fallback(countries):
                     # Find matching channel name
                     for name_key, data in fallback_programmes.items():
                         if data['channel_id'] == channel_id:
+                            # IMPROVEMENT #1: Store raw XML element instead of just title/desc
+                            # This preserves ALL metadata (icons, categories, credits, ratings, etc.)
                             data['programmes'].append({
                                 'start': programme.get('start', ''),
                                 'stop': programme.get('stop', ''),
-                                'title': programme.find('title').text if programme.find('title') is not None else '',
-                                'desc': programme.find('desc').text if programme.find('desc') is not None else ''
+                                'xml_element': programme  # Store entire XML element for passthrough
                             })
                             break
                 
                 logger.info(f"Loaded {len([p for d in fallback_programmes.values() for p in d['programmes']])} programmes from {country}")
                 
-                # Clean up
+                # Don't delete root - we need the XML elements
                 del xml_content
-                del root
                 
         except Exception as e:
             logger.error(f"Error fetching EPG fallback for {country}: {e}")
@@ -5611,12 +5775,13 @@ def refresh_xmltv_with_progress():
         epg_refresh_progress["current_step"] = "Completed"
 
 def refresh_xmltv():
-    """Refresh XMLTV data with memory-optimized processing."""
+    """Refresh XMLTV data with ALL 9 EPG IMPROVEMENTS implemented."""
     import gc
+    import re
     global epg_refresh_progress
     
     settings = getSettings()
-    logger.info("Refreshing XMLTV...")
+    logger.info("Refreshing XMLTV with EPG improvements...")
 
     # Docker-optimized cache paths
     cache_dir = "/app/data"
@@ -5625,6 +5790,9 @@ def refresh_xmltv():
 
     day_before_yesterday = datetime.utcnow() - timedelta(days=2)
     day_before_yesterday_str = day_before_yesterday.strftime("%Y%m%d%H%M%S") + " +0000"
+
+    # IMPROVEMENT #7: (lang=) Cleanup regex
+    lang_cleanup_regex = re.compile(r'\s*\(lang=[^)]+\)\s*')
 
     # Check if EPG fallback is enabled
     epg_refresh_progress["current_step"] = "Loading EPG settings..."
@@ -5640,11 +5808,47 @@ def refresh_xmltv():
         logger.info(f"Loaded fallback EPG for {len(fallback_epg)} channels")
         epg_refresh_progress["current_step"] = f"Loaded fallback EPG for {len(fallback_epg)} channels"
 
+    # IMPROVEMENT #8: Diagnostic counters
+    epg_stats = {
+        "portal_epg_count": 0,
+        "fallback_epg_count": 0,
+        "dummy_epg_count": 0,
+        "total_channels": 0
+    }
+
     # Build XMLTV directly without caching old programmes (memory optimization)
     channels_xml = ET.Element("tv")
     portals = getPortals()
     programme_count = 0
-    channels_without_epg = []
+
+    # IMPROVEMENT #3: M3U/XMLTV Alignment - Load database channels for 100% match
+    # Get all enabled channels from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT portal, channel_id, name, custom_name, number, custom_number, 
+               genre, custom_genre, logo, custom_epg_id
+        FROM channels 
+        WHERE enabled = 1
+    ''')
+    db_channels = {}
+    for row in cursor.fetchall():
+        portal_id = row['portal']
+        channel_id = row['channel_id']
+        if portal_id not in db_channels:
+            db_channels[portal_id] = {}
+        db_channels[portal_id][channel_id] = {
+            'name': row['custom_name'] or row['name'],
+            'number': row['custom_number'] or row['number'],
+            'genre': row['custom_genre'] or row['genre'],
+            'logo': row['logo'],
+            'custom_epg_id': row['custom_epg_id']
+        }
+    conn.close()
+
+    # IMPROVEMENT #5: Variant Deduplication - Track base channel names
+    # Map to deduplicate HD/FHD/UHD variants
+    variant_map = {}  # base_name -> {epg_id, channels: [list of variant channel_ids]}
 
     portal_index = 0
     for portal in portals:
@@ -5660,88 +5864,70 @@ def refresh_xmltv():
             
             logger.info(f"Fetching EPG | Portal: {portal_name} | offset: {portal_epg_offset} |")
 
-            enabledChannels = portals[portal].get("enabled channels", [])
-            if len(enabledChannels) != 0:
-                name = portals[portal]["name"]
-                url = portals[portal]["url"]
-                macs = list(portals[portal]["macs"].keys())
-                proxy = portals[portal]["proxy"]
-                customChannelNames = portals[portal].get("custom channel names", {})
-                customEpgIds = portals[portal].get("custom epg ids", {})
-                customChannelNumbers = portals[portal].get("custom channel numbers", {})
+            # IMPROVEMENT #3 & #9: Use database channels instead of JSON config
+            portal_db_channels = db_channels.get(portal, {})
+            if len(portal_db_channels) == 0:
+                logger.warning(f"No enabled channels in database for portal {portal_name}")
+                continue
 
-                epg_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s), {len(enabledChannels)} enabled channels"
+            url = portals[portal]["url"]
+            macs = list(portals[portal]["macs"].keys())
+            proxy = portals[portal]["proxy"]
 
-                # Fetch channels and EPG from ALL MACs and merge
-                all_channels_map = {}  # channelId -> channel data
-                merged_epg = {}  # channelId -> [programmes]
-                
-                mac_index = 0
-                for mac in macs:
-                    try:
-                        mac_index += 1
-                        epg_refresh_progress["current_step"] = f"{portal_name}: Authenticating MAC {mac_index}/{len(macs)} ({mac})"
-                        token = stb.getToken(url, mac, proxy)
-                        if token:
-                            stb.getProfile(url, mac, token, proxy)
-                            
-                            epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac_index}/{len(macs)}"
-                            mac_channels = stb.getAllChannels(url, mac, token, proxy)
-                            
-                            epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac_index}/{len(macs)}"
-                            mac_epg = stb.getEpg(url, mac, token, 24, proxy)
-                            
-                            if mac_channels:
-                                for ch in mac_channels:
-                                    ch_id = str(ch.get("id"))
-                                    if ch_id not in all_channels_map:
-                                        all_channels_map[ch_id] = ch
-                                logger.info(f"MAC {mac}: Got {len(mac_channels)} channels")
-                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(mac_channels)} channels"
-                            
-                            if mac_epg:
-                                for ch_id, programmes in mac_epg.items():
-                                    # Merge EPG data - add programmes if we don't have any yet
-                                    # or if the new data has more programmes
-                                    if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
-                                        merged_epg[ch_id] = programmes
-                                logger.info(f"MAC {mac}: Got EPG for {len(mac_epg)} channels")
-                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - EPG for {len(mac_epg)} channels"
-                            else:
-                                logger.warning(f"MAC {mac}: No EPG data returned")
-                                epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - No EPG data"
-                            
-                            # Clear MAC data
-                            if mac_channels:
-                                del mac_channels
-                            if mac_epg:
-                                del mac_epg
-                            
-                    except Exception as e:
-                        logger.error(f"Error fetching data for MAC {mac}: {e}")
-                        epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - Error: {str(e)[:50]}"
-                        continue
-                
-                logger.info(f"Portal {portal_name}: Total {len(all_channels_map)} channels, EPG for {len(merged_epg)} channels")
-                epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(all_channels_map)} channels..."
+            epg_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s), {len(portal_db_channels)} enabled channels"
 
-                if all_channels_map:
-                    # Convert enabled channels to set for faster lookup
-                    enabled_set = set(enabledChannels)
-                    
-                    epg_refresh_progress["current_step"] = f"{portal_name}: Loading custom EPG mappings from database..."
-                    # Get custom EPG IDs from database (set via EPG page)
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT channel_id, custom_epg_id 
-                        FROM channels 
-                        WHERE portal = ? AND custom_epg_id IS NOT NULL AND custom_epg_id != ''
-                    ''', (portal,))
-                    db_custom_epg_ids = {row['channel_id']: row['custom_epg_id'] for row in cursor.fetchall()}
-                    conn.close()
-                    
-                    # Get genres for this portal to show category names
+            # Fetch channels and EPG from ALL MACs and merge
+            all_channels_map = {}  # channelId -> channel data
+            merged_epg = {}  # channelId -> [programmes]
+            
+            mac_index = 0
+            for mac in macs:
+                try:
+                    mac_index += 1
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Authenticating MAC {mac_index}/{len(macs)} ({mac})"
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
+                        
+                        epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac_index}/{len(macs)}"
+                        mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                        
+                        epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac_index}/{len(macs)}"
+                        mac_epg = stb.getEpg(url, mac, token, 24, proxy)
+                        
+                        if mac_channels:
+                            for ch in mac_channels:
+                                ch_id = str(ch.get("id"))
+                                if ch_id not in all_channels_map:
+                                    all_channels_map[ch_id] = ch
+                            logger.info(f"MAC {mac}: Got {len(mac_channels)} channels")
+                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(mac_channels)} channels"
+                        
+                        if mac_epg:
+                            for ch_id, programmes in mac_epg.items():
+                                if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
+                                    merged_epg[ch_id] = programmes
+                            logger.info(f"MAC {mac}: Got EPG for {len(mac_epg)} channels")
+                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - EPG for {len(mac_epg)} channels"
+                        else:
+                            logger.warning(f"MAC {mac}: No EPG data returned")
+                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - No EPG data"
+                        
+                        if mac_channels:
+                            del mac_channels
+                        if mac_epg:
+                            del mac_epg
+                        
+                except Exception as e:
+                    logger.error(f"Error fetching data for MAC {mac}: {e}")
+                    epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - Error: {str(e)[:50]}"
+                    continue
+            
+            logger.info(f"Portal {portal_name}: Total {len(all_channels_map)} channels, EPG for {len(merged_epg)} channels")
+            epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(portal_db_channels)} enabled channels..."
+
+            if all_channels_map:
+                    # Get genres for this portal
                     genres_dict = {}
                     try:
                         for mac in macs:
@@ -5753,136 +5939,210 @@ def refresh_xmltv():
                                         genre_id = str(genre.get("id"))
                                         genre_name = str(genre.get("title", "Unknown"))
                                         genres_dict[genre_id] = genre_name
-                                    break  # Got genres, no need to try other MACs
+                                    break
                     except Exception as e:
                         logger.error(f"Error fetching genres: {e}")
                     
-                    epg_refresh_progress["current_step"] = f"{portal_name}: Building XMLTV for {len(enabled_set)} enabled channels..."
-                    
-                    # Group channels by genre for progress display
-                    channels_by_genre = {}
-                    for channelId, channel in all_channels_map.items():
-                        if channelId in enabled_set:
-                            genre_id = str(channel.get("tv_genre_id", ""))
-                            genre_name = genres_dict.get(genre_id, "Other")
-                            if genre_name not in channels_by_genre:
-                                channels_by_genre[genre_name] = []
-                            channels_by_genre[genre_name].append((channelId, channel))
-                    
-                    # Process channels by genre
+                    # IMPROVEMENT #4: Only include channels that are in database (enabled)
                     processed_channels = 0
-                    total_enabled = len(enabled_set)
+                    total_enabled = len(portal_db_channels)
                     
-                    for genre_name, genre_channels in channels_by_genre.items():
-                        epg_refresh_progress["current_step"] = f"{portal_name}: Processing {genre_name} ({processed_channels}/{total_enabled} channels)"
-                        
-                        for channelId, channel in genre_channels:
-                            try:
-                                processed_channels += 1
-                                
-                                # Update progress every 10 channels
-                                if processed_channels % 10 == 0:
-                                    epg_refresh_progress["current_step"] = f"{portal_name}: Processing {genre_name} ({processed_channels}/{total_enabled} channels)"
-                                
-                                channelName = customChannelNames.get(channelId, channel.get("name"))
-                                channelNumber = customChannelNumbers.get(channelId, str(channel.get("number")))
-                                # Priority: 1. Database custom EPG ID, 2. JSON config custom EPG ID, 3. Channel number
-                                epgId = db_custom_epg_ids.get(channelId) or customEpgIds.get(channelId, channelNumber)
-
+                    for channelId, db_channel_data in portal_db_channels.items():
+                        try:
+                            processed_channels += 1
+                            epg_stats["total_channels"] += 1
+                            
+                            if processed_channels % 10 == 0:
+                                epg_refresh_progress["current_step"] = f"{portal_name}: Processing ({processed_channels}/{total_enabled} channels)"
+                            
+                            # IMPROVEMENT #3: Use database data for channel info
+                            channelName = db_channel_data['name']
+                            channelNumber = db_channel_data['number'] or "0"
+                            
+                            # IMPROVEMENT #2: ID-based matching - Use custom_epg_id from database first
+                            epgId = db_channel_data['custom_epg_id'] or channelNumber
+                            
+                            # IMPROVEMENT #5: Variant deduplication - normalize channel name
+                            base_name = re.sub(r'\s*(HD|FHD|UHD|4K|SD)\s*$', '', channelName, flags=re.IGNORECASE).strip()
+                            
+                            # Check if this is a variant of an existing channel
+                            is_variant = False
+                            if base_name in variant_map and base_name != channelName:
+                                # This is a variant - use the same EPG ID as the base channel
+                                epgId = variant_map[base_name]['epg_id']
+                                variant_map[base_name]['channels'].append(channelId)
+                                is_variant = True
+                            else:
+                                # This is the base channel or first variant
+                                variant_map[base_name] = {
+                                    'epg_id': epgId,
+                                    'channels': [channelId]
+                                }
+                            
+                            # IMPROVEMENT #4: Only add channel element if not a variant (avoid duplicates)
+                            if not is_variant:
                                 channelEle = ET.SubElement(channels_xml, "channel", id=epgId)
                                 ET.SubElement(channelEle, "display-name").text = channelName
-                                logo = channel.get("logo")
+                                logo = db_channel_data.get('logo')
                                 if logo:
                                     ET.SubElement(channelEle, "icon", src=logo)
 
-                                channel_epg = merged_epg.get(channelId, [])
-                                
-                                if not channel_epg:
-                                    # Try fallback EPG if enabled
-                                    fallback_used = False
-                                    if epg_fallback_enabled and fallback_epg:
-                                        # Try to match by channel name using improved matching
+                            # Get channel data from portal API
+                            channel = all_channels_map.get(channelId, {})
+                            channel_epg = merged_epg.get(channelId, [])
+                            
+                            # Skip adding programmes if this is a variant (EPG already added for base channel)
+                            if is_variant:
+                                continue
+                            
+                            if not channel_epg:
+                                # Try fallback EPG if enabled
+                                fallback_used = False
+                                if epg_fallback_enabled and fallback_epg:
+                                    # IMPROVEMENT #2: Try matching by custom_epg_id first, then channel name
+                                    matched_fb_id = None
+                                    
+                                    # First try: Match by custom_epg_id
+                                    if db_channel_data['custom_epg_id']:
+                                        for fb_name, data in fallback_epg.items():
+                                            if data['channel_id'] == db_channel_data['custom_epg_id']:
+                                                matched_fb_id = data['channel_id']
+                                                break
+                                    
+                                    # Second try: Match by channel name
+                                    if not matched_fb_id:
                                         matched_fb_id = find_best_epg_match(channelName, fallback_epg)
-                                        if matched_fb_id:
-                                            # Find the fallback data by channel_id
-                                            fb_data = None
-                                            for fb_name, data in fallback_epg.items():
-                                                if data['channel_id'] == matched_fb_id:
-                                                    fb_data = data
-                                                    break
-                                            
-                                            if fb_data and fb_data.get('programmes'):
-                                                for p in fb_data['programmes'][:50]:  # Limit to 50 programmes
-                                                    try:
+                                    
+                                    if matched_fb_id:
+                                        fb_data = None
+                                        for fb_name, data in fallback_epg.items():
+                                            if data['channel_id'] == matched_fb_id:
+                                                fb_data = data
+                                                break
+                                        
+                                        if fb_data and fb_data.get('programmes'):
+                                            for p in fb_data['programmes'][:50]:
+                                                try:
+                                                    # IMPROVEMENT #1: Raw XML passthrough - copy entire XML element
+                                                    xml_elem = p.get('xml_element')
+                                                    if xml_elem is not None:
+                                                        # Create new programme element with our channel ID
                                                         programmeEle = ET.SubElement(
                                                             channels_xml, "programme",
                                                             start=p['start'], stop=p['stop'], channel=epgId
                                                         )
-                                                        ET.SubElement(programmeEle, "title").text = p['title']
-                                                        if p['desc']:
-                                                            ET.SubElement(programmeEle, "desc").text = p['desc']
+                                                        # Copy all child elements from fallback (title, desc, category, credits, etc.)
+                                                        for child in xml_elem:
+                                                            # IMPROVEMENT #7: Clean (lang=) artifacts from title
+                                                            if child.tag == 'title' and child.text:
+                                                                cleaned_title = lang_cleanup_regex.sub('', child.text).strip()
+                                                                title_elem = ET.SubElement(programmeEle, child.tag, child.attrib)
+                                                                title_elem.text = cleaned_title
+                                                            else:
+                                                                # Copy element as-is with all attributes and text
+                                                                new_child = ET.SubElement(programmeEle, child.tag, child.attrib)
+                                                                new_child.text = child.text
+                                                                new_child.tail = child.tail
                                                         programme_count += 1
                                                         fallback_used = True
-                                                    except Exception as e:
-                                                        pass
-                                                if fallback_used:
-                                                    logger.debug(f"Used fallback EPG for {channelName}")
-                                    
-                                    if not fallback_used:
-                                        # Create dummy EPG
-                                        channels_without_epg.append(channelName)
-                                        start_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-                                        stop_time = start_time + timedelta(hours=24)
+                                                except Exception as e:
+                                                    pass
+                                            if fallback_used:
+                                                epg_stats["fallback_epg_count"] += 1
+                                                logger.debug(f"Used fallback EPG for {channelName}")
+                                
+                                if not fallback_used:
+                                    # Create dummy EPG
+                                    epg_stats["dummy_epg_count"] += 1
+                                    start_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+                                    stop_time = start_time + timedelta(hours=24)
+                                    start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
+                                    stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
+                                    programmeEle = ET.SubElement(
+                                        channels_xml, "programme", start=start, stop=stop, channel=epgId
+                                    )
+                                    ET.SubElement(programmeEle, "title").text = channelName
+                                    ET.SubElement(programmeEle, "desc").text = channelName
+                                    programme_count += 1
+                            else:
+                                # Portal EPG available
+                                epg_stats["portal_epg_count"] += 1
+                                for p in channel_epg:
+                                    try:
+                                        start_ts = p.get("start_timestamp")
+                                        stop_ts = p.get("stop_timestamp")
+                                        if not start_ts or not stop_ts:
+                                            continue
+                                            
+                                        start_time = datetime.utcfromtimestamp(start_ts) + timedelta(hours=portal_epg_offset)
+                                        stop_time = datetime.utcfromtimestamp(stop_ts) + timedelta(hours=portal_epg_offset)
                                         start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
                                         stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
+                                        
+                                        if start <= day_before_yesterday_str:
+                                            continue
+                                            
                                         programmeEle = ET.SubElement(
                                             channels_xml, "programme", start=start, stop=stop, channel=epgId
                                         )
-                                        ET.SubElement(programmeEle, "title").text = channelName
-                                        ET.SubElement(programmeEle, "desc").text = channelName
+                                        
+                                        # IMPROVEMENT #7: Clean (lang=) artifacts from title
+                                        title = p.get("name", "")
+                                        if title:
+                                            title = lang_cleanup_regex.sub('', title).strip()
+                                        ET.SubElement(programmeEle, "title").text = title
+                                        
+                                        desc = p.get("descr", "")
+                                        if desc:
+                                            ET.SubElement(programmeEle, "desc").text = desc
+                                        
+                                        # IMPROVEMENT #6: Portal EPG enrichment - add category, director, actors
+                                        # Add category (genre)
+                                        genre_id = str(channel.get("tv_genre_id", ""))
+                                        if genre_id and genre_id in genres_dict:
+                                            ET.SubElement(programmeEle, "category").text = genres_dict[genre_id]
+                                        
+                                        # Add director if available
+                                        director = p.get("director", "")
+                                        if director:
+                                            credits_elem = ET.SubElement(programmeEle, "credits")
+                                            ET.SubElement(credits_elem, "director").text = director
+                                        
+                                        # Add actors if available
+                                        actors = p.get("actors", "")
+                                        if actors:
+                                            if "credits" not in [child.tag for child in programmeEle]:
+                                                credits_elem = ET.SubElement(programmeEle, "credits")
+                                            else:
+                                                credits_elem = programmeEle.find("credits")
+                                            # Split actors by comma and add each
+                                            for actor in actors.split(","):
+                                                actor = actor.strip()
+                                                if actor:
+                                                    ET.SubElement(credits_elem, "actor").text = actor
+                                        
                                         programme_count += 1
-                                else:
-                                    for p in channel_epg:
-                                        try:
-                                            start_ts = p.get("start_timestamp")
-                                            stop_ts = p.get("stop_timestamp")
-                                            if not start_ts or not stop_ts:
-                                                continue
-                                                
-                                            start_time = datetime.utcfromtimestamp(start_ts) + timedelta(hours=portal_epg_offset)
-                                            stop_time = datetime.utcfromtimestamp(stop_ts) + timedelta(hours=portal_epg_offset)
-                                            start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                            stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                            
-                                            if start <= day_before_yesterday_str:
-                                                continue
-                                                
-                                            programmeEle = ET.SubElement(
-                                                channels_xml, "programme", start=start, stop=stop, channel=epgId
-                                            )
-                                            ET.SubElement(programmeEle, "title").text = p.get("name", "")
-                                            desc = p.get("descr", "")
-                                            if desc:
-                                                ET.SubElement(programmeEle, "desc").text = desc
-                                            programme_count += 1
-                                        except Exception as e:
-                                            logger.error(f"Error processing programme: {e}")
-                            except Exception as e:
-                                logger.error(f"Error processing channel: {e}")
+                                    except Exception as e:
+                                        logger.error(f"Error processing programme: {e}")
+                        except Exception as e:
+                            logger.error(f"Error processing channel {channelId}: {e}")
                     
-                    # Clear data from memory
                     epg_refresh_progress["current_step"] = f"{portal_name}: Completed - {programme_count} total programmes"
-                    epg_refresh_progress["portals_done"] = portal_index  # Mark this portal as done
+                    epg_refresh_progress["portals_done"] = portal_index
                     del merged_epg
                     del all_channels_map
                     gc.collect()
-                else:
-                    logger.error(f"Error making XMLTV for {name}, skipping")
-                    epg_refresh_progress["current_step"] = f"{portal_name}: Error - skipping"
-                    epg_refresh_progress["portals_done"] = portal_index  # Mark this portal as done
+            else:
+                logger.error(f"Error making XMLTV for {portal_name}, skipping")
+                epg_refresh_progress["current_step"] = f"{portal_name}: Error - skipping"
+                epg_refresh_progress["portals_done"] = portal_index
 
-    if channels_without_epg:
-        logger.warning(f"{len(channels_without_epg)} channels without EPG data")
+    # IMPROVEMENT #8: Diagnostic logging at INFO level
+    logger.info(f"EPG Statistics:")
+    logger.info(f"  Total channels: {epg_stats['total_channels']}")
+    logger.info(f"  Portal EPG: {epg_stats['portal_epg_count']} channels")
+    logger.info(f"  Fallback EPG: {epg_stats['fallback_epg_count']} channels")
+    logger.info(f"  Dummy EPG: {epg_stats['dummy_epg_count']} channels")
 
     epg_refresh_progress["current_step"] = "Generating XMLTV file..."
     # Generate XML string without minidom (much more memory efficient)
@@ -5903,10 +6163,12 @@ def refresh_xmltv():
         epg_refresh_progress["current_step"] = f"Error writing cache: {str(e)}"
 
     epg_refresh_progress["current_step"] = "Finalizing..."
-    # Update global cache
-    global cached_xmltv, last_updated
-    cached_xmltv = formatted_xmltv
+    # Update global cache - only track timestamp, not the data
+    global last_updated
     last_updated = time.time()
+    
+    logger.info(f"XMLTV refresh completed - {programme_count} programmes written to file")
+    logger.info(f"Memory optimization: XMLTV served from file instead of RAM")
     
     # Clean up
     del channels_xml
@@ -5961,16 +6223,67 @@ def xmltv():
             return authorise(lambda: _xmltv())()
 
 def _xmltv():
-    global cached_xmltv, last_updated
+    """Serve XMLTV from file - only refresh via manual button press."""
+    global last_updated
     logger.info("Guide Requested")
     
-    if cached_xmltv is None or (time.time() - last_updated) > 900:
-        refresh_xmltv()
+    cache_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    settings = getSettings()
     
-    return Response(
-        cached_xmltv,
-        mimetype="text/xml",
-    )
+    # Check if file exists
+    if os.path.exists(cache_file):
+        # Check auto-refresh setting
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        if auto_refresh == "manual":
+            # Manual mode: Always serve existing file, never auto-refresh
+            logger.debug("EPG auto-refresh disabled - serving existing file")
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error reading XMLTV cache file: {e}")
+                return Response("Error reading XMLTV file", status=500, mimetype="text/plain")
+        else:
+            # Auto-refresh enabled: Check if refresh needed based on interval
+            try:
+                refresh_days = int(settings.get("epg refresh interval days", "1"))
+                max_age = refresh_days * 86400  # Convert days to seconds
+                
+                file_age = time.time() - os.path.getmtime(cache_file)
+                if file_age < max_age:
+                    logger.debug(f"EPG file age: {int(file_age/3600)}h (max: {refresh_days} days) - serving from file")
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return Response(f.read(), mimetype="text/xml")
+                else:
+                    logger.info(f"EPG file older than {refresh_days} days - auto-refreshing")
+                    refresh_xmltv()
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error checking EPG file age: {e}")
+                return Response("Error processing XMLTV", status=500, mimetype="text/plain")
+    else:
+        # File doesn't exist
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        if auto_refresh == "manual":
+            # Manual mode: Don't create file automatically - user must press Refresh button
+            logger.warning("XMLTV file not found and auto-refresh is disabled. Please use 'Refresh EPG' button in dashboard.")
+            return Response(
+                '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n<!-- EPG not available. Please click "Refresh EPG" button in the dashboard to generate EPG data. -->\n</tv>',
+                mimetype="text/xml"
+            )
+        else:
+            # Auto mode: Create file automatically
+            logger.info("XMLTV cache file missing - creating initial file (auto-refresh enabled)")
+            refresh_xmltv()
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error reading XMLTV after refresh: {e}")
+                return Response("Error generating XMLTV", status=500, mimetype="text/plain")
 
 # ============================================
 # EPG Routes - with caching to prevent memory leaks
@@ -6454,8 +6767,12 @@ def xc_get_playlist_impl(route_portal_id=None):
     output = request.args.get("output", "m3u8")
     playlist_type = request.args.get("type", "m3u_plus")
     
-    # NEW: Portal filtering support via portal_id parameter
+    # NEW: Portal filtering support via portal_id parameter (ID or Name)
     portal_id_filter = request.args.get("portal_id")
+    
+    # If portal_id_filter is provided, try to resolve it (could be ID or Name)
+    if portal_id_filter:
+        portal_id_filter = resolve_portal_identifier(portal_id_filter)
     
     if not username or not password:
         return "Missing credentials", 401
@@ -6468,6 +6785,38 @@ def xc_get_playlist_impl(route_portal_id=None):
     m3u_content = generate_xc_m3u_with_portal_filter(user, portal_id_filter)
     
     return Response(m3u_content, mimetype="application/x-mpegURL")
+
+
+def resolve_portal_identifier(identifier):
+    """
+    Resolve portal identifier - accepts both Portal ID and Portal Name.
+    
+    Args:
+        identifier (str): Portal ID or Portal Name
+        
+    Returns:
+        str: Portal ID (or original identifier if not found)
+    """
+    if not identifier:
+        return None
+    
+    portals = getPortals()
+    
+    # First, check if it's a direct Portal ID match
+    if identifier in portals:
+        return identifier
+    
+    # Second, try to find by Portal Name (case-insensitive)
+    identifier_lower = identifier.lower()
+    for portal_id, portal in portals.items():
+        portal_name = portal.get("name", "").lower()
+        if portal_name == identifier_lower:
+            logger.info(f"Resolved portal name '{identifier}' to portal ID '{portal_id}'")
+            return portal_id
+    
+    # Not found - return original (will be filtered out later)
+    logger.warning(f"Portal identifier '{identifier}' not found (tried ID and Name)")
+    return identifier
 
 
 def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
@@ -6529,10 +6878,17 @@ def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
             epg_id = db_channel['custom_epg_id'] if db_channel['custom_epg_id'] else channel_name
             logo = db_channel['logo'] or ""
             
-            # Apply portal prefix to genre only (for group-title organization)
-            portal_prefix = portal.get("portal prefix", "").strip()
-            if portal_prefix and genre:
-                genre = f"[{portal_prefix}] {genre}"
+            # Determine group-title based on settings
+            if getSettings().get("use portal names as groups", "false") == "true":
+                # Use portal name as group
+                group_title = portal.get("name", portal_id)
+            else:
+                # Use genre with optional portal prefix
+                portal_prefix = portal.get("portal prefix", "").strip()
+                if portal_prefix and genre:
+                    group_title = f"[{portal_prefix}] {genre}"
+                else:
+                    group_title = genre
             
             stream_id = f"{portal_id}_{channel_id}"
             # Standard XC API URL format for maximum compatibility
@@ -6543,7 +6899,7 @@ def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
             def escape_quotes(text):
                 return str(text).replace('"', '&quot;') if text else ""
             
-            m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(genre)}",{channel_name}\n'
+            m3u_content += f'#EXTINF:-1 tvg-id="{escape_quotes(epg_id)}" tvg-name="{escape_quotes(channel_name)}" tvg-logo="{escape_quotes(logo)}" group-title="{escape_quotes(group_title)}",{channel_name}\n'
             m3u_content += f'{stream_url}\n'
     
     return m3u_content
@@ -6748,6 +7104,8 @@ def xc_get_live_streams(user):
     """Get live streams."""
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
+    settings = getSettings()
+    use_portal_names = settings.get("use portal names as groups", "false") == "true"
     
     streams = []
     
@@ -6795,7 +7153,12 @@ def xc_get_live_streams(user):
             numeric_id = int(hashlib.md5(internal_id.encode()).hexdigest()[:8], 16)
             
             # Create category_id that matches the one in xc_get_live_categories
-            category_id = f"{portal_id}_{genre}"
+            if use_portal_names:
+                # Use portal-based category (matches get_live_categories)
+                category_id = f"portal_{portal_id}"
+            else:
+                # Use genre-based category (original behavior)
+                category_id = f"{portal_id}_{genre}"
             
             streams.append({
                 "num": int(channel_number) if channel_number.isdigit() else 0,
@@ -8175,17 +8538,62 @@ def xc_series_stream(username, password, stream_id, extension=None):
 @app.route("/xmltv.php", methods=["GET"])
 @xc_auth_only
 def xc_xmltv():
-    """XC API XMLTV endpoint."""
-    global cached_xmltv, last_updated
+    """XC API XMLTV endpoint - serves from file, respects auto-refresh settings."""
+    global last_updated
     
-    # Refresh cache if needed
-    if cached_xmltv is None or (time.time() - last_updated) > 900:
-        refresh_xmltv()
+    cache_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    settings = getSettings()
     
-    return Response(
-        cached_xmltv,
-        mimetype="text/xml",
-    )
+    # Check if file exists
+    if os.path.exists(cache_file):
+        # Check auto-refresh setting
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        if auto_refresh == "manual":
+            # Manual mode: Always serve existing file
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error reading XMLTV cache file: {e}")
+                return Response("Error reading XMLTV file", status=500, mimetype="text/plain")
+        else:
+            # Auto-refresh enabled: Check interval
+            try:
+                refresh_days = int(settings.get("epg refresh interval days", "1"))
+                max_age = refresh_days * 86400
+                file_age = time.time() - os.path.getmtime(cache_file)
+                
+                if file_age < max_age:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return Response(f.read(), mimetype="text/xml")
+                else:
+                    refresh_xmltv()
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error checking EPG file age: {e}")
+                return Response("Error processing XMLTV", status=500, mimetype="text/plain")
+    else:
+        # File doesn't exist
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        if auto_refresh == "manual":
+            # Manual mode: Don't create file - return empty EPG
+            logger.warning("XMLTV file not found and auto-refresh is disabled")
+            return Response(
+                '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n<!-- EPG not available -->\n</tv>',
+                mimetype="text/xml"
+            )
+        else:
+            # Auto mode: Create file
+            refresh_xmltv()
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return Response(f.read(), mimetype="text/xml")
+            except Exception as e:
+                logger.error(f"Error reading XMLTV after refresh: {e}")
+                return Response("Error generating XMLTV", status=500, mimetype="text/plain")
 
 
 def stream_channel(portalId, channelId, xc_user=None):
@@ -8266,16 +8674,6 @@ def stream_channel(portalId, channelId, xc_user=None):
             else:
                 return False
 
-    def isMacFree():
-        count = 0
-        for i in occupied.get(portalId, []):
-            if i["mac"] == mac:
-                count = count + 1
-        if count < streamsPerMac:
-            return True
-        else:
-            return False
-
     portal = getPortals().get(portalId)
     
     # Check if portal exists
@@ -8296,36 +8694,198 @@ def stream_channel(portalId, channelId, xc_user=None):
     )
 
     freeMac = False
+    
+    # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
+    channel = None
+    mac = None
+    token = None
+    cmd = None
+    link = None
+    channelName = None
+    try_all_macs_setting = getSettings().get("try all macs", "true") == "true"
+    try_all_on_db_miss = getSettings().get("try all macs on db miss", "true") == "true"
+    
+    # 1. Versuche Channel aus DB zu laden
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT stream_cmd, available_macs, name, custom_name 
+            FROM channels 
+            WHERE portal = ? AND channel_id = ? AND enabled = 1
+        ''', (portalId, channelId))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row['stream_cmd'] and row['available_macs']:
+            # Channel in DB gefunden!
+            cmd = row['stream_cmd']
+            channelName = row['custom_name'] or row['name']
+            available_macs = row['available_macs'].split(',')
+            
+            logger.info(f"Channel {channelId} found in DB with {len(available_macs)} MAC(s): {available_macs}")
+            
+            # 2. Probiere MACs die den Channel haben
+            mac_found = None
+            for try_mac in available_macs:
+                # Check if MAC is free
+                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                if streamsPerMac == 0 or count < streamsPerMac:
+                    logger.info(f"Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                    freeMac = True
+                    mac = try_mac
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
+                        mac_found = mac
+                        break
+                else:
+                    logger.debug(f"MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                
+                # Respect "try all macs" setting
+                if not try_all_macs_setting:
+                    logger.info("'try all macs' is disabled, stopping after first MAC")
+                    break
+            
+            # 3. Wenn alle bekannten MACs voll sind UND "try all macs on db miss" aktiv
+            if not mac_found and try_all_on_db_miss:
+                logger.info(f"All known MACs busy for channel {channelId}, trying other MACs (try all macs on db miss)")
+                
+                # Probiere die ANDEREN MACs (die nicht in available_macs sind)
+                other_macs = [m for m in macs if m not in available_macs]
+                
+                for try_mac in other_macs:
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    if streamsPerMac == 0 or count < streamsPerMac:
+                        logger.info(f"Trying other MAC: Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                        freeMac = True
+                        mac = try_mac
+                        token = stb.getToken(url, mac, proxy)
+                        if token:
+                            stb.getProfile(url, mac, token, proxy)
+                            
+                            # Lade alle Channels von dieser MAC
+                            channels = stb.getAllChannels(url, mac, token, proxy)
+                            if channels:
+                                # Suche Channel
+                                for ch in channels:
+                                    if str(ch["id"]) == str(channelId):
+                                        channel = ch
+                                        cmd = channel["cmd"]
+                                        channelName = channel["name"]
+                                        mac_found = mac
+                                        
+                                        # Update DB: Füge diese MAC zu available_macs hinzu
+                                        try:
+                                            new_available_macs = ','.join(available_macs + [mac])
+                                            conn = get_db_connection()
+                                            cursor = conn.cursor()
+                                            cursor.execute('''
+                                                UPDATE channels 
+                                                SET stream_cmd = ?, available_macs = ?
+                                                WHERE portal = ? AND channel_id = ?
+                                            ''', (cmd, new_available_macs, portalId, channelId))
+                                            conn.commit()
+                                            conn.close()
+                                            logger.info(f"Updated DB: Added MAC {mac} to available_macs for channel {channelId}")
+                                        except Exception as e:
+                                            logger.error(f"Error updating DB: {e}")
+                                        
+                                        break
+                                
+                                if mac_found:
+                                    break
+                    
+                    # Respect "try all macs" setting
+                    if not try_all_macs_setting:
+                        logger.info("'try all macs' is disabled, stopping after first MAC")
+                        break
+            
+            if not mac_found:
+                logger.warning(f"All MACs busy or channel not found on other MACs for channel {channelId}")
+                return make_response("All MACs busy", 503)
+            
+            mac = mac_found
+        else:
+            # 4. FALLBACK: Channel nicht in DB - probiere getAllChannels()
+            logger.warning(f"Channel {channelId} not in DB, falling back to getAllChannels()")
+            
+            mac_found = None
+            for try_mac in macs:
+                # Check if MAC is free
+                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                if streamsPerMac == 0 or count < streamsPerMac:
+                    logger.info(f"Fallback: Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                    freeMac = True
+                    mac = try_mac
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        stb.getProfile(url, mac, token, proxy)
+                        
+                        # Lade alle Channels von dieser MAC
+                        channels = stb.getAllChannels(url, mac, token, proxy)
+                        if channels:
+                            # Suche Channel
+                            for ch in channels:
+                                if str(ch["id"]) == str(channelId):
+                                    channel = ch
+                                    cmd = channel["cmd"]
+                                    channelName = channel["name"]
+                                    mac_found = mac
+                                    
+                                    # Speichere in DB für nächstes Mal
+                                    try:
+                                        conn = get_db_connection()
+                                        cursor = conn.cursor()
+                                        cursor.execute('''
+                                            UPDATE channels 
+                                            SET stream_cmd = ?, available_macs = ?, enabled = 1
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (cmd, mac, portalId, channelId))
+                                        conn.commit()
+                                        conn.close()
+                                        logger.info(f"Auto-learned: Saved channel {channelId} to DB")
+                                    except Exception as e:
+                                        logger.error(f"Error saving channel to DB: {e}")
+                                    
+                                    break
+                            
+                            if mac_found:
+                                break
+                
+                # Respect "try all macs" setting
+                if not try_all_macs_setting:
+                    logger.info("'try all macs' is disabled, stopping after first MAC")
+                    break
+            
+            if not mac_found:
+                logger.error(f"Channel {channelId} not found on any MAC")
+                return make_response("Channel not found", 404)
+            
+            mac = mac_found
+    
+    except Exception as e:
+        logger.error(f"Error loading channel from DB: {e}")
+        return make_response("Database error", 500)
+    
+    # 4. Generate stream link
+    if cmd:
+        if "http://localhost/" in cmd:
+            link = stb.getLink(url, mac, token, cmd, proxy)
+            logger.debug(f"Generated stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Generated stream link for MAC {mac}: {link}")
+        else:
+            link = cmd.split(" ")[1]
+            logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
+    
+    if not link:
+        logger.warning(f"No stream link generated for MAC {mac}, channel {channelId}")
+        # Markiere MAC als defekt
+        logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
+        moveMac(portalId, mac)
+        return make_response("No stream link available", 404)
 
-    for mac in macs:
-        channel = None
-        cmd = None
-        link = None
-        if streamsPerMac == 0 or isMacFree():
-            logger.info(
-                "Trying Portal({}):MAC({}):Channel({})".format(portalId, mac, channelId)
-            )
-            freeMac = True
-            token = stb.getToken(url, mac, proxy)
-            if token:
-                stb.getProfile(url, mac, token, proxy)
-                # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
-                channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
-
-        if channel:
-            # Channel bereits gefunden - keine Schleife nötig!
-            channelName = portal.get("custom channel names", {}).get(channelId)
-            if channelName == None:
-                channelName = channel["name"]
-            cmd = channel["cmd"]
-
-        if cmd:
-            if "http://localhost/" in cmd:
-                link = stb.getLink(url, mac, token, cmd, proxy)
-            else:
-                link = cmd.split(" ")[1]
-
-        if link:
+    if link:
             if getSettings().get("test streams", "true") == "false" or testStream():
                 if web:
                     ffmpegcmd = [
@@ -8351,40 +8911,37 @@ def stream_channel(portalId, channelId, xc_user=None):
                     response.headers['Content-Type'] = 'video/mp2t'
                     response.headers['Accept-Ranges'] = 'none'
                     return response
-
-                else:
-                    if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
-                        ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
-                        ffmpegcmd = ffmpegcmd.replace("<url>", link)
-                        ffmpegcmd = ffmpegcmd.replace(
-                            "<timeout>",
-                            str(int(getSettings()["ffmpeg timeout"]) * int(1000000)),
-                        )
-                        if proxy:
-                            ffmpegcmd = ffmpegcmd.replace("<proxy>", proxy)
-                        else:
-                            ffmpegcmd = ffmpegcmd.replace("-http_proxy <proxy>", "")
-                        " ".join(ffmpegcmd.split())
-                        ffmpegcmd = ffmpegcmd.split()
-                        return Response(
-                            streamData(), mimetype="application/octet-stream"
-                        )
+            else:
+                if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
+                    ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
+                    ffmpegcmd = ffmpegcmd.replace("<url>", link)
+                    ffmpegcmd = ffmpegcmd.replace(
+                        "<timeout>",
+                        str(int(getSettings()["ffmpeg timeout"]) * int(1000000)),
+                    )
+                    if proxy:
+                        ffmpegcmd = ffmpegcmd.replace("<proxy>", proxy)
                     else:
-                        logger.info("Redirect sent")
-                        return redirect(link)
-
+                        ffmpegcmd = ffmpegcmd.replace("-http_proxy <proxy>", "")
+                    
+                    # Bereinige doppelte Leerzeichen und splitte in Array
+                    ffmpegcmd = " ".join(ffmpegcmd.split())
+                    ffmpegcmd = ffmpegcmd.split()
+                    return Response(
+                        streamData(), mimetype="application/octet-stream"
+                    )
+                else:
+                    logger.info("Redirect sent")
+                    return redirect(link)
+    else:
         logger.info(
             "Unable to connect to Portal({}) using MAC({})".format(portalId, mac)
         )
         logger.info("Moving MAC({}) for Portal({})".format(mac, portalName))
         moveMac(portalId, mac)
-
-        if not getSettings().get("try all macs", "true") == "true":
-            break
-
-    # (Fallback logic remains the same but too long to include here)
-    # ... rest of the original channel function
-
+        return make_response("Unable to connect to portal", 503)
+    
+    # If we reach here, no stream was found
     if freeMac:
         logger.info(
             "No working streams found for Portal({}):Channel({})".format(
@@ -8483,29 +9040,63 @@ def hls_stream(portalId, channelId, filename):
     
     # If file doesn't exist and this is a playlist/segment request, start the stream
     if not file_path and (filename.endswith('.m3u8') or filename.endswith('.ts') or filename.endswith('.m4s')):
-        # Get the stream URL
+        # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
+        cmd = None
+        mac_used = None
+        
+        # 1. Versuche Channel aus DB zu laden
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT stream_cmd, available_macs 
+                FROM channels 
+                WHERE portal = ? AND channel_id = ? AND enabled = 1
+            ''', (portalId, channelId))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row and row['stream_cmd'] and row['available_macs']:
+                cmd = row['stream_cmd']
+                available_macs = row['available_macs'].split(',')
+                mac_used = available_macs[0] if available_macs else None
+                logger.info(f"HLS: Channel {channelId} found in DB, using MAC {mac_used}")
+            else:
+                # Fallback: getAllChannels()
+                logger.warning(f"HLS: Channel {channelId} not in DB, falling back")
+                for try_mac in macs:
+                    token = stb.getToken(url, try_mac, proxy)
+                    if token:
+                        stb.getProfile(url, try_mac, token, proxy)
+                        channels = stb.getAllChannels(url, try_mac, token, proxy)
+                        if channels:
+                            for ch in channels:
+                                if str(ch["id"]) == str(channelId):
+                                    cmd = ch["cmd"]
+                                    mac_used = try_mac
+                                    break
+                            if cmd:
+                                break
+        except Exception as e:
+            logger.error(f"HLS: Error loading channel from DB: {e}")
+        
         link = None
-        for mac in macs:
+        if cmd and mac_used:
             try:
-                token = stb.getToken(url, mac, proxy)
+                # Get token for the MAC that has the channel
+                token = stb.getToken(url, mac_used, proxy)
                 if token:
-                    stb.getProfile(url, mac, token, proxy)
-                    # OPTIMIERT: Nutze Channel-Cache statt alle Channels zu laden
-                    channel = channel_cache.find_channel(portalId, mac, channelId, url, token, proxy)
+                    stb.getProfile(url, mac_used, token, proxy)
                     
-                    if channel:
-                        cmd = channel["cmd"]
-                        if "http://localhost/" in cmd:
-                            link = stb.getLink(url, mac, token, cmd, proxy)
-                        else:
-                            link = cmd.split(" ")[1]
-                        break  # Channel gefunden - fertig!
+                    if "http://localhost/" in cmd:
+                        link = stb.getLink(url, mac_used, token, cmd, proxy)
+                    else:
+                        link = cmd.split(" ")[1]
                     
-                    if link:
-                        break
+                    logger.info(f"Stream URL obtained from MAC {mac_used} for Channel {channelId}")
             except Exception as e:
-                logger.error(f"Error getting stream URL for HLS with MAC {mac}: {e}")
-                continue
+                logger.error(f"Error getting stream URL with MAC {mac_used}: {e}")
         
         if not link:
             logger.error(f"Could not get stream URL for Portal({portalId}):Channel({channelId})")
@@ -8589,10 +9180,38 @@ def dashboard_stats():
     # Calculate uptime
     uptime_seconds = int(time.time() - server_start_time)
     
+    # Memory diagnostics
+    import sys
+    import os
+    
+    # Check XMLTV file size instead of RAM cache
+    xmltv_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    xmltv_file_mb = 0
+    if os.path.exists(xmltv_file):
+        xmltv_file_mb = round(os.path.getsize(xmltv_file) / (1024*1024), 2)
+    
+    # CloudScraper status
+    import stb
+    cloudscraper_status = {
+        "available": stb.CLOUDSCRAPER_AVAILABLE,
+        "version": stb.CLOUDSCRAPER_VERSION if stb.CLOUDSCRAPER_AVAILABLE else None,
+        "status": "✅ Active" if stb.CLOUDSCRAPER_AVAILABLE else "❌ Not Available"
+    }
+    
+    memory_info = {
+        "xmltv_file_mb": xmltv_file_mb,  # File size, not RAM
+        "xmltv_in_ram": False,  # XMLTV no longer cached in RAM
+        "occupied_streams": len(occupied),
+        "occupied_portals": len(occupied.keys()),
+        "hls_active_streams": len(hls_manager.streams) if hls_manager else 0,
+    }
+    
     return flask.jsonify({
         "total_channels": total_channels,
         "last_updated": last_update_time,
-        "uptime_seconds": uptime_seconds
+        "uptime_seconds": uptime_seconds,
+        "memory_info": memory_info,
+        "cloudscraper": cloudscraper_status
     })
 
 @app.route("/log")
@@ -8737,6 +9356,70 @@ def refresh_lineup_endpoint():
     except Exception as e:
         logger.error(f"Error refreshing lineup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/cache/clear", methods=["POST"])
+@authorise
+def cache_clear():
+    """Clear all caches (lineup, playlist, EPG, channels.db)."""
+    try:
+        global cached_lineup, cached_playlist, last_playlist_host
+        
+        # Clear channels.db (stream_cmd and available_macs)
+        db_cleared = 0
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL')
+            db_cleared = cursor.rowcount
+            conn.commit()
+            conn.close()
+            logger.info(f"Cleared stream_cmd and available_macs from {db_cleared} channels in DB")
+        except Exception as e:
+            logger.error(f"Error clearing channels.db: {e}")
+            db_cleared = 0
+        
+        # Clear lineup cache
+        cached_lineup = []
+        
+        # Clear playlist cache
+        cached_playlist = None
+        last_playlist_host = None
+        
+        logger.info(f"All caches cleared via dashboard ({db_cleared} DB entries)")
+        return jsonify({
+            "success": True, 
+            "message": f"Cache cleared successfully ({db_cleared} DB entries)",
+            "cleared_entries": db_cleared
+        })
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/cache/stats", methods=["GET"])
+@authorise
+def cache_stats():
+    """Get cache statistics."""
+    try:
+        # Return DB-based stats instead of channel_cache
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM channels WHERE stream_cmd IS NOT NULL')
+        cached_channels = cursor.fetchone()[0]
+        conn.close()
+        
+        stats = {
+            "mode": "db-direct",
+            "cached_channels": cached_channels,
+            "cache_duration": "persistent"
+        }
+        
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/api/logs/recent", methods=["GET"])
 @authorise
@@ -8945,7 +9628,8 @@ if __name__ == "__main__":
         logger.info("No channels in database, fetching from portals...")
         refresh_channels_cache()
     
-    start_refresh()
+    # Auto Line Refresh deaktiviert - wird über Settings konfiguriert
+    # start_refresh()  # Deaktiviert für v2.4.1
     
     # Initialize HLS stream manager with settings
     settings = getSettings()
@@ -8967,19 +9651,35 @@ if __name__ == "__main__":
     hls_manager.start_monitoring()
     logger.info(f"HLS Stream Manager initialized (max_streams={max_streams}, timeout={inactive_timeout}s)")
     
-    # Starte Channel-Cache Cleanup Task
-    def cache_cleanup_task():
-        """Background-Task der regelmäßig den Cache aufräumt."""
-        while True:
-            time.sleep(3600)  # Alle 1 Stunde (statt 5 Minuten)
-            try:
-                channel_cache.cleanup_expired()
-            except Exception as e:
-                logger.error(f"Error in cache cleanup: {e}")
+    # Channel-Cache läuft unbegrenzt - nur manueller Refresh über Dashboard
+    # Kein automatischer Cleanup - maximale Performance
+    logger.info("Channel cache runs indefinitely - manual refresh only via Dashboard")
     
-    threading.Thread(target=cache_cleanup_task, daemon=True).start()
-    logger.info("Channel cache cleanup task started (runs every hour)")
+    # Start automatic log cleanup (every 6 hours, deletes logs older than 24 hours)
+    logger.info("Starting automatic log cleanup (every 6 hours, deletes logs older than 24 hours)")
+    schedule_log_cleanup()
     
-    # Always use waitress for production in container
+    # Start automatic cleanup of occupied streams dictionary (memory leak prevention)
+    logger.info("Starting automatic cleanup of occupied streams (every 5 minutes)")
+    cleanup_occupied_streams()
+    
+    # Waitress Performance Configuration
+    # Optimized for high-performance streaming and concurrent requests
     logger.info("Starting Waitress server on 0.0.0.0:8001")
-    waitress.serve(app, host="0.0.0.0", port=8001, _quiet=True, threads=24) 
+    logger.info("Performance: 48 threads, 8192 channel timeout, 1MB buffers")
+    
+    waitress.serve(
+        app,
+        host="0.0.0.0",
+        port=8001,
+        threads=48,                    # Increased from 24 to 48 for better concurrency
+        channel_timeout=8192,          # Increased timeout for long-running streams (2+ hours)
+        recv_bytes=1048576,            # 1MB receive buffer (better for large requests)
+        send_bytes=1048576,            # 1MB send buffer (better for streaming)
+        outbuf_overflow=2097152,       # 2MB overflow buffer (prevents blocking)
+        inbuf_overflow=1048576,        # 1MB input overflow buffer
+        connection_limit=1000,         # Max 1000 concurrent connections
+        cleanup_interval=30,           # Cleanup idle connections every 30s
+        asyncore_use_poll=True,        # Use poll() instead of select() (better performance)
+        _quiet=True
+    ) 

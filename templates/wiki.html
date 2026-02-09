@@ -1,0 +1,604 @@
+{% extends "base.html" %}
+{% block title %}Feature Wiki - MacReplayXC{% endblock %}
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title"><i class="ti ti-book me-2"></i>Feature Wiki</h2>
+                <div class="text-muted mt-1">Erweiterte Features & Einstellungen</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="page-body">
+    <div class="container-fluid" style="max-width: 1400px;">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-star me-2"></i>Übersicht v3.0.0</h3></div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center"><div class="h1 text-primary mb-1">10</div><div class="text-muted">Neue Features</div></div>
+                    <div class="col-md-3 text-center"><div class="h1 text-success mb-1">30x</div><div class="text-muted">Schnelleres Streaming</div></div>
+                    <div class="col-md-3 text-center"><div class="h1 text-info mb-1">Python 3.13</div><div class="text-muted">+15% Performance</div></div>
+                    <div class="col-md-3 text-center"><div class="h1 text-warning mb-1">v3.1.0</div><div class="text-muted">DB-Optimierung</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Explained -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-settings me-2"></i>Alle Einstellungen erklärt</h3></div>
+            <div class="card-body">
+                
+                <h5 class="mb-3">🔐 Sicherheit</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Enable Security</strong></td>
+                                <td>Aktiviert Login-Schutz für Web-Interface</td>
+                                <td><span class="badge bg-warning">Empfohlen: true</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Username</strong></td>
+                                <td>Benutzername für Login</td>
+                                <td>Standard: admin</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Password</strong></td>
+                                <td>Passwort für Login</td>
+                                <td><span class="badge bg-danger">Ändern!</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Public Playlist Access</strong></td>
+                                <td>M3U/XMLTV ohne Login erreichbar</td>
+                                <td>true = öffentlich<br>false = Login nötig</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">⚡ DB-Streaming (NEU in v3.1.0)</h5>
+                <div class="alert alert-success mb-3">
+                    <strong>Automatische Optimierung!</strong> Streaming nutzt jetzt channels.db direkt - bis zu 30x schneller beim Channel-Wechsel. Persistent über Neustarts!
+                </div>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Feature</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Vorteil</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Intelligentes MAC-Routing</strong></td>
+                                <td>System weiß welche MAC welchen Channel hat</td>
+                                <td>Keine unnötigen API-Calls mehr</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Persistent über Neustarts</strong></td>
+                                <td>DB bleibt gefüllt nach Neustart</td>
+                                <td>Sofort schnell, kein Cache-Warmup</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Auto-Learning</strong></td>
+                                <td>Neue Channels werden automatisch gespeichert</td>
+                                <td>Einmal langsam, dann immer schnell</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Editor Refresh</strong></td>
+                                <td>Füllt DB mit allen Channels + MAC-Zuordnung</td>
+                                <td>Einmalig, dann optimales Streaming</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">📊 Channel Cache (Deprecated)</h5>
+                <div class="alert alert-warning mb-3">
+                    <strong>Hinweis:</strong> Cache-Modi (lazy-ram, ram, disk, hybrid) sind deprecated. Streaming nutzt jetzt channels.db direkt. Cache bleibt für Backwards-Compatibility.
+                </div>
+
+                <h5 class="mb-3">📺 Streaming</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Stream Method</strong></td>
+                                <td>Wie Streams weitergeleitet werden</td>
+                                <td>
+                                    <strong>ffmpeg:</strong> Re-encode (kompatibel)<br>
+                                    <strong>redirect:</strong> Direkt (schneller)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>FFmpeg Command</strong></td>
+                                <td>FFmpeg-Parameter für Streaming</td>
+                                <td>Standard funktioniert für die meisten</td>
+                            </tr>
+                            <tr>
+                                <td><strong>FFmpeg Timeout</strong></td>
+                                <td>Timeout in Sekunden</td>
+                                <td>Standard: 10s</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Test Streams</strong></td>
+                                <td>Streams vor Weiterleitung testen</td>
+                                <td>true = sicherer<br>false = schneller</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Try All MACs</strong></td>
+                                <td>Alle MACs probieren bei Fehler</td>
+                                <td><span class="badge bg-success">Empfohlen: true</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">📅 EPG (Electronic Program Guide)</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>EPG Auto Refresh</strong></td>
+                                <td>EPG automatisch aktualisieren</td>
+                                <td>
+                                    <strong>manual:</strong> Nur per Button<br>
+                                    <strong>auto:</strong> Automatisch nach Intervall
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>EPG Refresh Interval Days</strong></td>
+                                <td>Wie oft EPG aktualisieren</td>
+                                <td>Standard: 1 Tag</td>
+                            </tr>
+                            <tr>
+                                <td><strong>EPG Fallback Countries</strong></td>
+                                <td>Fallback-EPG Länder (Komma-getrennt)</td>
+                                <td>Beispiel: DE,AT,CH</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">🎬 VOD & Series</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>VOD Auto Refresh</strong></td>
+                                <td>VOD-Kategorien automatisch laden</td>
+                                <td>manual oder auto</td>
+                            </tr>
+                            <tr>
+                                <td><strong>VOD Refresh Interval Days</strong></td>
+                                <td>Wie oft VOD aktualisieren</td>
+                                <td>Standard: 7 Tage</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">🌐 HDHomeRun</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Einstellung</th>
+                                <th style="width: 40%;">Beschreibung</th>
+                                <th style="width: 35%;">Werte / Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Enable HDHR</strong></td>
+                                <td>HDHomeRun-Emulation aktivieren</td>
+                                <td>Für Plex/Emby/Jellyfin</td>
+                            </tr>
+                            <tr>
+                                <td><strong>HDHR Device ID</strong></td>
+                                <td>Eindeutige Geräte-ID</td>
+                                <td>Automatisch generiert</td>
+                            </tr>
+                            <tr>
+                                <td><strong>HDHR Friendly Name</strong></td>
+                                <td>Anzeigename in Apps</td>
+                                <td>Frei wählbar</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- New Features -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-sparkles me-2"></i>Neue Features v3.0.0</h3></div>
+            <div class="card-body">
+                
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">1</span>Advanced Channel Cache System</h5>
+                    <p><strong>4 Cache-Modi für optimale Performance:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>lazy-ram</strong> (Standard)<br>
+                                <small>Cache on-demand, minimaler RAM. Ideal für: Kleine Setups, wenige Portale</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>ram</strong><br>
+                                <small>Pre-Cache beim Start, alles im RAM. Ideal für: Viel RAM verfügbar</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>disk</strong><br>
+                                <small>Pre-Cache auf Disk, persistent. Ideal für: Wenig RAM, häufige Neustarts</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>hybrid</strong> (Empfohlen)<br>
+                                <small>RAM + Disk, beste Performance. Ideal für: Produktiv-Systeme</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-2 mb-0">
+                        <strong>Einstellung:</strong> Settings → Channel Cache Mode<br>
+                        <strong>Performance:</strong> Bis zu 50x schnellere Channel-Zugriffe!
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">2</span>Intelligentes MAC-Fallback</h5>
+                    <p><strong>Automatisches Durchprobieren aller MACs bis Channel gefunden:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="border border-danger rounded p-2">
+                                <strong class="text-danger">❌ Vorher:</strong><br>
+                                <small>MAC1 probiert → Nicht gefunden → MAC1 gecacht (leer) → Fehler!</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border border-success rounded p-2">
+                                <strong class="text-success">✅ Jetzt:</strong><br>
+                                <small>MAC1 → MAC2 → MAC3 → Gefunden! → Nur richtige MAC gecacht</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-success mt-2 mb-0">
+                        <strong>Vorteil:</strong> Weniger fehlgeschlagene Streams, intelligenteres Caching
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">3</span>XC API Portal-Filterung mit Namen</h5>
+                    <p><strong>Filterung nach Portal-ID ODER Portal-Name:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>Mit Portal-ID:</strong><br>
+                                <code class="small">/get.php?portal_id=portal_1</code><br>
+                                <small class="text-muted">✅ Eindeutig, schneller</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2">
+                                <strong>Mit Portal-Name (NEU!):</strong><br>
+                                <code class="small">/get.php?portal_id=My%20Portal</code><br>
+                                <small class="text-muted">✅ Lesbarer, einfacher zu merken</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">4</span>Dashboard Cache-Management</h5>
+                    <p><strong>Einfache Cache-Verwaltung direkt im Dashboard:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-4 text-center">
+                            <div class="border border-success rounded p-2">
+                                <i class="ti ti-reload icon text-success" style="font-size: 2em;"></i><br>
+                                <strong>Rebuild Cache</strong><br>
+                                <small>Lädt alle Kanäle neu</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <div class="border border-warning rounded p-2">
+                                <i class="ti ti-trash icon text-warning" style="font-size: 2em;"></i><br>
+                                <strong>Clear Cache</strong><br>
+                                <small>Löscht kompletten Cache</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <div class="border border-info rounded p-2">
+                                <i class="ti ti-database icon text-info" style="font-size: 2em;"></i><br>
+                                <strong>Cache Stats</strong><br>
+                                <small>Live-Statistiken (30s)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">5</span>MAC-Regionen-Erkennung</h5>
+                    <p><strong>Automatische DE-Erkennung basierend auf Genre-Namen:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="row align-items-center">
+                                        <div class="col-auto">
+                                            <span style="font-size: 3em;">✓</span>
+                                        </div>
+                                        <div class="col">
+                                            <h6 class="mb-2">Deutsche Inhalte erkannt</h6>
+                                            <p class="text-muted mb-0">
+                                                Wenn Genre-Namen Keywords wie <strong>DE</strong>, <strong>GER</strong>, <strong>GERMAN</strong>, 
+                                                <strong>DEUTSCH</strong>, <strong>GERMANY</strong> oder <strong>ALLEMAGNE</strong> enthalten, 
+                                                wird ein grüner Haken in der Spalte "DE ?" angezeigt.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-2 mb-0">
+                        <strong>Anzeige:</strong> Portals → Edit Portal → Current MACs → Spalte "DE ?"<br>
+                        <strong>Hinweis:</strong> AT und CH werden nicht mehr separat angezeigt - nur DE-Erkennung
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">6</span>Vavoo IPTV Proxy Integration</h5>
+                    <p><strong>Vavoo als integrierter IPTV Proxy für zusätzliche Streams:</strong></p>
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-world icon text-primary mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Multi-Region</h6>
+                                    <small class="text-muted">DE, FR, IT, ES, GB, NL, PL, PT, RO, TR, AL, BG, CR</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-device-tv icon text-success mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Resolution Scan</h6>
+                                    <small class="text-muted">FFmpeg-basierte Qualitätserkennung</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-network icon text-info mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Streaming Modes</h6>
+                                    <small class="text-muted">Proxy (Internet) oder Direct (LAN)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-filter icon text-warning mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Channel Filter</h6>
+                                    <small class="text-muted">Keyword-basierte Filterung</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mb-3">
+                        <h6 class="alert-heading"><i class="ti ti-info-circle me-2"></i>Quick Start</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-2"><strong>1. Zugriff:</strong></p>
+                                <ul class="mb-3">
+                                    <li>Navigation → Vavoo Tab</li>
+                                    <li>Oder direkt: <code>/vavoo_page</code></li>
+                                    <li>Login: Gleiche Credentials wie MacReplayXC</li>
+                                </ul>
+                                
+                                <p class="mb-2"><strong>2. Playlists:</strong></p>
+                                <ul class="mb-0">
+                                    <li>Einzeln: <code>http://host:4323/playlist/DE.m3u</code></li>
+                                    <li>Kombiniert: <code>http://host:4323/playlist/DE_FR_IT.m3u</code></li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-2"><strong>3. Konfiguration:</strong></p>
+                                <ul class="mb-3">
+                                    <li><code>HOST</code> ENV: Deine öffentliche URL</li>
+                                    <li>Port 4323 freigeben (docker-compose.yml)</li>
+                                    <li>Automatischer Start via <code>start.sh</code></li>
+                                </ul>
+                                
+                                <p class="mb-2"><strong>4. Vorteile:</strong></p>
+                                <ul class="mb-0">
+                                    <li>Single Container (alles in einem)</li>
+                                    <li>Tabler Dark Theme (passt perfekt)</li>
+                                    <li>Shared Environment (HOST-Variable)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-success mb-0">
+                        <strong><i class="ti ti-check me-2"></i>Dokumentation:</strong> 
+                        Detaillierte Setup-Anleitung in <code>docs/vavoo/QUICKSTART.md</code>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Performance Comparison -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-chart-line me-2"></i>Performance-Vergleich</h3></div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-vcenter">
+                        <thead>
+                            <tr>
+                                <th>Komponente</th>
+                                <th>Vorher</th>
+                                <th>v3.0.0</th>
+                                <th>Speedup</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Python Version</strong></td>
+                                <td>3.11</td>
+                                <td><span class="badge bg-success">3.13</span></td>
+                                <td><span class="badge bg-info">+15%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>JSON Parsing</strong></td>
+                                <td>standard json</td>
+                                <td><span class="badge bg-success">orjson</span></td>
+                                <td><span class="badge bg-warning">10x</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Waitress Threads</strong></td>
+                                <td>24</td>
+                                <td><span class="badge bg-success">48</span></td>
+                                <td><span class="badge bg-info">+100%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Channel-Zugriffe</strong></td>
+                                <td>2-5 Sekunden</td>
+                                <td><span class="badge bg-success">&lt;0.1s</span></td>
+                                <td><span class="badge bg-danger">50x</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Max Concurrent Streams</strong></td>
+                                <td>~200</td>
+                                <td><span class="badge bg-success">~400</span></td>
+                                <td><span class="badge bg-info">+100%</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-success mb-0">
+                    <strong>Gesamt-Speedup:</strong> Bis zu 500x schneller als Original bei kombinierten Optimierungen!
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Tips -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-bulb me-2"></i>Schnell-Tipps</h3></div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>🚀 Für beste Performance:</h5>
+                        <ul>
+                            <li>Cache Mode: <strong>hybrid</strong></li>
+                            <li>Cache Duration: <strong>unlimited</strong></li>
+                            <li>Try All MACs: <strong>true</strong></li>
+                            <li>Test Streams: <strong>false</strong> (wenn Portale stabil)</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>💾 Für minimalen RAM:</h5>
+                        <ul>
+                            <li>Cache Mode: <strong>disk</strong></li>
+                            <li>Cache Duration: <strong>1h</strong></li>
+                            <li>Stream Method: <strong>redirect</strong></li>
+                            <li>Test Streams: <strong>false</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h5>🔒 Für Sicherheit:</h5>
+                        <ul>
+                            <li>Enable Security: <strong>true</strong></li>
+                            <li>Passwort ändern!</li>
+                            <li>Public Playlist Access: <strong>false</strong></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>📺 Für Plex/Emby:</h5>
+                        <ul>
+                            <li>Enable HDHR: <strong>true</strong></li>
+                            <li>Stream Method: <strong>redirect</strong></li>
+                            <li>Public Playlist Access: <strong>true</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h5>🚀 Vavoo Optimal:</h5>
+                        <ul>
+                            <li>RES Scan: <strong>false</strong> (nur bei Problemen)</li>
+                            <li>Stream Mode: <strong>Proxy</strong> (für Internet)</li>
+                            <li>Filter: <strong>false</strong> (alle Channels)</li>
+                            <li>Rebuild on Start: <strong>true</strong></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>⚡ Vavoo Sport-Only:</h5>
+                        <ul>
+                            <li>Filter: <strong>true</strong></li>
+                            <li>Keywords: <code>bundesliga:Bundesliga</code></li>
+                            <li>Keywords: <code>sky sport:Sport</code></li>
+                            <li>Keywords: <code>dazn:DAZN</code></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

@@ -10,9 +10,16 @@ from utils import parse_proxy_url, validate_proxy_url, get_proxy_type, create_sh
 try:
     import cloudscraper
     CLOUDSCRAPER_AVAILABLE = True
+    CLOUDSCRAPER_VERSION = getattr(cloudscraper, '__version__', 'unknown')
+    logging.getLogger("MacReplayXC.stb").info(f"✅ cloudscraper v{CLOUDSCRAPER_VERSION} loaded successfully - Cloudflare bypass enabled")
 except ImportError:
     CLOUDSCRAPER_AVAILABLE = False
-    logging.getLogger("MacReplayXC.stb").info("cloudscraper not available - some portals with Cloudflare protection may not work")
+    CLOUDSCRAPER_VERSION = None
+    logging.getLogger("MacReplayXC.stb").warning("⚠️ cloudscraper not available - some portals with Cloudflare protection may not work")
+except Exception as e:
+    CLOUDSCRAPER_AVAILABLE = False
+    CLOUDSCRAPER_VERSION = None
+    logging.getLogger("MacReplayXC.stb").error(f"❌ Error loading cloudscraper: {e}")
 
 logger = logging.getLogger("MacReplayXC.stb")
 logger.setLevel(logging.DEBUG)
@@ -39,20 +46,31 @@ def _get_session(use_cloudscraper=False):
         
         # Use cloudscraper if available and requested (for Cloudflare bypass)
         if use_cloudscraper and CLOUDSCRAPER_AVAILABLE:
-            _session = cloudscraper.create_scraper(
-                browser={
-                    'browser': 'chrome',
-                    'platform': 'linux',
-                    'desktop': True
-                }
-            )
-            logger.debug("Created cloudscraper session for Cloudflare bypass")
+            try:
+                _session = cloudscraper.create_scraper(
+                    browser={
+                        'browser': 'chrome',
+                        'platform': 'linux',
+                        'desktop': True
+                    }
+                )
+                logger.info(f"✅ CloudScraper session created (v{CLOUDSCRAPER_VERSION}) - Cloudflare bypass active")
+            except Exception as e:
+                logger.error(f"❌ Failed to create CloudScraper session: {e}")
+                logger.info("Falling back to regular requests session")
+                _session = requests.Session()
+                retries = Retry(total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+                _session.mount("http://", HTTPAdapter(max_retries=retries))
+                _session.mount("https://", HTTPAdapter(max_retries=retries))
         else:
             _session = requests.Session()
             retries = Retry(total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
             _session.mount("http://", HTTPAdapter(max_retries=retries))
             _session.mount("https://", HTTPAdapter(max_retries=retries))
-            logger.debug("Created new requests session")
+            if use_cloudscraper and not CLOUDSCRAPER_AVAILABLE:
+                logger.debug("CloudScraper requested but not available - using regular session")
+            else:
+                logger.debug("Created new requests session")
         
         _session_created = current_time
     

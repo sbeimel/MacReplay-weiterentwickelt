@@ -1,29 +1,33 @@
-# Core Flask Application
-Flask==3.0.0
-waitress==3.0.0
+# Core Flask Application (Updated for Performance)
+Flask==3.1.2
+Werkzeug==3.1.5
+waitress==3.0.2
 
-# HTTP Requests and Proxy Support
-requests==2.31.0
-requests[socks]==2.31.0
+# HTTP Requests and Proxy Support (Updated)
+requests==2.32.5
+requests[socks]==2.32.5
 PySocks==1.7.1
-urllib3==2.0.7
+urllib3==2.6.3
 
 # Shadowsocks Support
 # Note: shadowsocks==2.8.2 with compatibility fix for Python 3.10+
 shadowsocks==2.8.2
 
-# Web Scraping and CloudFlare Bypass
+# Web Scraping and CloudFlare Bypass (Updated for Python 3.13)
 cloudscraper==1.2.71
 
-# Testing Framework
-pytest==7.4.0
-pytest-mock==3.11.1
+# Testing Framework (Updated)
+pytest==9.0.0
+pytest-mock==3.15.1
 
-# Additional Dependencies for Proxy Support
-cryptography>=3.4.8
-pycryptodome>=3.15.0
+# Additional Dependencies for Proxy Support (Updated)
+cryptography>=46.0.4
+pycryptodome>=3.23.0
+
+# Performance Optimization (Python 3.13 compatible)
+orjson==3.11.0  # Fast JSON parsing (10x faster than standard json)
+ujson==5.10.0    # Alternative fast JSON (fallback)
 
 # Optional: Alternative Shadowsocks implementation
 # Uncomment if shadowsocks-libev doesn't work:
 # shadowsocks==2.8.2
-

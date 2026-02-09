@@ -193,9 +193,32 @@
                 <div class="col-lg-6">
                     <div class="card h-100">
                         <div class="card-header">
-                            <h3 class="card-title">EPG Fallback</h3>
+                            <h3 class="card-title">EPG Settings</h3>
                         </div>
                         <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">EPG Auto-Refresh</label>
+                                <select class="form-select" name="epg auto refresh">
+                                    <option value="manual" {{ 'selected' if settings.get('epg auto refresh', 'manual') == 'manual' }}>Manual Only (Recommended)</option>
+                                    <option value="auto" {{ 'selected' if settings.get('epg auto refresh') == 'auto' }}>Automatic</option>
+                                </select>
+                                <small class="form-hint">Manual: EPG only refreshes when you click "Refresh EPG" button. Automatic: EPG refreshes based on interval below.</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Auto-Refresh Interval (Days)</label>
+                                <select class="form-select" name="epg refresh interval days">
+                                    <option value="1" {{ 'selected' if settings.get('epg refresh interval days', '1') == '1' }}>Daily (1 day)</option>
+                                    <option value="2" {{ 'selected' if settings.get('epg refresh interval days') == '2' }}>Every 2 days</option>
+                                    <option value="3" {{ 'selected' if settings.get('epg refresh interval days') == '3' }}>Every 3 days</option>
+                                    <option value="7" {{ 'selected' if settings.get('epg refresh interval days') == '7' }}>Weekly (7 days)</option>
+                                    <option value="14" {{ 'selected' if settings.get('epg refresh interval days') == '14' }}>Every 14 days</option>
+                                </select>
+                                <small class="form-hint">Only applies when Auto-Refresh is enabled</small>
+                            </div>
+                            
+                            <hr>
+                            
                             <div class="mb-3">
                                 <label class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="epg fallback enabled" value="true" {{ 'checked' if settings.get('epg fallback enabled') == 'true' }}>
