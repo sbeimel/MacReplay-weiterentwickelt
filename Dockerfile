@@ -37,14 +37,7 @@ RUN pip install --no-cache-dir \
 # Copy application files
 COPY app-docker.py app.py
 COPY stb.py .
-COPY stb_scanner.py .
-COPY stb_async.py .
 COPY utils.py .
-COPY scanner.py .
-COPY scanner_async.py .
-COPY scanner_scheduler.py .
-COPY mac_pattern_generator.py .
-COPY migrate_vpn_detection.py .
 COPY templates/ templates/
 COPY static/ static/
 
