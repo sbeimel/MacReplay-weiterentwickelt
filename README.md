@@ -1,19 +1,6 @@
-# MacReplayXC v3.0.0
+# MacReplayXC
 
 Proxy and management system for Stalker/MAC portals with XC API compatibility.
-
-## ✨ What's New in v3.0.0
-
-- **Advanced Channel Cache System** - 4 cache modes (lazy-ram, ram, disk, hybrid) with up to 10x faster access
-- **Intelligent MAC Fallback** - Automatic MAC selection with cache-aware channel discovery
-- **XC API Portal Filtering** - Filter by Portal ID or Portal Name
-- **MAC Region Detection** - Automatic flag display (🇩🇪🇦🇹🇨🇭) based on genres
-- **Dashboard Cache Management** - Rebuild/Clear cache with live statistics
-- **Feature Wiki** - Complete documentation of all features and improvements
-- **9 EPG Improvements** - Raw XML passthrough, variant deduplication, enrichment
-- **Comprehensive Documentation** - 4,000+ lines of new documentation
-
-See [CHANGELOG.md](docs/CHANGELOG.md) for full details.
 
 ## Features
 
@@ -21,8 +8,6 @@ See [CHANGELOG.md](docs/CHANGELOG.md) for full details.
 - **XC API**: Full Xtream Codes API compatibility for IPTV players
 - **M3U Playlist**: Automatic playlist generation with EPG support
 - **EPG Manager**: EPG data from portals with fallback support
-- **Advanced Caching**: 4 cache modes for optimal performance
-- **Intelligent MAC Management**: Automatic MAC selection and region detection
 - **Channel Editor**: Rename, sort, enable/disable channels
 - **VOD & Series**: Manage movie and series categories
 - **Bulk Edit**: Mass editing of channel names with regex support
@@ -143,22 +128,10 @@ Password: your-password
 http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts
 ```
 
-**Playlist URL (filtered by portal):**
-```
-http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=PORTAL_ID
-```
-
-**Or use Portal Name:**
-```
-http://your-server:8001/get.php?username=USER&password=PASS&type=m3u_plus&output=ts&portal_id=My%20Portal
-```
-
 **EPG URL:**
 ```
 http://your-server:8001/xmltv.php?username=USER&password=PASS
 ```
-
-**Note:** Portal filtering supports both Portal ID and Portal Name (case-insensitive). See [XC API Portal Filtering](docs/XC_API_PORTAL_FILTERING.md) for details.
 
 ### M3U Playlist
 
