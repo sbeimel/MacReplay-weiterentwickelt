@@ -64,6 +64,9 @@ consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(consoleFormat)
 logger.addHandler(consoleHandler)
 
+# Ensure log file exists with initial entry
+logger.info(f"MacReplayXC v{__version__} - Logging initialized")
+
 # Log cleanup function
 def cleanup_old_logs():
     """Delete log files older than 24 hours."""
@@ -74,9 +77,14 @@ def cleanup_old_logs():
         
         now = time.time()
         cutoff_time = now - (24 * 60 * 60)  # 24 hours in seconds
+        current_log = "MacReplayXC.log"  # Don't delete the current log file
         
         deleted_count = 0
         for filename in os.listdir(log_dir):
+            # Skip current log file
+            if filename == current_log:
+                continue
+                
             if filename.endswith('.log') or filename.endswith('.log.old'):
                 filepath = os.path.join(log_dir, filename)
                 try:
@@ -9300,11 +9308,26 @@ def log():
     logFilePath = "/app/logs/MacReplayXC.log"
     
     try:
-        with open(logFilePath) as f:
+        # Check if file exists
+        if not os.path.exists(logFilePath):
+            # Create empty log file if it doesn't exist
+            logger.info("Log file requested but not found - creating new log file")
+            with open(logFilePath, 'w') as f:
+                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Log file created\n")
+        
+        with open(logFilePath, 'r') as f:
             log_content = f.read()
+        
+        if not log_content:
+            return f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Log file is empty - no logs yet"
+        
         return log_content
     except FileNotFoundError:
-        return "Log file not found"
+        return f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Log file not found at {logFilePath}"
+    except PermissionError:
+        return f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Permission denied reading log file"
+    except Exception as e:
+        return f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Error reading log file: {str(e)}"
 
 def hdhr(f):
     @wraps(f)

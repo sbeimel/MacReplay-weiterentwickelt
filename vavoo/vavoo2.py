@@ -5,7 +5,7 @@ import os
 # Read from environment variables (set by Docker)
 PORT = int(os.getenv("VAVOO_PORT", "4323"))
 PUBLIC_HOST = os.getenv("VAVOO_PUBLIC_HOST", "")
-PLAYLIST_DIR = "/app/data/vavoo_playlists"  # Docker-optimized path
+PLAYLIST_DIR = os.getenv("PLAYLIST_DIR", "/app/data/vavoo_playlists")  # Docker-optimized path
 
 #############################################################################################
 
@@ -53,6 +53,7 @@ PLAYLIST_CACHE = {}
 PLAYLIST_CACHE_TTL = 10
 FALLBACK_CACHE = {}
 FALLBACK_TTL = 45
+REFRESH_HARD_TIMEOUT = 300
 CONFIG_FILE = "config.json"
 MAPPING_FILE = "mapping.json"
 
@@ -153,7 +154,7 @@ REF_DATA = {
     ]
 }
 GEOIP_URL = "https://www.vavoo.tv/geoip"
-PING_URL = "https://www.vavoo.tv/api/app/ping"
+PING_URL = "https://www.lokke.app/api/app/ping"
 CATALOG_URL = "https://vavoo.to/mediahubmx-catalog.json"
 RESOLVE_URL = "https://vavoo.to/mediahubmx-resolve.json"
 HEADERS = {
@@ -166,16 +167,32 @@ HEADERS = {
 class SharedState:
     def __init__(self):
         self.manager = multiprocessing.Manager()
+
         self.items_by_region = self.manager.dict()
         self.last_refresh = self.manager.dict()
         self.refresh_in_progress = self.manager.dict()
+
+        # NEW – authoritative refresh lifecycle
+        self.refresh_state = self.manager.dict()
+        # {
+        #   "DE": {
+        #       "status": "idle" | "refreshing" | "failed",
+        #       "since": float,
+        #       "last_error": str | None
+        #   }
+        # }
+
         self.common_headers = self.manager.dict()
         self.addon_sig = self.manager.Value('s', '')
         self.res_cache = self.manager.dict()
         self.res_expected = self.manager.Value('i', 0)
         self.res_done = self.manager.Value('i', 0)
         self.connections = self.manager.dict()
+
 shared_state = SharedState()
+
+def res_allowed(region):
+    return region.upper() == "DE"
 
 def fast_stream_alive(url):
     try:
@@ -222,7 +239,6 @@ def save_combined_playlist(regions):
 
     host = public_host()
     output = "#EXTM3U\n"
-
     regions = [r.upper() for r in regions]
 
     for region in regions:
@@ -240,10 +256,7 @@ def save_combined_playlist(regions):
             tvg_id = map_tvg_id(tvg_id)
             tvg_name = map_tvg_name(name)
 
-            if region == "DE":
-                group = item.get("group") or region_name
-            else:
-                group = region_name
+            group = item.get("group") if region == "DE" else region_name
 
             mapped_logo = map_tvg_logo(name)
             logo_file = (
@@ -267,14 +280,17 @@ def save_combined_playlist(regions):
                 f"channel={item['id']}&region={region}\n"
             )
 
-    name = "_".join(regions) 
+    name = "_".join(regions)
     filename = f"vavoo_playlist_{name}.m3u"
     path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
+    tmp_path = path + ".tmp"
 
-    with open(path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(output)
 
+    os.replace(tmp_path, path)
     apply_file_permissions(path)
+
 
 def load_mappings():
     global MAPPINGS
@@ -465,7 +481,7 @@ def print_overview_banner():
 
     print(f"{'='*60}")
     print(f"Host: {public_host()}")
-    print(f"Port: {public_port()}")
+    print(f"Port: {PORT}")
     print(f"Refresh Interval: {REFRESH_INTERVAL // 60} minutes")
     print(f"{'='*60}\n")
    
@@ -479,7 +495,10 @@ def res_status():
     return "complete"
     
 def ensure_playlist_dir():
-    os.makedirs(PLAYLIST_DIR, exist_ok=True)
+    if PLAYLIST_DIR:
+        os.makedirs(PLAYLIST_DIR, exist_ok=True)
+    else:
+        raise ValueError("PLAYLIST_DIR is not set! Check Docker environment variables.")
 
 def apply_file_permissions(path):
     try:
@@ -840,7 +859,7 @@ def deduplicate_by_name(items):
 
 def cached_stream_alive(url):
     try:
-        r = requests.head(url, timeout=6, allow_redirects=True)
+        r = requests.head(url, timeout=(2, 4), allow_redirects=True)
         return r.status_code < 400
     except:
         return False
@@ -917,10 +936,6 @@ def public_host():
     if PUBLIC_HOST:
         return PUBLIC_HOST
     return ip()
-
-def public_port():
-    # Return PORT (which is read from environment variable)
-    return PORT
     
 def decode(r):
     if not r or not getattr(r, "content", None):
@@ -1001,9 +1016,9 @@ def base_name(name):
     return n
     
 def resolve_iptv(session_obj, url, language, region):
-    p = {"language": language, "region": region, "url": url, "clientVersion": "3.0.2"}
+    p = {"language": language, "region": region, "url": url, "clientVersion": "3.1.4"}
     try:
-        r = decode(session_obj.post(RESOLVE_URL, json=p, headers=dict(shared_state.common_headers), timeout=6))
+        r = decode(session_obj.post(RESOLVE_URL, json=p, headers=dict(shared_state.common_headers), timeout=(3, 5)))
         return r[0]["url"] if r else None
     except Exception as e:
         print(f"Resolve error: {e}")
@@ -1067,7 +1082,7 @@ def get_addon_signature():
     session_obj = requests.Session()
     session_obj.headers.update(HEADERS)
     try:
-        session_obj.get(GEOIP_URL, timeout=8).raise_for_status()
+        session_obj.get(GEOIP_URL, timeout=(3, 6)).raise_for_status()
     except Exception as e:
         print(f"Warning: GEOIP check failed: {e}")
     uid = str(uuid.uuid4())
@@ -1099,7 +1114,8 @@ def get_addon_signature():
         "iap": {"supported": False},
     }
     try:
-        addon_sig = decode(session_obj.post(PING_URL, json=init, timeout=8)).get("addonSig")
+        addon_sig = decode(session_obj.post(PING_URL, json=init, timeout=(3, 6))).get("addonSig")
+
         if not addon_sig:
             raise RuntimeError("Failed to get addonSig from Vavoo API")
         common_headers = {
@@ -1131,7 +1147,7 @@ def fetch_catalog(session_obj, language, region):
             "sort": "",
             "filter": {},
             "cursor": cursor,
-            "clientVersion": "3.0.2",
+            "clientVersion": "3.1.4",
         }
 
         try:
@@ -1140,7 +1156,7 @@ def fetch_catalog(session_obj, language, region):
                     CATALOG_URL,
                     json=payload,
                     headers=dict(shared_state.common_headers),
-                    timeout=8
+                    timeout=(3, 8)
                 )
             )
         except Exception as e:
@@ -1375,18 +1391,13 @@ def save_tv_playlist_external(region, items):
 
         tvg_id = build_tvg_id(name, region)
         tvg_id = map_tvg_id(tvg_id)
-
         tvg_name = map_tvg_name(name)
 
         mapped_logo = map_tvg_logo(name)
-
         if mapped_logo != name:
             logo_file = mapped_logo
         else:
-            logo_file = (
-                re.sub(r"[^a-z0-9]", "", name.lower())
-                + ".png"
-            )
+            logo_file = re.sub(r"[^a-z0-9]", "", name.lower()) + ".png"
 
         logo_url = f"http://{host}:{PORT}/logos/{logo_file}"
 
@@ -1405,13 +1416,15 @@ def save_tv_playlist_external(region, items):
 
     filename = f"vavoo_playlist_{region}.m3u"
     path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
+    tmp_path = path + ".tmp"
 
     if PLAYLIST_DIR:
         os.makedirs(PLAYLIST_DIR, exist_ok=True)
 
-    with open(path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(output)
 
+    os.replace(tmp_path, path)
     apply_file_permissions(path)
 
 def extract_channel_number(name: str):
@@ -1522,13 +1535,41 @@ def consume_refresh_request():
 
     return uniq, rebuild_set
 
+def heal_if_stuck(region):
+    state = shared_state.refresh_state.get(region)
+    if not state:
+        return
+
+    if state["status"] == "refreshing":
+        if time.time() - state["since"] > REFRESH_HARD_TIMEOUT:
+            print(f"💥 HARD RESET refresh for {region}")
+
+            shared_state.refresh_state.pop(region, None)
+            shared_state.refresh_in_progress.pop(region, None)
+
+            request_refresh(region, rebuild=True)
+
 def refresh_worker():
     global LANGUAGE, REGION
+
+    REFRESH_STUCK_AFTER = REFRESH_HARD_TIMEOUT 
+
+    def refresh_is_stuck(region):
+        state = shared_state.refresh_state.get(region)
+        if not state:
+            return False
+        if state.get("status") != "refreshing":
+            return False
+        return (time.time() - state.get("since", 0)) > REFRESH_STUCK_AFTER
+
+    shared_state.refresh_in_progress.clear()
+    shared_state.refresh_state.clear()
 
     try:
         while True:
             try:
                 session_obj, addon_sig, common_headers = get_addon_signature()
+
                 shared_state.addon_sig.value = addon_sig
                 shared_state.common_headers.clear()
                 shared_state.common_headers.update(common_headers)
@@ -1536,40 +1577,57 @@ def refresh_worker():
                 if FORCE_REFRESH.is_set():
                     regions_to_refresh, rebuild_set = consume_refresh_request()
                     FORCE_REFRESH.clear()
+
                     if not regions_to_refresh:
                         time.sleep(1)
                         continue
                 else:
-                    regions = set(r for _, r in CONFIG.get("LOCALES", []))
+                    regions_to_refresh = set(r for _, r in CONFIG.get("LOCALES", []))
                     for c in CONFIG.get("COMBINED_PLAYLISTS", []):
                         for r in c.get("regions", []):
-                            regions.add(r.upper())
-                    regions_to_refresh = list(regions)
+                            regions_to_refresh.add(r.upper())
+
+                    regions_to_refresh = list(regions_to_refresh)
                     rebuild_set = set()
 
                 locales_map = {}
+
                 for l, r in CONFIG.get("LOCALES", []):
                     locales_map[r.upper()] = (l, r.upper())
 
                 for c in CONFIG.get("COMBINED_PLAYLISTS", []):
                     for r in c.get("regions", []):
                         rr = r.upper()
-                        if rr not in locales_map:
-                            locales_map[rr] = (rr.lower(), rr)
+                        locales_map.setdefault(rr, (rr.lower(), rr))
 
-                refreshed_regions = set()
+                refreshed = set()
 
                 for region in regions_to_refresh:
                     region = region.upper()
+
                     if region not in locales_map:
                         continue
 
-                    language, region = locales_map[region]
-                    shared_state.refresh_in_progress[region] = True
+                    if refresh_is_stuck(region):
+                        print(f"💥 HARD RESET stuck refresh for {region}")
+                        shared_state.refresh_state.pop(region, None)
+                        shared_state.refresh_in_progress.pop(region, None)
+                        request_refresh(region, rebuild=True)
+                        continue
+
+                    if region in shared_state.refresh_in_progress:
+                        continue
+
+                    shared_state.refresh_in_progress[region] = time.time()
+                    shared_state.refresh_state[region] = {
+                        "status": "refreshing",
+                        "since": time.time(),
+                        "last_error": None
+                    }
 
                     try:
+                        language, REGION = locales_map[region]
                         LANGUAGE = language
-                        REGION = region
                         shared_state.common_headers["Accept-Language"] = language
 
                         forced_rebuild = region in rebuild_set
@@ -1588,89 +1646,94 @@ def refresh_worker():
 
                         items = pre_resolve_urls(session_obj, items, language, region)
 
-                        if CONFIG.get("RES", False):
-                            enqueued = 0
-                            for item in items:
-                                if item.get("resolved_url"):
-                                    RES_QUEUE.put((item["id"], item["resolved_url"]))
-                                    enqueued += 1
+                        if CONFIG.get("RES") and region == "DE":
+                            enq = 0
+                            for i in items:
+                                if i.get("resolved_url"):
+                                    RES_QUEUE.put((i["id"], i["resolved_url"]))
+                                    enq += 1
 
-                            shared_state.res_expected.value = enqueued
+                            shared_state.res_expected.value = enq
                             shared_state.res_done.value = 0
                             RES_READY.clear()
 
-                            if enqueued:
-                                start = time.time()
-                                while not RES_READY.is_set():
-                                    if not CONFIG.get("RES", False):
-                                        break
-                                    if time.time() - start > 300:
-                                        break
-                                    time.sleep(0.2)
+                            start = time.time()
+                            while enq and not RES_READY.is_set():
+                                if time.time() - start > 300:
+                                    break
+                                time.sleep(0.2)
 
-                                for item in items:
-                                    cached = shared_state.res_cache.get(item["id"])
-                                    if cached:
-                                        item["resolved_url"] = cached["url"]
+                            for i in items:
+                                c = shared_state.res_cache.get(i["id"])
+                                if c:
+                                    i["resolved_url"] = c["url"]
 
                         shared_state.items_by_region[region] = items
-                        shared_state.last_refresh[region] = time.time()
-                        refreshed_regions.add(region)
+                        save_tv_playlist_external(region, items)
 
-                        if any(r == region for _, r in CONFIG.get("LOCALES", [])):
-                            save_tv_playlist_external(region, items)
+                        shared_state.last_refresh[region] = time.time()
+                        shared_state.refresh_state[region] = {
+                            "status": "idle",
+                            "since": time.time(),
+                            "last_error": None
+                        }
+
+                        refreshed.add(region)
+
+                    except KeyboardInterrupt:
+                        raise  
 
                     except Exception as e:
                         print(f"❌ Refresh failed for {region}: {e}", flush=True)
+                        shared_state.refresh_state[region] = {
+                            "status": "failed",
+                            "since": time.time(),
+                            "last_error": str(e)
+                        }
 
                     finally:
-                        shared_state.refresh_in_progress[region] = False
-                        time.sleep(0.3)
+                        shared_state.refresh_in_progress.pop(region, None)
+                        time.sleep(0.2)
 
                 for combo in CONFIG.get("COMBINED_PLAYLISTS", []):
-                    cregions = [r.upper() for r in combo.get("regions", [])]
-                    if len(cregions) < 2:
+                    regs = [r.upper() for r in combo.get("regions", [])]
+                    if len(regs) < 2:
                         continue
 
-                    name = combo.get("name") or "_".join(cregions)
-                    filename = f"vavoo_playlist_{name}.m3u"
-                    path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
+                    fn = f"vavoo_playlist_{combo['name']}.m3u"
+                    path = os.path.join(PLAYLIST_DIR, fn) if PLAYLIST_DIR else fn
 
-                    has_data = any(shared_state.items_by_region.get(r) for r in cregions)
-                    if not has_data:
-                        continue
-
-                    needs_rebuild = (
-                        not os.path.exists(path)
-                        or set(cregions) & refreshed_regions
-                        or (
-                            os.path.exists(path)
-                            and (time.time() - os.path.getmtime(path)) > (REFRESH_INTERVAL + 120)
-                        )
-                    )
-
-                    if needs_rebuild:
-                        save_combined_playlist(cregions)
+                    if set(regs) & refreshed or not os.path.exists(path):
+                        save_combined_playlist(regs)
 
             except KeyboardInterrupt:
-                return
+                break 
+
+            except Exception as e:
+                print(f"🔥 refresh_worker fatal error: {e}", flush=True)
 
             wait = REFRESH_INTERVAL
             while wait > 0:
                 if FORCE_REFRESH.is_set():
                     break
-                time.sleep(1)
+                try:
+                    time.sleep(1)
+                except KeyboardInterrupt:
+                    raise
                 wait -= 1
 
     except KeyboardInterrupt:
-        return
+        pass 
+
+    finally:
+        print("🛑 Refresh worker stopped cleanly")
 
 def pre_fetch_manifests(session_obj, items_list):
     def fetch_manifest(item):
         if not item.get("resolved_url"):
             return item["id"], None
         try:
-            r = session_obj.get(item["resolved_url"], timeout=8, headers=HEADERS)
+            r = session_obj.get(item["resolved_url"], timeout=(3, 8), headers=HEADERS)
             r.raise_for_status()
             return item["id"], r.text
         except:
@@ -1696,7 +1759,7 @@ SEGMENT_SESSION.headers.update({
 adapter = requests.adapters.HTTPAdapter(
     pool_connections=30,
     pool_maxsize=150,
-    max_retries=2,
+    max_retries=0,
     pool_block=False
 )
 SEGMENT_SESSION.mount('http://', adapter)
@@ -1716,7 +1779,6 @@ def login():
             stored_user = CONFIG.get("WEB_USER", "")
             stored_hash = CONFIG.get("WEB_PASS_HASH", "")
 
-            # ───── FIRST LOGIN: CREATE USER ─────
             if not stored_user or not stored_hash:
                 CONFIG["WEB_USER"] = username
                 CONFIG["WEB_PASS_HASH"] = generate_password_hash(password)
@@ -1726,7 +1788,6 @@ def login():
                 session["user"] = username
                 return redirect("/")
 
-            # ───── NORMAL LOGIN ─────
             if (
                 username == stored_user
                 and check_password_hash(stored_hash, password)
@@ -1794,12 +1855,6 @@ def login():
 def logout():
     session.clear()
     return redirect("/login")
-
-@app.route("/static/<path:filename>")
-def serve_static(filename):
-    """Serve static files (CSS, JS, images) for MacReplayXC theme integration."""
-    static_dir = os.path.join(os.path.dirname(__file__), 'static')
-    return send_from_directory(static_dir, filename)
     
 @app.route("/api/config", methods=["GET"])
 @login_required
@@ -1846,6 +1901,8 @@ def api_set_config():
                 )
                 p.start()
 
+            request_refresh("DE", rebuild=False)
+
     if "PLAYLIST_REBUILD_ON_START" in data:
         CONFIG["PLAYLIST_REBUILD_ON_START"] = bool(data["PLAYLIST_REBUILD_ON_START"])
 
@@ -1861,39 +1918,30 @@ def api_set_config():
     if "STREAM_MODE" in data:
         CONFIG["STREAM_MODE"] = bool(data["STREAM_MODE"])
 
-    new_combined = []
-    for c in data.get("COMBINED_PLAYLISTS", []):
-        name = c.get("name")
-        regions = [r.upper() for r in c.get("regions", []) if r]
-        if name and len(regions) >= 2:
-            new_combined.append({
-                "name": name,
-                "regions": regions
-            })
+    if "LOCALES" in data:
+        new_locales = []
+        seen = set()
+        for x in data.get("LOCALES", []):
+            lang = (x.get("lang") or "").strip()
+            region = (x.get("region") or "").strip().upper()
+            if lang and region and region not in seen:
+                new_locales.append((lang, region))
+                seen.add(region)
+        CONFIG["LOCALES"] = new_locales
 
-    new_locales = []
-    for x in data.get("LOCALES", []):
-        lang = (x.get("lang") or "").strip()
-        region = (x.get("region") or "").strip().upper()
-        if lang and region:
-            new_locales.append((lang, region))
-
-    seen = set()
-    uniq_locales = []
-    for l, r in new_locales:
-        if r not in seen:
-            uniq_locales.append((l, r))
-            seen.add(r)
-
-    seen = set()
-    uniq_combined = []
-    for c in new_combined:
-        if c["name"] not in seen:
-            uniq_combined.append(c)
-            seen.add(c["name"])
-
-    CONFIG["LOCALES"] = uniq_locales
-    CONFIG["COMBINED_PLAYLISTS"] = uniq_combined
+    if "COMBINED_PLAYLISTS" in data:
+        new_combined = []
+        seen = set()
+        for c in data.get("COMBINED_PLAYLISTS", []):
+            name = c.get("name")
+            regions = [r.upper() for r in c.get("regions", []) if r]
+            if name and len(regions) >= 2 and name not in seen:
+                new_combined.append({
+                    "name": name,
+                    "regions": regions
+                })
+                seen.add(name)
+        CONFIG["COMBINED_PLAYLISTS"] = new_combined
 
     save_config_to_disk()
     return {"status": "ok"}
@@ -1903,7 +1951,7 @@ def api_rebuild():
     for _, region in list(CONFIG.get("LOCALES", [])):
         shared_state.items_by_region.pop(region, None)
         shared_state.last_refresh.pop(region, None)
-        shared_state.refresh_in_progress[region] = False
+        shared_state.refresh_in_progress.pop(region, None)
 
     FORCE_REFRESH.set()
 
@@ -2035,7 +2083,7 @@ def vavoo():
         else:
             abs_url = urljoin(base, line)
             if mode == "proxy":
-                patched.append(f"http://{host}:{public_port()}/segment?u={abs_url}")
+                patched.append(f"http://{host}:{PORT}/segment?u={abs_url}")
             else:
                 patched.append(abs_url)
 
@@ -2045,7 +2093,6 @@ def vavoo():
     )
     resp.headers["X-Vavoo-CID"] = item["id"]
     return resp
-
 
 @app.route("/api/connections")
 def api_connections():
@@ -2128,11 +2175,11 @@ def vavoo_variant():
 
         if s.startswith(("http://", "https://")):
             patched.append(
-                f"http://{public_host()}:{public_port()}/vavoo_variant?u={s}"
+                f"http://{public_host()}:{PORT}/vavoo_variant?u={s}"
             )
         else:
             patched.append(
-                f"http://{public_host()}:{public_port()}/vavoo_variant?u={urljoin(base, s)}"
+                f"http://{public_host()}:{PORT}/vavoo_variant?u={urljoin(base, s)}"
             )
 
     return Response(
@@ -2186,27 +2233,35 @@ def segment():
 def playlist_region(region):
     region = region.upper()
 
-    valid_regions = [r for _, r in CONFIG["LOCALES"]]
-    if region not in valid_regions:
-        abort(404, description="Unknown region")
+    valid = [r for _, r in CONFIG.get("LOCALES", [])]
+    if region not in valid:
+        abort(404)
 
-    last_update = shared_state.last_refresh.get(region, 0)
-    if not last_update:
-        abort(503, description="Playlist not generated yet")
+    last = shared_state.last_refresh.get(region)
+    refreshing = region in shared_state.refresh_in_progress
 
-    if (time.time() - last_update) > (REFRESH_INTERVAL + 120):
-        abort(503, description="Playlist stale")
+    if not last:
+        request_refresh(region, rebuild=True)
+        abort(503, "Playlist not generated yet")
+
+    age = time.time() - last
+    stale = age > (REFRESH_INTERVAL + 120)
+
+    if stale and not refreshing:
+        print(f"🔁 Stale playlist {region} → FORCING REBUILD")
+        request_refresh(region, rebuild=True)
 
     filename = f"vavoo_playlist_{region}.m3u"
     path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
 
     if not os.path.exists(path):
-        abort(500, description="Playlist file missing")
+        abort(500, "Playlist file missing")
 
     return Response(
         open(path, "r", encoding="utf-8").read(),
         mimetype="application/x-mpegURL"
     )
+
 @app.route("/health")
 def health():
     total = sum(len(shared_state.items_by_region.get(r, [])) for _, r in get_locales())
@@ -2261,41 +2316,73 @@ def api_rebuild_region(region):
 @app.route("/api/status", methods=["GET"])
 def api_status():
     now = time.time()
-    regions = []
+    regions_out = []
 
-    locales = list(CONFIG.get("LOCALES", []))
-    combined = list(CONFIG.get("COMBINED_PLAYLISTS", []))
+    STALE_AFTER = REFRESH_INTERVAL + 120
 
-    for lang, region in locales:
+    def heal_if_stuck(region):
+        state = shared_state.refresh_state.get(region)
+        if not state:
+            return
+
+        if state.get("status") == "refreshing":
+            if now - state.get("since", 0) > REFRESH_HARD_TIMEOUT:
+                print(f"💥 HARD RESET refresh for {region}")
+
+                shared_state.refresh_state.pop(region, None)
+                shared_state.refresh_in_progress.pop(region, None)
+
+                request_refresh(region, rebuild=True)
+
+    for lang, region in CONFIG.get("LOCALES", []):
         region = region.upper()
 
         items = list(shared_state.items_by_region.get(region, []))
-        last_update_ts = float(shared_state.last_refresh.get(region, 0) or 0)
-        refreshing = bool(shared_state.refresh_in_progress.get(region, False))
+        last_refresh = float(shared_state.last_refresh.get(region, 0) or 0)
+
+        heal_if_stuck(region)
+
+        state = shared_state.refresh_state.get(region, {})
+        status = state.get("status", "idle")
+
+        refreshing = status == "refreshing"
 
         total = len(items)
         resolved = sum(1 for i in items if i.get("resolved_url"))
 
-        if last_update_ts > 0:
-            age_seconds = int(now - last_update_ts)
-            age = f"{age_seconds//60}m {age_seconds%60}s"
-            if age_seconds < (REFRESH_INTERVAL + 120):
-                status_icon, status_text, status_class = "✅", "FRESH", "status-fresh"
-            else:
-                status_icon, status_text, status_class = "⚠️", "STALE", "status-stale"
+        if last_refresh:
+            age_seconds = int(now - last_refresh)
+            age = f"{age_seconds // 60}m {age_seconds % 60}s"
+            fresh = age_seconds < STALE_AFTER
         else:
             age = "never"
-            status_icon, status_text, status_class = "❌", "NO DATA", "status-error"
+            fresh = False
 
-        if refreshing:
-            status_icon, status_text, status_class = "🔄", "REFRESHING", "status-refreshing"
+        if status == "refreshing":
+            status_icon = "🔄"
+            status_text = "REFRESHING"
+            status_class = "status-refreshing"
+        elif status == "failed":
+            status_icon = "❌"
+            status_text = "FAILED"
+            status_class = "status-error"
+        elif not last_refresh:
+            status_icon = "❌"
+            status_text = "NO DATA"
+            status_class = "status-error"
+        elif fresh:
+            status_icon = "✅"
+            status_text = "FRESH"
+            status_class = "status-fresh"
+        else:
+            status_icon = "⚠️"
+            status_text = "STALE"
+            status_class = "status-stale"
 
         filename = f"vavoo_playlist_{region}.m3u"
         path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
-        exists = os.path.exists(path)
-        size = f"{os.path.getsize(path)/1024:.1f} KB" if exists else "N/A"
 
-        regions.append({
+        regions_out.append({
             "lang": lang,
             "region": region,
             "channels": total,
@@ -2304,25 +2391,33 @@ def api_status():
             "status_icon": status_icon,
             "status_text": status_text,
             "status_class": status_class,
-            "exists": exists,
-            "size": size
+            "exists": os.path.exists(path),
+            "size": f"{os.path.getsize(path) / 1024:.1f} KB" if os.path.exists(path) else "N/A"
         })
 
-    for c in combined:
-        name = c.get("name")
-        cregions = [r.upper() for r in c.get("regions", [])]
+    for combo in CONFIG.get("COMBINED_PLAYLISTS", []):
+        name = combo.get("name")
+        cregions = [r.upper() for r in combo.get("regions", [])]
 
         items = []
         last_updates = []
         refreshing = False
+        failed = False
 
         for r in cregions:
             items.extend(shared_state.items_by_region.get(r, []))
+
             ts = shared_state.last_refresh.get(r)
             if ts:
                 last_updates.append(ts)
-            if shared_state.refresh_in_progress.get(r):
+
+            heal_if_stuck(r)
+
+            state = shared_state.refresh_state.get(r, {})
+            if state.get("status") == "refreshing":
                 refreshing = True
+            if state.get("status") == "failed":
+                failed = True
 
         total = len(items)
         resolved = sum(1 for i in items if i.get("resolved_url"))
@@ -2330,24 +2425,37 @@ def api_status():
         if last_updates:
             newest = max(last_updates)
             age_seconds = int(now - newest)
-            age = f"{age_seconds//60}m {age_seconds%60}s"
-            if age_seconds < (REFRESH_INTERVAL + 120):
-                status_icon, status_text, status_class = "✅", "FRESH", "status-fresh"
-            else:
-                status_icon, status_text, status_class = "⚠️", "STALE", "status-stale"
+            age = f"{age_seconds // 60}m {age_seconds % 60}s"
+            fresh = age_seconds < STALE_AFTER
         else:
             age = "never"
-            status_icon, status_text, status_class = "❌", "NO DATA", "status-error"
+            fresh = False
 
         if refreshing:
-            status_icon, status_text, status_class = "🔄", "REFRESHING", "status-refreshing"
+            status_icon = "🔄"
+            status_text = "REFRESHING"
+            status_class = "status-refreshing"
+        elif failed:
+            status_icon = "❌"
+            status_text = "FAILED"
+            status_class = "status-error"
+        elif not last_updates:
+            status_icon = "❌"
+            status_text = "NO DATA"
+            status_class = "status-error"
+        elif fresh:
+            status_icon = "✅"
+            status_text = "FRESH"
+            status_class = "status-fresh"
+        else:
+            status_icon = "⚠️"
+            status_text = "STALE"
+            status_class = "status-stale"
 
         filename = f"vavoo_playlist_{name}.m3u"
         path = os.path.join(PLAYLIST_DIR, filename) if PLAYLIST_DIR else filename
-        exists = os.path.exists(path)
-        size = f"{os.path.getsize(path)/1024:.1f} KB" if exists else "N/A"
 
-        regions.append({
+        regions_out.append({
             "lang": "—",
             "region": name,
             "channels": total,
@@ -2356,11 +2464,11 @@ def api_status():
             "status_icon": status_icon,
             "status_text": status_text,
             "status_class": status_class,
-            "exists": exists,
-            "size": size
+            "exists": os.path.exists(path),
+            "size": f"{os.path.getsize(path) / 1024:.1f} KB" if os.path.exists(path) else "N/A"
         })
 
-    return {"regions": regions}
+    return {"regions": regions_out}
 
 @app.route("/api/delete/<region>", methods=["POST"])
 @login_required
@@ -2473,7 +2581,7 @@ def download_full_hls_playlist():
                 "sort": "name",
                 "filter": {"group": ""},
                 "cursor": cursor,
-                "clientVersion": "3.0.2"
+                "clientVersion": "3.1.4"
             }
 
             response = requests.post(
@@ -2721,7 +2829,6 @@ body.hide-tooltips {
 }
 
 </style>
-<link rel="stylesheet" href="/static/macreplay-theme.css">
 </head>
 
 <body>
@@ -2929,7 +3036,7 @@ Resolution Scan (RES):
 
 ⚠ First build can take several minutes
 ">
-Resolution scan (RES) may take a while!
+Resolution scan (DE only) may take a while!
 </label>
 </div>
 
@@ -3364,11 +3471,11 @@ if __name__ == "__main__":
         from waitress import serve
 
         print("🚀 Starting Waitress server (production-ready)...")
-        print(f"📡 Server URL: http://{public_host()}:{public_port()}")
+        print(f"📡 Server URL: http://{public_host()}:{PORT}")
         print("📺 Playlists:")
 
         for _, region in get_locales():
-            print(f"   http://{public_host()}:{public_port()}/playlist/{region}.m3u")
+            print(f"   http://{public_host()}:{PORT}/playlist/{region}.m3u")
 
         if CONFIG.get("RES"):
             print("\n⏳ NOTE: First playlist generation waits for FFmpeg resolution scan")
