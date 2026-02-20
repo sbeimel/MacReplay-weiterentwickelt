@@ -1108,15 +1108,23 @@ def refresh_channels_cache_with_progress():
         editor_refresh_progress["current_step"] = "Completed"
 
 def refresh_channels_cache():
-    """Refresh the channels cache from STB portals - fetches from ALL MACs."""
+    """Refresh the channels cache from STB portals - respects genre filtering."""
     global editor_refresh_progress
     
     logger.info("Starting channel cache refresh...")
+    editor_refresh_progress["current_step"] = "Clearing old cache data..."
+    
+    # Clear cache data from DB (stream_cmd and available_macs)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL')
+    cleared_count = cursor.rowcount
+    conn.commit()
+    logger.info(f"Cleared cache data from {cleared_count} channels")
+    
     editor_refresh_progress["current_step"] = "Loading portals..."
     
     portals = getPortals()
-    conn = get_db_connection()
-    cursor = conn.cursor()
     
     total_channels = 0
     portal_index = 0
@@ -1130,20 +1138,16 @@ def refresh_channels_cache():
             macs = list(portal["macs"].keys())
             proxy = portal["proxy"]
             
+            # Get selected genres for this portal
+            selected_genres = portal.get("selected genres", [])
+            
             # Update progress
             editor_refresh_progress["current_portal"] = portal_name
             editor_refresh_progress["current_step"] = f"Starting {portal_name}..."
             editor_refresh_progress["portals_done"] = portal_index - 1
             
-            # Get existing settings from JSON config for migration
-            enabled_channels = portal.get("enabled channels", [])
-            custom_channel_names = portal.get("custom channel names", {})
-            custom_genres = portal.get("custom genres", {})
-            custom_channel_numbers = portal.get("custom channel numbers", {})
-            custom_epg_ids = portal.get("custom epg ids", {})
-            fallback_channels = portal.get("fallback channels", {})
-            
             logger.info(f"Fetching channels for portal: {portal_name} from {len(macs)} MACs")
+            logger.info(f"Selected genres: {selected_genres}")
             editor_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s)"
             
             # Fetch from ALL MACs and merge
@@ -1191,90 +1195,56 @@ def refresh_channels_cache():
             
             if all_channels_map and all_genres_dict:
                 logger.info(f"Processing {len(all_channels_map)} total channels for {portal_name}")
-                editor_refresh_progress["current_step"] = f"{portal_name}: Checking EPG availability..."
+                editor_refresh_progress["current_step"] = f"{portal_name}: Updating cache data..."
                 
-                # Fetch EPG data from ALL MACs to check which channels have portal EPG
-                merged_epg = {}
-                epg_mac_index = 0
-                for mac in macs:
-                    epg_mac_index += 1
-                    try:
-                        editor_refresh_progress["current_step"] = f"{portal_name}: Checking EPG from MAC {epg_mac_index}/{len(macs)}"
-                        token = stb.getToken(url, mac, proxy)
-                        if token:
-                            stb.getProfile(url, mac, token, proxy)
-                            mac_epg = stb.getEpg(url, mac, token, 24, proxy)
-                            if mac_epg:
-                                for ch_id, programmes in mac_epg.items():
-                                    if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
-                                        merged_epg[ch_id] = programmes
-                    except Exception as e:
-                        logger.error(f"Error fetching EPG from MAC {mac}: {e}")
-                        continue
-                
-                logger.info(f"Portal {portal_name}: Got EPG for {len(merged_epg)} channels")
-                editor_refresh_progress["current_step"] = f"{portal_name}: Saving {len(all_channels_map)} channels to database..."
+                # Update ONLY channels that are in DB (respects genre filtering)
+                updated_count = 0
+                skipped_count = 0
                 
                 for channel_id, channel in all_channels_map.items():
-                    channel_name = str(channel["name"])
-                    channel_number = str(channel["number"])
                     genre_id = str(channel.get("tv_genre_id", ""))
                     genre = str(all_genres_dict.get(genre_id, ""))
-                    logo = str(channel.get("logo", ""))
                     
-                    # Check if enabled (from JSON config)
-                    enabled = 1 if channel_id in enabled_channels else 0
-                    
-                    # Check if channel has portal EPG
-                    has_portal_epg = 1 if (channel_id in merged_epg and merged_epg[channel_id]) else 0
-                    
-                    # Get custom values (from JSON config)
-                    custom_name = custom_channel_names.get(channel_id, "")
-                    custom_number = custom_channel_numbers.get(channel_id, "")
-                    custom_genre = custom_genres.get(channel_id, "")
-                    custom_epg_id = custom_epg_ids.get(channel_id, "")
-                    fallback_channel = fallback_channels.get(channel_id, "")
+                    # Skip if genre not selected (only update channels with selected genres)
+                    if selected_genres and genre not in selected_genres:
+                        skipped_count += 1
+                        continue
                     
                     # Get stream_cmd and available_macs
                     stream_cmd = str(channel.get("cmd", ""))
                     available_macs = ",".join(channel_macs_map.get(channel_id, []))
                     
-                    # Upsert into database
+                    # Update ONLY if channel exists in DB
                     cursor.execute('''
-                        INSERT INTO channels (
-                            portal, channel_id, portal_name, name, number, genre, logo,
-                            enabled, custom_name, custom_number, custom_genre, 
-                            custom_epg_id, fallback_channel, has_portal_epg,
-                            stream_cmd, available_macs
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(portal, channel_id) DO UPDATE SET
-                            portal_name = excluded.portal_name,
-                            name = excluded.name,
-                            number = excluded.number,
-                            genre = excluded.genre,
-                            logo = excluded.logo,
-                            has_portal_epg = excluded.has_portal_epg,
-                            stream_cmd = excluded.stream_cmd,
-                            available_macs = excluded.available_macs
-                    ''', (
-                        portal_id, channel_id, portal_name, channel_name, channel_number,
-                        genre, logo, enabled, custom_name, custom_number, custom_genre,
-                        custom_epg_id, fallback_channel, has_portal_epg, stream_cmd, available_macs
-                    ))
+                        UPDATE channels 
+                        SET stream_cmd = ?, available_macs = ?
+                        WHERE portal = ? AND channel_id = ?
+                    ''', (stream_cmd, available_macs, portal_id, channel_id))
+                    
+                    if cursor.rowcount > 0:
+                        updated_count += 1
                     
                     total_channels += 1
                 
                 conn.commit()
-                logger.info(f"Successfully cached {len(all_channels_map)} channels for {portal_name}")
-                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {len(all_channels_map)} channels saved"
+                logger.info(f"Updated cache for {updated_count} channels in {portal_name}")
+                logger.info(f"Skipped {skipped_count} channels (genres not selected)")
+                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {updated_count} channels cached"
                 editor_refresh_progress["portals_done"] = portal_index
             else:
                 logger.error(f"Failed to fetch channels for portal: {portal_name}")
                 editor_refresh_progress["current_step"] = f"{portal_name}: Error - failed to fetch channels"
                 editor_refresh_progress["portals_done"] = portal_index
     
+    # Run VACUUM to reclaim disk space
+    editor_refresh_progress["current_step"] = "Optimizing database (VACUUM)..."
+    logger.info("Running VACUUM to reclaim disk space...")
+    cursor.execute("VACUUM")
+    conn.commit()
+    logger.info("VACUUM completed")
+    
     conn.close()
-    logger.info(f"Channel cache refresh complete. Total channels: {total_channels}")
+    logger.info(f"Channel cache refresh complete. Total channels cached: {total_channels}")
     editor_refresh_progress["current_step"] = f"Completed! {total_channels} channels from {portal_index} portals"
     return total_channels
 
@@ -3589,8 +3559,9 @@ def portal_save_genre_selection():
                 cursor.execute('DELETE FROM channels WHERE portal = ?', (portal_id,))
                 logger.info(f"Deleted existing channels for portal {portal_id}")
                 
-                # Insert all channels into database
+                # Insert ONLY channels with selected genres into database
                 inserted_count = 0
+                skipped_count = 0
                 for channel_id, channel in all_channels_map.items():
                     channel_name = str(channel.get("name", ""))
                     channel_number = str(channel.get("number", ""))
@@ -3598,7 +3569,12 @@ def portal_save_genre_selection():
                     genre = all_genres_dict.get(genre_id, "")
                     logo = str(channel.get("logo", ""))
                     
-                    # Check if this channel should be enabled
+                    # ONLY cache channels with selected genres
+                    if genre not in selected_genres:
+                        skipped_count += 1
+                        continue  # Skip this channel
+                    
+                    # This channel has a selected genre - cache it
                     is_enabled = 1 if channel_id in enabled_channels else 0
                     
                     # Get stream_cmd and available_macs
@@ -3624,8 +3600,16 @@ def portal_save_genre_selection():
                     cursor.execute('INSERT INTO portal_genres (portal, genre) VALUES (?, ?)', (portal_id, genre))
                 
                 conn.commit()
+                
+                # Run VACUUM to reclaim disk space after deleting old channels
+                logger.info("Running VACUUM to reclaim disk space...")
+                cursor.execute("VACUUM")
+                conn.commit()
+                logger.info("VACUUM completed")
+                
                 conn.close()
-                logger.info(f"Inserted {inserted_count} channels into database ({enabled_count} enabled)")
+                logger.info(f"Inserted {inserted_count} channels into database (only selected genres)")
+                logger.info(f"Skipped {skipped_count} channels (genres not selected)")
                 logger.info(f"Saved {len(selected_genres)} selected genres to database")
             except Exception as e:
                 logger.error(f"Error inserting channels into database: {e}")
@@ -4521,7 +4505,13 @@ def editor_portal_channels(portal_id):
             })
         
         conn.close()
-        logger.info(f"Returning {len(channels)} channels for portal {portal_id}")
+        
+        # Info message about genre filtering
+        if len(channels) == 0:
+            logger.warning(f"No channels found for portal {portal_id} - may need to select more genres")
+        else:
+            logger.info(f"Returning {len(channels)} channels for portal {portal_id} (only selected genres)")
+        
         return flask.jsonify({"channels": channels})
     except Exception as e:
         logger.error(f"Error in editor_portal_channels: {e}")
@@ -9487,11 +9477,11 @@ def cache_clear():
         cached_playlist = None
         last_playlist_host = None
         
-        logger.info(f"All caches cleared via dashboard ({cleared_count} channel cache entries, {db_cleared} DB entries)")
+        logger.info(f"All caches cleared via dashboard ({db_cleared} DB entries)")
         return jsonify({
             "success": True, 
-            "message": f"Cache cleared successfully ({cleared_count} cache + {db_cleared} DB entries)",
-            "cleared_entries": cleared_count + db_cleared
+            "message": f"Cache cleared successfully ({db_cleared} DB entries)",
+            "cleared_entries": db_cleared
         })
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
@@ -9521,6 +9511,98 @@ def cache_stats():
         })
     except Exception as e:
         logger.error(f"Error getting cache stats: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/cache/vacuum", methods=["POST"])
+@authorise
+def cache_vacuum():
+    """Run VACUUM on channels.db and vods.db to reclaim disk space."""
+    try:
+        results = {}
+        
+        # VACUUM channels.db
+        try:
+            conn = get_db_connection()
+            
+            # Get size before VACUUM
+            cursor = conn.cursor()
+            cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            size_before = cursor.fetchone()[0]
+            
+            # Run VACUUM
+            cursor.execute("VACUUM")
+            conn.commit()
+            
+            # Get size after VACUUM
+            cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            size_after = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            saved_bytes = size_before - size_after
+            saved_mb = saved_bytes / (1024 * 1024)
+            
+            results['channels_db'] = {
+                'success': True,
+                'size_before_mb': round(size_before / (1024 * 1024), 2),
+                'size_after_mb': round(size_after / (1024 * 1024), 2),
+                'saved_mb': round(saved_mb, 2)
+            }
+            
+            logger.info(f"VACUUM channels.db: {results['channels_db']['size_before_mb']} MB → {results['channels_db']['size_after_mb']} MB (saved {results['channels_db']['saved_mb']} MB)")
+        except Exception as e:
+            logger.error(f"Error running VACUUM on channels.db: {e}")
+            results['channels_db'] = {'success': False, 'error': str(e)}
+        
+        # VACUUM vods.db
+        try:
+            conn = get_vod_db_connection()
+            
+            # Get size before VACUUM
+            cursor = conn.cursor()
+            cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            size_before = cursor.fetchone()[0]
+            
+            # Run VACUUM
+            cursor.execute("VACUUM")
+            conn.commit()
+            
+            # Get size after VACUUM
+            cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            size_after = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            saved_bytes = size_before - size_after
+            saved_mb = saved_bytes / (1024 * 1024)
+            
+            results['vods_db'] = {
+                'success': True,
+                'size_before_mb': round(size_before / (1024 * 1024), 2),
+                'size_after_mb': round(size_after / (1024 * 1024), 2),
+                'saved_mb': round(saved_mb, 2)
+            }
+            
+            logger.info(f"VACUUM vods.db: {results['vods_db']['size_before_mb']} MB → {results['vods_db']['size_after_mb']} MB (saved {results['vods_db']['saved_mb']} MB)")
+        except Exception as e:
+            logger.error(f"Error running VACUUM on vods.db: {e}")
+            results['vods_db'] = {'success': False, 'error': str(e)}
+        
+        # Calculate total savings
+        total_saved = 0
+        if results['channels_db'].get('success'):
+            total_saved += results['channels_db']['saved_mb']
+        if results['vods_db'].get('success'):
+            total_saved += results['vods_db']['saved_mb']
+        
+        return jsonify({
+            "success": True,
+            "message": f"VACUUM completed - reclaimed {round(total_saved, 2)} MB total",
+            "results": results,
+            "total_saved_mb": round(total_saved, 2)
+        })
+    except Exception as e:
+        logger.error(f"Error in cache_vacuum: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/api/logs/recent", methods=["GET"])

@@ -410,11 +410,15 @@
                             </button>
                             <button class="btn btn-success btn-lg" onclick="rebuildCache()">
                                 <i class="ti ti-reload me-2"></i>
-                                Refresh Channels
+                                Refresh Cache
                             </button>
                             <button class="btn btn-warning btn-lg" onclick="clearCache()">
                                 <i class="ti ti-trash me-2"></i>
                                 Clear Cache
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="vacuumDatabase()">
+                                <i class="ti ti-database me-2"></i>
+                                Optimize DB (VACUUM)
                             </button>
                             <a href="/proxy-test" class="btn btn-info btn-lg">
                                 <i class="ti ti-network me-2"></i>
@@ -669,11 +673,80 @@ function clearCache() {
     );
 }
 
+function vacuumDatabase() {
+    const button = event.target.closest('button');
+    
+    showConfirm(
+        'This will optimize the database and reclaim unused disk space. This may take a few seconds. Continue?',
+        'Optimize Database',
+        function() {
+            // User confirmed
+            const originalHtml = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Optimizing...';
+            
+            fetch('/cache/vacuum', { 
+                method: 'POST',
+                credentials: 'same-origin'
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    button.innerHTML = '<i class="ti ti-check me-2"></i>Optimized!';
+                    button.classList.remove('btn-secondary');
+                    button.classList.add('btn-success');
+                    
+                    const savedMB = data.total_saved_mb || 0;
+                    const message = savedMB > 0 
+                        ? `Database optimized - reclaimed ${savedMB} MB` 
+                        : 'Database optimized - no space to reclaim';
+                    
+                    showToast(message, 'success');
+                    
+                    // Reload cache stats
+                    setTimeout(() => {
+                        loadDashboardStats();
+                    }, 500);
+                    
+                    setTimeout(() => {
+                        button.innerHTML = originalHtml;
+                        button.classList.remove('btn-success');
+                        button.classList.add('btn-secondary');
+                        button.disabled = false;
+                    }, 2000);
+                })
+                .catch(error => {
+                    console.error('Error running VACUUM:', error);
+                    button.innerHTML = '<i class="ti ti-alert-circle me-2"></i>Error';
+                    button.classList.remove('btn-secondary');
+                    button.classList.add('btn-danger');
+                    
+                    showAlert(`Error optimizing database: ${error.message}`, 'Error', 'danger');
+                    
+                    setTimeout(() => {
+                        button.innerHTML = originalHtml;
+                        button.classList.remove('btn-danger');
+                        button.classList.add('btn-secondary');
+                        button.disabled = false;
+                    }, 2000);
+                });
+        },
+        null,
+        'info',
+        'Optimize',
+        'Cancel'
+    );
+}
+
 function rebuildCache() {
     const button = event.target.closest('button');
     
     showConfirm(
-        'This will refresh all channels from all portals and update the database. This may take several minutes. Continue?',
+        'This will refresh cache data (stream URLs and MAC lists) for channels with selected genres. This may take several minutes. Continue?',
         'Refresh Channels',
         function() {
             // User confirmed

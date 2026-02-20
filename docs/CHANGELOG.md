@@ -1,5 +1,34 @@
 # Änderungen (Changelog)
 
+### [v3.0.1] - 20.02.2026 🔧
+
+#### 🗄️ Database Optimization
+
+**Automatic VACUUM Implementation**
+- VACUUM läuft automatisch nach Genre-Änderungen
+- Gibt sofort Speicher frei (80-90% kleiner DB)
+- Manueller "Optimize DB (VACUUM)" Button im Dashboard
+- Zeigt Speicher-Ersparnis an (MB vor/nach)
+- VACUUM für channels.db und vods.db
+- Keine negativen Auswirkungen auf Performance
+
+**Genre-Filtering Optimization**
+- Nur ausgewählte Genres werden in DB gecached
+- DB-Größe: ~2.5 MB statt ~21 MB pro Portal (88% kleiner!)
+- Editor zeigt nur Channels mit ausgewählten Genres
+- Automatisches VACUUM nach Genre-Änderungen
+- Schnellere Queries durch kleinere DB
+
+**Vorteile:**
+- 80-90% weniger Speicher
+- Schnellere DB-Operationen
+- Automatische Optimierung
+- Manuelles VACUUM bei Bedarf
+
+Siehe [GENRE_FILTERING_OPTIMIZATION.md](GENRE_FILTERING_OPTIMIZATION.md) für Details.
+
+---
+
 ### [v3.1.0] - 07.02.2026 🚀
 
 #### ⚡ Performance-Optimierungen

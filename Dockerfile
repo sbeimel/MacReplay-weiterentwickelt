@@ -46,7 +46,10 @@ COPY vavoo/ vavoo/
 
 # Copy startup script
 COPY start.sh .
-RUN chmod +x start.sh
+COPY entrypoint.py .
+
+# Fix line endings (convert CRLF to LF) and make executable
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh && chmod +x entrypoint.py
 
 # Copy documentation files (optional)
 COPY docs/ docs/
@@ -77,4 +80,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/ || exit 1
 
 # Run both applications via startup script
-CMD ["./start.sh"] 
+# Option 1: Use bash script (fixed line endings)
+# CMD ["./start.sh"]
+# Option 2: Use Python entrypoint (no line ending issues, more reliable)
+CMD ["python3", "entrypoint.py"] 
