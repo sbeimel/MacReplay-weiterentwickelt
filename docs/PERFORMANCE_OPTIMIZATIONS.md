@@ -255,7 +255,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 | Modus | Zugriff | Speedup |
 |-------|---------|---------|
-| Kein Cache | 2500ms | 1x |
+| Kein Cache | 2500ms | 1x |stop
 | lazy-ram | 80ms | 31x |
 | ram | 50ms | 50x |
 | disk | 120ms | 21x |
@@ -263,10 +263,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 ### Concurrent Streams
 
-| Threads | Max Streams | CPU Usage |
-|---------|-------------|-----------|
-| 24 (alt) | ~200 | 60% |
-| 48 (neu) | ~400 | 70% |
+| 
 
 ---
 

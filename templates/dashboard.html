@@ -289,7 +289,7 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="subheader">Persistence</div>
-                                <div class="h3 mb-0" id="cacheDuration">-</div>
+                                <div class="h3 mb-0">persistent</div>
                                 <small class="text-muted">Survives restarts</small>
                             </div>
                         </div>
@@ -949,7 +949,6 @@ function loadDashboardStats() {
                 const stats = data.stats;
                 document.getElementById('cacheMode').textContent = stats.mode || 'db-direct';
                 document.getElementById('cachedChannels').textContent = stats.cached_channels || '0';
-                document.getElementById('cacheDuration').textContent = stats.cache_duration || 'persistent';
             }
         })
         .catch(error => {

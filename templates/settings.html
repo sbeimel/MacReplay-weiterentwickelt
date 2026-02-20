@@ -48,7 +48,7 @@
                         <div class="card-body">
                             <div class="mb-3">
                                 <label class="form-label">Format</label>
-                                <select class="form-select" name="output format">
+                                <select class="form-select" name="output format" id="outputFormat">
                                     <option value="mpegts" {{ 'selected' if settings.get('output format', 'mpegts') == 'mpegts' }}>MPEG-TS (pipe)</option>
                                     <option value="hls" {{ 'selected' if settings.get('output format', 'mpegts') == 'hls' }}>HLS (segmented)</option>
                                 </select>
@@ -67,7 +67,7 @@
                 </div>
                 
                 <!-- HLS Settings -->
-                <div class="col-lg-4">
+                <div class="col-lg-4" id="hlsSettings">
                     <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">HLS Options</h3>
@@ -76,42 +76,65 @@
                             <div class="mb-3">
                                 <label class="form-label">Segment Type</label>
                                 <select class="form-select" name="hls segment type">
-                                    <option value="mpegts" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'mpegts' }}>MPEG-TS</option>
-                                    <option value="fmp4" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'fmp4' }}>fMP4</option>
+                                    <option value="mpegts" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'mpegts' }}>MPEG-TS (.ts)</option>
+                                    <option value="fmp4" {{ 'selected' if settings.get('hls segment type', 'mpegts') == 'fmp4' }}>fMP4 (.m4s)</option>
                                 </select>
-                                <small class="form-hint">fMP4 = faster startup</small>
+                                <small class="form-hint">fMP4 = faster startup, better compatibility</small>
                             </div>
                             
                             <div class="row">
                                 <div class="col-6">
                                     <div class="mb-3">
                                         <label class="form-label">Duration</label>
-                                        <input type="number" class="form-control" name="hls segment duration" value="{{ settings.get('hls segment duration', '4') }}" min="2" max="10">
-                                        <small class="form-hint">Seconds</small>
+                                        <input type="number" class="form-control" name="hls segment duration" value="{{ settings.get('hls segment duration', '4') }}" min="0.5" max="10" step="0.5">
+                                        <small class="form-hint">Seconds per segment<br><strong>Recommended: 2-4s</strong></small>
                                     </div>
                                 </div>
                                 <div class="col-6">
                                     <div class="mb-3">
                                         <label class="form-label">Playlist Size</label>
                                         <input type="number" class="form-control" name="hls playlist size" value="{{ settings.get('hls playlist size', '6') }}" min="3" max="20">
-                                        <small class="form-hint">Segments</small>
+                                        <small class="form-hint">Segments in buffer<br><strong>Recommended: 6-10</strong></small>
                                     </div>
                                 </div>
                             </div>
                             
-                            <div class="mb-0">
+                            <div class="mb-3">
                                 <label class="form-label">Max Concurrent Streams</label>
                                 <input type="number" class="form-control" name="hls max streams" value="{{ settings.get('hls max streams', '10') }}" min="1" max="50">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Connection Timeout</label>
+                                <input type="number" class="form-control" name="hls connection timeout" value="{{ settings.get('hls connection timeout', '3') }}" min="1" max="60">
+                                <small class="form-hint">Seconds to wait for source stream connection<br><strong>Recommended: 3-5s</strong></small>
+                            </div>
+                            
+                            <hr class="my-3">
+                            <h4 class="card-title mb-3">HLS MAC Retry</h4>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">MAC Retry Timeout</label>
+                                <input type="number" class="form-control" name="hls retry timeout" value="{{ settings.get('hls retry timeout', '6') }}" min="1" max="15">
+                                <small class="form-hint">Max wait per MAC for segment creation<br><strong>Recommended: 5-8s</strong></small>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="hls skip busy macs" value="true" {{ 'checked' if settings.get('hls skip busy macs', 'false') == 'true' }}>
+                                    <span class="form-check-label">Skip busy MACs</span>
+                                </label>
+                                <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Stream Options -->
-                <div class="col-lg-4">
+                <!-- MPEG-TS / FFmpeg Direct Settings -->
+                <div class="col-lg-4" id="mpegtsSettings">
                     <div class="card h-100">
                         <div class="card-header">
-                            <h3 class="card-title">Stream Options</h3>
+                            <h3 class="card-title">FFmpeg Direct Options</h3>
                         </div>
                         <div class="card-body">
                             <div class="mb-3">
@@ -123,20 +146,83 @@
                             <div class="mb-3">
                                 <label class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="test streams" value="true" {{ 'checked' if settings['test streams'] == 'true' }}>
-                                    <span class="form-check-label">Test streams before serving</span>
+                                    <span class="form-check-label">Test Streams (ffprobe)</span>
                                 </label>
+                                <small class="form-hint">Test MACs with ffprobe before using</small>
                             </div>
                             
-                            <div class="mb-0">
+                            <div class="mb-3">
                                 <label class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" name="try all macs" value="true" {{ 'checked' if settings['try all macs'] == 'true' }}>
-                                    <span class="form-check-label">Try all MAC addresses on failure</span>
+                                    <input class="form-check-input" type="checkbox" name="skip busy macs" value="true" {{ 'checked' if settings['skip busy macs'] == 'true' }}>
+                                    <span class="form-check-label">Skip busy MACs</span>
                                 </label>
+                                <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
+                            </div>
+                            
+                            <div class="alert alert-info mb-0" role="alert">
+                                <strong>ℹ️ Automatic MAC Retry:</strong> System automatically tries all MACs until one works. Stops at first working MAC.
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+            
+            <script>
+            // Toggle HLS vs MPEG-TS settings based on output format
+            function toggleOutputFormatSettings() {
+                const outputFormat = document.getElementById('outputFormat').value;
+                const hlsSettings = document.getElementById('hlsSettings');
+                const mpegtsSettings = document.getElementById('mpegtsSettings');
+                
+                if (outputFormat === 'hls') {
+                    // Show both, but gray out MPEG-TS
+                    hlsSettings.style.display = 'block';
+                    mpegtsSettings.style.display = 'block';
+                    
+                    // Enable HLS inputs (remove readonly and disabled)
+                    hlsSettings.querySelectorAll('input, select').forEach(el => {
+                        el.disabled = false;
+                        el.readOnly = false;
+                        el.style.pointerEvents = 'auto';
+                    });
+                    hlsSettings.style.opacity = '1';
+                    
+                    // Gray out MPEG-TS inputs (readonly but keep values)
+                    mpegtsSettings.querySelectorAll('input, select').forEach(el => {
+                        el.readOnly = true;
+                        el.style.pointerEvents = 'none';
+                        // Don't disable - keep values for form submission
+                    });
+                    mpegtsSettings.style.opacity = '0.5';
+                } else {
+                    // Show both, but gray out HLS
+                    hlsSettings.style.display = 'block';
+                    mpegtsSettings.style.display = 'block';
+                    
+                    // Enable MPEG-TS inputs (remove readonly and disabled)
+                    mpegtsSettings.querySelectorAll('input, select').forEach(el => {
+                        el.disabled = false;
+                        el.readOnly = false;
+                        el.style.pointerEvents = 'auto';
+                    });
+                    mpegtsSettings.style.opacity = '1';
+                    
+                    // Gray out HLS inputs (readonly but keep values)
+                    hlsSettings.querySelectorAll('input, select').forEach(el => {
+                        el.readOnly = true;
+                        el.style.pointerEvents = 'none';
+                        // Don't disable - keep values for form submission
+                    });
+                    hlsSettings.style.opacity = '0.5';
+                }
+            }
+            
+            // Run on page load
+            document.addEventListener('DOMContentLoaded', toggleOutputFormatSettings);
+            
+            // Run when output format changes
+            document.getElementById('outputFormat').addEventListener('change', toggleOutputFormatSettings);
+            </script>
             
             <div class="row row-cards mb-4">
                 <!-- Playlist Options -->
@@ -368,8 +454,60 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Custom ffprobe Parameters -->
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Custom ffprobe Parameters</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">ffprobe Parameters (für Stream-Tests)</label>
+                                <input type="text" class="form-control font-monospace" id="ffprobeParams" name="ffprobe params" value="{{ settings.get('ffprobe params', '-analyzeduration 500000 -probesize 100000') }}">
+                                <small class="form-hint">Diese Parameter werden beim Testen von Streams mit ffprobe verwendet</small>
+                            </div>
+                            <div class="btn-group w-100" role="group">
+                                <button type="button" class="btn btn-outline-primary" onclick="setFfprobeParams('balance')">
+                                    ⚖️ Balance<br><small class="text-muted">0.3-0.5s</small>
+                                </button>
+                                <button type="button" class="btn btn-outline-success" onclick="setFfprobeParams('ultrafast')">
+                                    ⚡ Ultra Fast<br><small class="text-muted">0.1-0.2s</small>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="setFfprobeParams('slow')">
+                                    🐢 Standard Slow<br><small class="text-muted">2-5s</small>
+                                </button>
+                            </div>
+                            <div class="alert alert-info mt-3 mb-0">
+                                <small>
+                                    <strong>Balance:</strong> <code>-analyzeduration 500000 -probesize 100000</code> (empfohlen)<br>
+                                    <strong>Ultra Fast:</strong> <code>-analyzeduration 0 -probesize 32</code> (weniger zuverlässig)<br>
+                                    <strong>Standard Slow:</strong> keine Parameter (sehr zuverlässig, aber langsam)
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+function setFfprobeParams(preset) {
+    const input = document.getElementById('ffprobeParams');
+    switch(preset) {
+        case 'balance':
+            input.value = '-analyzeduration 500000 -probesize 100000';
+            break;
+        case 'ultrafast':
+            input.value = '-analyzeduration 0 -probesize 32';
+            break;
+        case 'slow':
+            input.value = '';
+            break;
+    }
+}
+</script>
+
 {% endblock %}

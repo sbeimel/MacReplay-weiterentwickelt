@@ -250,7 +250,7 @@
                                         <i class="ti ti-copy"></i>
                                     </button>
                                     <button class="btn btn-outline-success"
-                                        onclick="copyXcUrl('{{ portal_id }}', '{{ portal.name }}')" title="Copy XC API M3U URL">
+                                        onclick="copyXcUrl('{{ portal_id }}', '{{ portal.name }}', event)" title="Copy XC API M3U URL">
                                         <i class="ti ti-api"></i>
                                     </button>
                                 </div>
@@ -544,6 +544,7 @@
                                                     <tr>
                                                         <th>MAC</th>
                                                         <th>DE ?</th>
+                                                        <th>Score</th>
                                                         <th>Expires</th>
                                                         <th>Status</th>
                                                         <th>Activity</th>
@@ -1022,18 +1023,31 @@
         }
     }
 
-    function copyXcUrl(portalId, portalName) {
+    function copyXcUrl(portalId, portalName, event) {
         // Generate the XC API M3U URL with portal filtering
         const baseUrl = window.location.origin;
         
         // Get first XC user credentials (if available)
-        fetch('/xc-users/list')
-            .then(response => response.json())
+        fetch('/xc-users/list', {
+            credentials: 'same-origin'  // Include cookies/auth
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log('XC Users response:', data);
+                console.log('Users array:', data.users);
+                console.log('Users length:', data.users ? data.users.length : 'undefined');
+                
                 if (data.users && data.users.length > 0) {
                     const firstUser = data.users[0];
                     const username = firstUser.username;
                     const password = firstUser.password;
+                    
+                    console.log('Using XC user:', username);
                     
                     // Generate XC URL with portal_id (using portal ID)
                     const xcUrlById = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts&portal_id=${portalId}`;
@@ -1045,7 +1059,9 @@
                     // Copy the URL by ID (recommended)
                     if (navigator.clipboard && window.isSecureContext) {
                         navigator.clipboard.writeText(xcUrlById).then(() => {
-                            showCopySuccess(event.target.closest('button'));
+                            if (event && event.target) {
+                                showCopySuccess(event.target.closest('button'));
+                            }
                             showConfirm(
                                 `XC API M3U URL copied to clipboard!<br><br>` +
                                 `<strong>By Portal ID (Recommended):</strong><br>` +
@@ -1061,18 +1077,27 @@
                             );
                         }).catch(err => {
                             console.error('Clipboard API failed:', err);
-                            fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                            if (event && event.target) {
+                                fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                            } else {
+                                fallbackCopyToClipboard(xcUrlById, null);
+                            }
                         });
                     } else {
-                        fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                        if (event && event.target) {
+                            fallbackCopyToClipboard(xcUrlById, event.target.closest('button'));
+                        } else {
+                            fallbackCopyToClipboard(xcUrlById, null);
+                        }
                     }
                 } else {
+                    console.error('No XC users found in response');
                     showAlert('No XC API users found. Please create an XC user first in the XC Users page.', 'Error', 'danger');
                 }
             })
             .catch(error => {
                 console.error('Error fetching XC users:', error);
-                showAlert('Error fetching XC users. Please try again.', 'Error', 'danger');
+                showAlert('Error fetching XC users: ' + error.message, 'Error', 'danger');
             });
     }
 
@@ -1167,29 +1192,136 @@
         .then(data => {
             const macRegions = data.mac_regions || {};
             
+            // Get all MACs from portal
+            const allMacs = Object.keys(portal.macs);
+            
             // Update each row with DE check (green checkmark if DE content found)
-            for (const [mac, regions] of Object.entries(macRegions)) {
+            allMacs.forEach(mac => {
                 const flagCell = document.getElementById(`flags_${mac.replace(/:/g, '_')}`);
-                if (flagCell && regions && regions.length > 0) {
-                    // Nur prüfen ob DE vorhanden ist
-                    const hasDE = regions.some(region => {
-                        const r = String(region).toLowerCase().trim();
-                        return r === 'de' || r === 'ger' || r === 'german' || r === 'deutsch' || r === 'germany' || r === 'allemagne';
-                    });
-                    
-                    // Grüner Haken wenn DE gefunden, sonst leer
-                    if (hasDE) {
-                        flagCell.innerHTML = '<span class="text-success">✓</span>';
+                if (flagCell) {
+                    const regions = macRegions[mac];
+                    if (regions && regions.length > 0) {
+                        // Nur prüfen ob DE vorhanden ist
+                        const hasDE = regions.some(region => {
+                            const r = String(region).toLowerCase().trim();
+                            return r === 'de' || r === 'ger' || r === 'german' || r === 'deutsch' || r === 'germany' || r === 'allemagne';
+                        });
+                        
+                        // Grüner Haken wenn DE gefunden, sonst leer
+                        if (hasDE) {
+                            flagCell.innerHTML = '<span class="text-success">✓</span>';
+                        } else {
+                            flagCell.innerHTML = '';
+                        }
                     } else {
-                        flagCell.innerHTML = '';
+                        // Keine Daten vorhanden - zeige Fragezeichen
+                        flagCell.innerHTML = '<span class="text-muted" title="Not tested yet">?</span>';
                     }
-                } else if (flagCell) {
-                    flagCell.innerHTML = '';
                 }
-            }
+            });
         })
         .catch(error => {
             console.error('Error loading MAC regions:', error);
+            // Bei Fehler alle Spinner durch Fragezeichen ersetzen
+            const allMacs = Object.keys(portal.macs);
+            allMacs.forEach(mac => {
+                const flagCell = document.getElementById(`flags_${mac.replace(/:/g, '_')}`);
+                if (flagCell) {
+                    flagCell.innerHTML = '<span class="text-muted" title="Error loading">?</span>';
+                }
+            });
+        });
+        
+        // Load MAC scores asynchronously
+        fetch('/portal/mac-scores', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal_id: portalId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const macScores = data.mac_scores || {};
+            
+            // Get all MACs from portal
+            const allMacs = Object.keys(portal.macs);
+            
+            // Update each row with score badge and store score as data attribute
+            allMacs.forEach(mac => {
+                const scoreCell = document.getElementById(`score_${mac.replace(/:/g, '_')}`);
+                const streamsCell = document.getElementById(`streams_${mac.replace(/:/g, '_')}`);
+                
+                if (scoreCell) {
+                    const scoreData = macScores[mac];
+                    
+                    if (scoreData) {
+                        const score = scoreData.score;
+                        const success = scoreData.success;
+                        const fail = scoreData.fail;
+                        const playback_limit = scoreData.playback_limit || 1;
+                        
+                        // Store score in row for sorting
+                        const row = scoreCell.closest('tr');
+                        if (row) {
+                            row.setAttribute('data-score', score);
+                        }
+                        
+                        // Color based on score
+                        let badgeClass = 'bg-secondary-lt';
+                        if (score >= 75) {
+                            badgeClass = 'bg-success-lt';
+                        } else if (score >= 50) {
+                            badgeClass = 'bg-azure-lt';
+                        } else if (score >= 25) {
+                            badgeClass = 'bg-warning-lt';
+                        } else {
+                            badgeClass = 'bg-danger-lt';
+                        }
+                        
+                        scoreCell.innerHTML = `<span class="badge ${badgeClass}" title="Success: ${success}, Fail: ${fail}">${score.toFixed(0)}</span>`;
+                        
+                        // Update Streams column with playback_limit
+                        if (streamsCell) {
+                            streamsCell.innerHTML = `<i class="ti ti-device-tv me-1"></i>${playback_limit}`;
+                        }
+                    } else {
+                        // Keine Daten vorhanden - zeige neutralen Score
+                        const row = scoreCell.closest('tr');
+                        if (row) {
+                            row.setAttribute('data-score', 25); // Neutral score for untested
+                        }
+                        scoreCell.innerHTML = '<span class="badge bg-secondary-lt" title="Not tested yet">?</span>';
+                        // Streams column bleibt "Unknown" wenn keine Daten
+                    }
+                }
+            });
+            
+            // Sort table rows by score (highest first)
+            const tbody = document.getElementById('editMacTableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                const scoreA = parseFloat(a.getAttribute('data-score')) || 0;
+                const scoreB = parseFloat(b.getAttribute('data-score')) || 0;
+                return scoreB - scoreA; // Descending order (highest score first)
+            });
+            
+            // Re-append rows in sorted order
+            rows.forEach(row => tbody.appendChild(row));
+        })
+        .catch(error => {
+            console.error('Error loading MAC scores:', error);
+            // Bei Fehler alle Spinner durch Fragezeichen ersetzen
+            const allMacs = Object.keys(portal.macs);
+            allMacs.forEach(mac => {
+                const scoreCell = document.getElementById(`score_${mac.replace(/:/g, '_')}`);
+                if (scoreCell) {
+                    const row = scoreCell.closest('tr');
+                    if (row) {
+                        row.setAttribute('data-score', 0);
+                    }
+                    scoreCell.innerHTML = '<span class="badge bg-secondary-lt" title="Error loading">?</span>';
+                }
+            });
         });
         
         for (const [mac, expiry] of Object.entries(portal.macs)) {
@@ -1212,6 +1344,9 @@
             row.innerHTML = `
             <td><code>${mac.toUpperCase()}</code></td>
             <td id="flags_${mac.replace(/:/g, '_')}" style="font-size: 1.2em;">
+                <span class="spinner-border spinner-border-sm text-muted" role="status"></span>
+            </td>
+            <td id="score_${mac.replace(/:/g, '_')}">
                 <span class="spinner-border spinner-border-sm text-muted" role="status"></span>
             </td>
             <td class="text-muted small">${expiry}</td>

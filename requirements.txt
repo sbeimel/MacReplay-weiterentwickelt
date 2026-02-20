@@ -1,24 +1,25 @@
 # ============================================================================
 # MacReplayXC - Production Requirements
 # Python 3.9+ Compatible
-# Last Updated: 2026-02-09
+# Last Updated: 2026-02-20
+# Version: 4.0.0
 # ============================================================================
 
 # ============================================================================
 # CORE WEB FRAMEWORK
 # ============================================================================
-Flask==3.1.2                    # Web framework
-Werkzeug==3.1.5                 # WSGI utility library
-waitress==3.0.2                 # Production WSGI server
+Flask==3.1.2                    # Web framework (latest stable)
+Werkzeug==3.1.5                 # WSGI utility library (latest stable)
+waitress==3.0.2                 # Production WSGI server (latest stable)
 Jinja2>=3.1.6                   # Template engine (Flask dependency)
 
 # ============================================================================
 # HTTP CLIENT & PROXY SUPPORT
 # ============================================================================
-requests==2.32.5                # HTTP library
+requests==2.32.5                # HTTP library (latest stable)
 requests[socks]==2.32.5         # SOCKS proxy support
 PySocks==1.7.1                  # SOCKS proxy implementation
-urllib3==2.6.3                  # HTTP client (requests dependency)
+urllib3==2.6.3                  # HTTP client (latest stable)
 
 # ============================================================================
 # CLOUDFLARE BYPASS
@@ -29,19 +30,20 @@ cloudscraper==1.2.71            # Cloudflare challenge solver (used in stb.py)
 # PROXY & ENCRYPTION
 # ============================================================================
 shadowsocks==2.8.2              # Shadowsocks proxy support (optional)
-cryptography>=46.0.4            # Cryptographic recipes (shadowsocks dependency)
-pycryptodome>=3.23.0            # Cryptographic library (shadowsocks dependency)
+cryptography>=46.0.4            # Cryptographic recipes (latest stable)
+pycryptodome>=3.23.0            # Cryptographic library (latest stable)
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION
 # ============================================================================
-orjson==3.11.0                  # Fast JSON (10x faster than stdlib)
+orjson==3.11.0                  # Fast JSON (10x faster than stdlib, latest stable)
 ujson==5.10.0                   # Alternative fast JSON (fallback)
 
 # ============================================================================
 # NOTES
 # ============================================================================
 # - All versions are tested and compatible with Python 3.9+
+# - Python 3.13 recommended for best performance (5-15% faster)
 # - Cloudscraper provides automatic Cloudflare bypass for portals
 # - orjson/ujson provide 10x faster JSON parsing than stdlib
 # - Shadowsocks support is optional but recommended for proxy diversity

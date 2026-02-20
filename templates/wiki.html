@@ -143,9 +143,9 @@
                                 <td>true = sicherer<br>false = schneller</td>
                             </tr>
                             <tr>
-                                <td><strong>Try All MACs</strong></td>
-                                <td>Alle MACs probieren bei Fehler</td>
-                                <td><span class="badge bg-success">Empfohlen: true</span></td>
+                                <td><strong>MAC Retry</strong></td>
+                                <td>Automatisches Durchprobieren aller MACs</td>
+                                <td><span class="badge bg-success">Immer aktiv</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -544,8 +544,9 @@
                         <ul>
                             <li>Cache Mode: <strong>hybrid</strong></li>
                             <li>Cache Duration: <strong>unlimited</strong></li>
-                            <li>Try All MACs: <strong>true</strong></li>
+                            <li>MAC Retry: <strong>immer aktiv</strong></li>
                             <li>Test Streams: <strong>false</strong> (wenn Portale stabil)</li>
+                            <li>ffprobe Params: <strong>Balance</strong> (schnell & zuverlässig)</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
@@ -555,6 +556,7 @@
                             <li>Cache Duration: <strong>1h</strong></li>
                             <li>Stream Method: <strong>redirect</strong></li>
                             <li>Test Streams: <strong>false</strong></li>
+                            <li>ffprobe Params: <strong>Ultra Fast</strong> (maximale Geschwindigkeit)</li>
                         </ul>
                     </div>
                 </div>

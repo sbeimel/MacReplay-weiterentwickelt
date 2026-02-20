@@ -10,11 +10,23 @@ FROM python:3.13-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including ffmpeg and curl for health checks
+# Install system dependencies including curl for health checks
+# Install FFmpeg 8 from official static builds for better performance
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then FFMPEG_ARCH="arm64"; \
+       elif [ "$ARCH" = "x86_64" ]; then FFMPEG_ARCH="amd64"; \
+       else FFMPEG_ARCH="$ARCH"; fi \
+    && curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${FFMPEG_ARCH}-static.tar.xz -o /tmp/ffmpeg.tar.xz \
+    && tar -xf /tmp/ffmpeg.tar.xz -C /tmp \
+    && mv /tmp/ffmpeg-*-${FFMPEG_ARCH}-static/ffmpeg /usr/local/bin/ \
+    && mv /tmp/ffmpeg-*-${FFMPEG_ARCH}-static/ffprobe /usr/local/bin/ \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && rm -rf /tmp/ffmpeg* \
+    && ffmpeg -version
 
 # Create directories for data persistence
 RUN mkdir -p /app/data /app/logs /app/data/vavoo_playlists
@@ -27,10 +39,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install additional proxy dependencies for better compatibility
+# Install additional proxy dependencies for better compatibility (latest versions)
 RUN pip install --no-cache-dir \
-    cryptography>=43.0.3 \
-    pycryptodome>=3.21.0
+    cryptography>=46.0.4 \
+    pycryptodome>=3.23.0
 
 # Note: Proxy support (shadowsocks, socks5, http) is included in requirements.txt
 

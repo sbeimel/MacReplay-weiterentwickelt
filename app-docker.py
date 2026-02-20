@@ -446,15 +446,20 @@ defaultSettings = {
     "stream method": "ffmpeg",
     "output format": "mpegts",
     "ffmpeg command": "-re -http_proxy <proxy> -timeout <timeout> -i <url> -map 0 -codec copy -f mpegts -flush_packets 0 -fflags +nobuffer -flags low_delay -strict experimental -analyzeduration 0 -probesize 32 -copyts -threads 12 pipe:",
-    "hls segment type": "mpegts",
-    "hls segment duration": "4",
-    "hls playlist size": "6",
+    "hls segment type": "fmp4",
+    "hls segment duration": "3",
+    "hls playlist size": "8",
     "hls max streams": "10",
     "hls inactive timeout": "30",
+    "hls connection timeout": "5",
+    "hls auto retry": "false",
+    "hls retry timeout": "6",
+    "hls skip busy macs": "true",
     "ffmpeg timeout": "5",
     "test streams": "true",
     "try all macs": "true",
     "try all macs on db miss": "true",
+    "skip busy macs": "true",
     "use channel genres": "true",
     "use channel numbers": "true",
     "sort playlist by channel genre": "false",
@@ -498,12 +503,97 @@ defaultPortal = {
     "proxy": "",
     "portal prefix": "",
     "enabled channels": [],
+    "selected genres": [],
     "custom channel names": {},
     "custom channel numbers": {},
     "custom genres": {},
     "custom epg ids": {},
     "fallback channels": {},
+    "mac_has_de": {},
 }
+
+
+def monitor_ffmpeg_hls_output(process, timeout_seconds=5):
+    """
+    Monitor FFmpeg stderr for HLS segment creation.
+    Returns True as soon as FFmpeg starts writing segments, False on error or timeout.
+    
+    This is inspired by macattack-r's approach: instead of polling the filesystem,
+    we listen to FFmpeg's output to know immediately when streaming starts.
+    """
+    import select
+    import sys
+    
+    start_time = time.time()
+    segment_detected = False
+    
+    try:
+        # Make stderr non-blocking on Unix systems
+        if hasattr(select, 'poll'):
+            poller = select.poll()
+            poller.register(process.stderr, select.POLLIN)
+        
+        while time.time() - start_time < timeout_seconds:
+            # Check if process is still running
+            if process.poll() is not None:
+                logger.warning(f"[HLS MONITOR] FFmpeg process ended prematurely (exit code: {process.returncode})")
+                return False
+            
+            # Try to read a line from stderr
+            try:
+                # Use select on Unix, simple readline on Windows
+                if hasattr(select, 'poll'):
+                    # Unix: non-blocking poll
+                    events = poller.poll(100)  # 100ms timeout
+                    if events:
+                        line = process.stderr.readline()
+                    else:
+                        continue
+                else:
+                    # Windows: blocking readline with short timeout
+                    line = process.stderr.readline()
+                
+                if not line:
+                    time.sleep(0.05)
+                    continue
+                
+                line_lower = line.lower()
+                
+                # Success: FFmpeg is writing segments
+                if "opening" in line_lower and (".ts" in line_lower or ".m4s" in line_lower or "seg_" in line_lower):
+                    elapsed = time.time() - start_time
+                    logger.info(f"[HLS MONITOR] ✓ FFmpeg started writing segments after {elapsed:.2f}s")
+                    segment_detected = True
+                    # Wait a bit more to ensure playlist is written
+                    time.sleep(0.5)
+                    return True
+                
+                # Also detect playlist creation
+                if "opening" in line_lower and ".m3u8" in line_lower:
+                    elapsed = time.time() - start_time
+                    logger.info(f"[HLS MONITOR] ✓ FFmpeg created playlist after {elapsed:.2f}s")
+                    segment_detected = True
+                    # Wait a bit more to ensure file is flushed
+                    time.sleep(0.3)
+                    return True
+                
+                # Error detection
+                if any(err in line_lower for err in ["error", "failed", "invalid", "connection refused", "403 forbidden", "404 not found"]):
+                    logger.warning(f"[HLS MONITOR] ✗ FFmpeg error detected: {line.strip()}")
+                    return False
+                
+            except Exception as e:
+                logger.debug(f"[HLS MONITOR] Error reading stderr: {e}")
+                time.sleep(0.05)
+                continue
+        
+        # Timeout reached
+        logger.warning(f"[HLS MONITOR] ✗ Timeout after {timeout_seconds}s, no segment output detected")
+        return False
+        
+    except Exception as e:
+        logger.error(f"[HLS MONITOR] Exception in monitor: {e}")
+        return False
 
 
 class HLSStreamManager:
@@ -618,6 +708,38 @@ class HLSStreamManager:
             del self.streams[stream_key]
             logger.info(f"Stream {stream_key} stopped and cleaned up")
     
+    def stop_stream(self, portal_id, channel_id):
+        """Stop a specific HLS stream."""
+        stream_key = f"{portal_id}_{channel_id}"
+        
+        with self.lock:
+            if stream_key not in self.streams:
+                logger.debug(f"Stream {stream_key} not found, nothing to stop")
+                return
+            
+            stream_info = self.streams[stream_key]
+            
+            # Kill FFmpeg process
+            if stream_info.get('process'):
+                try:
+                    stream_info['process'].kill()
+                    logger.debug(f"Killed FFmpeg process for {stream_key}")
+                except Exception as e:
+                    logger.error(f"Error killing FFmpeg for {stream_key}: {e}")
+            
+            # Clean up temp directory
+            try:
+                temp_dir = stream_info.get('temp_dir')
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.debug(f"Cleaned up temp directory for {stream_key}")
+            except Exception as e:
+                logger.error(f"Error cleaning up temp dir for {stream_key}: {e}")
+            
+            # Remove from active streams
+            del self.streams[stream_key]
+            logger.info(f"Stream {stream_key} stopped")
+    
     def start_stream(self, portal_id, channel_id, stream_url, proxy=None):
         """Start or reuse an HLS stream for a channel."""
         import tempfile
@@ -639,17 +761,45 @@ class HLSStreamManager:
             # Get HLS settings
             settings = getSettings()
             segment_type = settings.get("hls segment type", "mpegts")
-            segment_duration = settings.get("hls segment duration", "4")
-            playlist_size = settings.get("hls playlist size", "6")
-            timeout = int(settings.get("ffmpeg timeout", "5")) * 1000000
+            
+            # Safe conversions for HLS settings (support floats for segment duration)
+            segment_duration_str = settings.get("hls segment duration", "4")
+            try:
+                segment_duration = str(float(segment_duration_str)) if segment_duration_str and segment_duration_str != "false" else "4"
+            except (ValueError, TypeError):
+                segment_duration = "4"
+            
+            playlist_size_str = settings.get("hls playlist size", "6")
+            try:
+                playlist_size = str(int(playlist_size_str)) if playlist_size_str and playlist_size_str != "false" else "6"
+            except (ValueError, TypeError):
+                playlist_size = "6"
+            
+            # Safe int conversion for HLS connection timeout (separate from FFmpeg timeout)
+            hls_timeout_str = settings.get("hls connection timeout", "3")
+            try:
+                timeout = int(hls_timeout_str) * 1000000 if hls_timeout_str and hls_timeout_str != "false" else 3000000
+            except (ValueError, TypeError):
+                timeout = 3000000
             
             # Detect if source is already HLS
             is_source_hls = is_hls_url(stream_url)
             
             # Create temp directory for HLS segments
-            temp_dir = tempfile.mkdtemp(prefix=f"MacReplayXC_hls_{stream_key}_")
+            # Try to use /dev/shm (RAM disk) first, fallback to /tmp
+            import os
+            if os.path.exists('/dev/shm') and os.access('/dev/shm', os.W_OK):
+                temp_base = '/dev/shm'
+                logger.debug(f"[HLS] Using RAM disk (/dev/shm) for segments")
+            else:
+                temp_base = tempfile.gettempdir()
+                logger.debug(f"[HLS] Using temp directory ({temp_base}) for segments")
+            
+            temp_dir = tempfile.mkdtemp(prefix=f"MacReplayXC_hls_{stream_key}_", dir=temp_base)
             playlist_path = os.path.join(temp_dir, "stream.m3u8")
             master_playlist_path = os.path.join(temp_dir, "master.m3u8")
+            logger.info(f"[HLS] Created temp directory: {temp_dir}")
+            logger.info(f"[HLS] Playlist path: {playlist_path}")
             
             # If source is already HLS, create a passthrough
             if is_source_hls:
@@ -689,8 +839,8 @@ class HLSStreamManager:
             # Build FFmpeg command for HLS
             ffmpeg_cmd = [
                 "ffmpeg",
-                "-fflags", "+genpts+igndts+nobuffer",
-                "-err_detect", "aggressive",
+                "-v", "info",  # Add verbose logging to see codec info
+                "-fflags", "+genpts+discardcorrupt",
                 "-flags", "low_delay",
                 "-reconnect", "1",
                 "-reconnect_at_eof", "1",
@@ -705,33 +855,18 @@ class HLSStreamManager:
             
             ffmpeg_cmd.extend([
                 "-i", stream_url,
-                "-map", "0",
-                "-c:v", "copy",
+                "-map", "0:v?",  # Map video if available
+                "-map", "0:a?",  # Map audio if available
+                "-c", "copy",    # Copy everything
                 "-copyts",
-                "-start_at_zero",
-                "-c:a", "aac",
-                "-b:a", "256k",
-                "-af", "aresample=async=1"
-            ])
-            
-            hls_flags = "independent_segments+omit_endlist"
-            
-            if segment_type == "mpegts":
-                hls_flags += "+program_date_time"
-                ffmpeg_cmd.extend([
-                    "-mpegts_flags", "pat_pmt_at_frames",
-                    "-pcr_period", "20"
-                ])
-            
-            ffmpeg_cmd.extend([
                 "-f", "hls",
                 "-hls_time", segment_duration,
                 "-hls_list_size", playlist_size,
-                "-hls_flags", hls_flags,
+                "-hls_flags", "independent_segments+omit_endlist+delete_segments",
                 "-hls_segment_type", segment_type,
                 "-hls_segment_filename", segment_pattern,
-                "-start_number", "0",
-                "-flush_packets", "0"
+                "-hls_allow_cache", "0",
+                "-start_number", "0"
             ])
             
             if segment_type == "fmp4":
@@ -741,7 +876,8 @@ class HLSStreamManager:
             
             # Start FFmpeg process
             try:
-                logger.info(f"Starting FFmpeg process for {stream_key}")
+                logger.info(f"[HLS] Starting FFmpeg process for {stream_key}")
+                logger.info(f"[HLS] FFmpeg command: {' '.join(ffmpeg_cmd)}")
                 
                 process = subprocess.Popen(
                     ffmpeg_cmd,
@@ -784,6 +920,7 @@ class HLSStreamManager:
         
         with self.lock:
             if stream_key not in self.streams:
+                logger.debug(f"[HLS] Stream {stream_key} not found in active streams")
                 return None
             
             stream_info = self.streams[stream_key]
@@ -791,19 +928,34 @@ class HLSStreamManager:
             
             # Handle master playlist
             if filename == "master.m3u8":
-                if os.path.exists(stream_info['master_playlist_path']):
-                    return stream_info['master_playlist_path']
+                path = stream_info['master_playlist_path']
+                exists = os.path.exists(path)
+                logger.debug(f"[HLS] Checking master playlist: {path} (exists: {exists})")
+                if exists:
+                    return path
                 return None
             
             # Handle stream playlist
             if filename == "stream.m3u8":
-                if os.path.exists(stream_info['playlist_path']):
-                    return stream_info['playlist_path']
+                path = stream_info['playlist_path']
+                exists = os.path.exists(path)
+                logger.debug(f"[HLS] Checking stream playlist: {path} (exists: {exists})")
+                if exists:
+                    return path
+                # List directory contents for debugging
+                temp_dir = stream_info['temp_dir']
+                if os.path.exists(temp_dir):
+                    files = os.listdir(temp_dir)
+                    logger.debug(f"[HLS] Temp dir contents: {files}")
+                else:
+                    logger.warning(f"[HLS] Temp dir does not exist: {temp_dir}")
                 return None
             
             # Handle segments
             file_path = os.path.join(stream_info['temp_dir'], filename)
-            if os.path.exists(file_path):
+            exists = os.path.exists(file_path)
+            logger.debug(f"[HLS] Checking segment: {file_path} (exists: {exists})")
+            if exists:
                 return file_path
             
             return None
@@ -899,8 +1051,8 @@ def saveSettings(settings):
 
 
 def get_db_connection():
-    """Get a database connection."""
-    conn = sqlite3.connect(dbPath)
+    """Get a database connection with increased timeout for concurrent access."""
+    conn = sqlite3.connect(dbPath, timeout=30.0)  # 30 second timeout for locks
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1138,8 +1290,19 @@ def refresh_channels_cache():
             macs = list(portal["macs"].keys())
             proxy = portal["proxy"]
             
-            # Get selected genres for this portal
+            # Get selected genres for this portal (from JSON or DB)
             selected_genres = portal.get("selected genres", [])
+            
+            # Fallback: Load from database if not in JSON
+            if not selected_genres:
+                try:
+                    cursor.execute('SELECT genre FROM portal_genres WHERE portal = ?', (portal_id,))
+                    selected_genres = [row['genre'] for row in cursor.fetchall()]
+                    if selected_genres:
+                        logger.info(f"Loaded {len(selected_genres)} genres from database for portal {portal_name}")
+                except Exception as e:
+                    logger.error(f"Error loading genres from database: {e}")
+                    selected_genres = []
             
             # Update progress
             editor_refresh_progress["current_portal"] = portal_name
@@ -1154,6 +1317,7 @@ def refresh_channels_cache():
             all_channels_map = {}  # channel_id -> channel data
             all_genres_dict = {}  # genre_id -> genre_name
             channel_macs_map = {}  # channel_id -> [mac1, mac2, ...]
+            mac_playback_limits = {}  # mac -> playback_limit
             
             mac_index = 0
             for mac in macs:
@@ -1163,7 +1327,11 @@ def refresh_channels_cache():
                 try:
                     token = stb.getToken(url, mac, proxy)
                     if token:
-                        stb.getProfile(url, mac, token, proxy)
+                        profile = stb.getProfile(url, mac, token, proxy)
+                        playback_limit = profile.get('playback_limit', 1) if profile else 1
+                        mac_playback_limits[mac] = playback_limit
+                        logger.info(f"MAC {mac}: playback_limit = {playback_limit}")
+                        
                         editor_refresh_progress["current_step"] = f"{portal_name}: Getting channels from MAC {mac_index}/{len(macs)}"
                         mac_channels = stb.getAllChannels(url, mac, token, proxy)
                         editor_refresh_progress["current_step"] = f"{portal_name}: Getting genres from MAC {mac_index}/{len(macs)}"
@@ -1199,37 +1367,68 @@ def refresh_channels_cache():
                 
                 # Update ONLY channels that are in DB (respects genre filtering)
                 updated_count = 0
+                inserted_count = 0
                 skipped_count = 0
                 
                 for channel_id, channel in all_channels_map.items():
                     genre_id = str(channel.get("tv_genre_id", ""))
                     genre = str(all_genres_dict.get(genre_id, ""))
                     
-                    # Skip if genre not selected (only update channels with selected genres)
-                    if selected_genres and genre not in selected_genres:
+                    # Skip if no genres selected OR genre not in selected genres
+                    if not selected_genres:
+                        # No genres selected - skip all channels
                         skipped_count += 1
                         continue
                     
-                    # Get stream_cmd and available_macs
+                    if genre not in selected_genres:
+                        # Genre not selected - skip this channel
+                        skipped_count += 1
+                        continue
+                    
+                    # Get stream_cmd and available_macs with playback_limits and initial scores
                     stream_cmd = str(channel.get("cmd", ""))
-                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    macs_for_channel = channel_macs_map.get(channel_id, [])
+                    # Format: "MAC|limit|success|fail|last_ts" (initial: 0|0|0)
+                    available_macs = ",".join([f"{mac}|{mac_playback_limits.get(mac, 1)}|0|0|0" for mac in macs_for_channel])
                     
-                    # Update ONLY if channel exists in DB
-                    cursor.execute('''
-                        UPDATE channels 
-                        SET stream_cmd = ?, available_macs = ?
-                        WHERE portal = ? AND channel_id = ?
-                    ''', (stream_cmd, available_macs, portal_id, channel_id))
+                    # Check if channel exists in DB
+                    cursor.execute('SELECT channel_id FROM channels WHERE portal = ? AND channel_id = ?', (portal_id, channel_id))
+                    exists = cursor.fetchone()
                     
-                    if cursor.rowcount > 0:
+                    if exists:
+                        # Update existing channel
+                        cursor.execute('''
+                            UPDATE channels 
+                            SET stream_cmd = ?, available_macs = ?
+                            WHERE portal = ? AND channel_id = ?
+                        ''', (stream_cmd, available_macs, portal_id, channel_id))
                         updated_count += 1
+                    else:
+                        # Insert new channel (happens after Clear Cache or if genre was newly selected)
+                        channel_name = str(channel.get("name", ""))
+                        channel_number = str(channel.get("number", ""))
+                        logo = str(channel.get("logo", ""))
+                        is_enabled = 1  # Enable by default since genre is selected
+                        
+                        cursor.execute('''
+                            INSERT INTO channels (
+                                portal, channel_id, portal_name, name, number, genre, logo,
+                                enabled, custom_name, custom_number, custom_genre, 
+                                custom_epg_id, fallback_channel, has_portal_epg,
+                                stream_cmd, available_macs
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0, ?, ?)
+                        ''', (
+                            portal_id, channel_id, portal_name, channel_name, channel_number,
+                            genre, logo, is_enabled, stream_cmd, available_macs
+                        ))
+                        inserted_count += 1
                     
                     total_channels += 1
                 
                 conn.commit()
-                logger.info(f"Updated cache for {updated_count} channels in {portal_name}")
+                logger.info(f"Updated {updated_count} channels, inserted {inserted_count} new channels in {portal_name}")
                 logger.info(f"Skipped {skipped_count} channels (genres not selected)")
-                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {updated_count} channels cached"
+                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {updated_count + inserted_count} channels cached"
                 editor_refresh_progress["portals_done"] = portal_index
             else:
                 logger.error(f"Failed to fetch channels for portal: {portal_name}")
@@ -1243,9 +1442,17 @@ def refresh_channels_cache():
     conn.commit()
     logger.info("VACUUM completed")
     
+    # Count actual cached channels (with stream_cmd)
+    cursor.execute('SELECT COUNT(*) FROM channels WHERE stream_cmd IS NOT NULL')
+    cached_count = cursor.fetchone()[0]
+    
+    # Count total channels in DB (including those without stream_cmd)
+    cursor.execute('SELECT COUNT(*) FROM channels')
+    total_in_db = cursor.fetchone()[0]
+    
     conn.close()
-    logger.info(f"Channel cache refresh complete. Total channels cached: {total_channels}")
-    editor_refresh_progress["current_step"] = f"Completed! {total_channels} channels from {portal_index} portals"
+    logger.info(f"Channel cache refresh complete. Channels with stream data: {cached_count} (total channels processed: {total_channels}, total in DB: {total_in_db})")
+    editor_refresh_progress["current_step"] = f"Completed! {cached_count} channels cached from {portal_index} portals"
     return total_channels
 
 
@@ -2970,14 +3177,34 @@ def portalsAdd():
             all_channels_map = {}
             all_genres_dict = {}
             channel_macs_map = {}
+            mac_playback_limits = {}
+            mac_has_de = {}  # Store DE content detection per MAC
+            
+            # Region detection patterns
+            de_patterns = ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY']
             
             for mac in macsd.keys():
                 try:
                     token = stb.getToken(url, mac, proxy)
                     if token:
-                        stb.getProfile(url, mac, token, proxy)
+                        profile = stb.getProfile(url, mac, token, proxy)
+                        playback_limit = profile.get('playback_limit', 1) if profile else 1
+                        mac_playback_limits[mac] = playback_limit
+                        logger.info(f"MAC {mac}: playback_limit = {playback_limit}")
+                        
                         mac_channels = stb.getAllChannels(url, mac, token, proxy)
                         mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                        
+                        # Detect DE content in genres
+                        has_de = False
+                        if mac_genres:
+                            for genre_id, genre_name in mac_genres.items():
+                                genre_upper = genre_name.upper()
+                                if any(pattern in genre_upper for pattern in de_patterns):
+                                    has_de = True
+                                    break
+                        mac_has_de[mac] = has_de
+                        logger.info(f"[PORTAL ADD] MAC {mac} has DE content: {has_de}")
                         
                         if mac_channels:
                             for channel in mac_channels:
@@ -2992,34 +3219,17 @@ def portalsAdd():
                             all_genres_dict.update(mac_genres)
                 except Exception as e:
                     logger.error(f"Error fetching from MAC {mac}: {e}")
+                    mac_has_de[mac] = False
             
-            # Save to channels.db
-            if all_channels_map:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                for channel_id, channel in all_channels_map.items():
-                    stream_cmd = str(channel.get("cmd", ""))
-                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
-                    channel_name = str(channel.get("name", ""))
-                    channel_number = str(channel.get("number", ""))
-                    genre_id = str(channel.get("tv_genre_id", ""))
-                    genre = all_genres_dict.get(genre_id, "")
-                    logo = str(channel.get("logo", ""))
-                    
-                    cursor.execute('''
-                        INSERT INTO channels (
-                            portal, channel_id, portal_name, name, number, genre, logo,
-                            enabled, stream_cmd, available_macs
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                        ON CONFLICT(portal, channel_id) DO UPDATE SET
-                            stream_cmd = excluded.stream_cmd,
-                            available_macs = excluded.available_macs
-                    ''', (id, channel_id, name, channel_name, channel_number, genre, logo, stream_cmd, available_macs))
-                
-                conn.commit()
-                conn.close()
-                logger.info(f"Auto-refresh: Saved {len(all_channels_map)} channels to DB for portal {name}")
+            # Save DE detection results to portal config
+            portals = getPortals()
+            portals[id]["mac_has_de"] = mac_has_de
+            savePortals(portals)
+            logger.info(f"Saved DE detection results for {len(mac_has_de)} MACs")
+            
+            # DON'T save channels to DB yet - wait for genre selection
+            # User will select genres in the modal, then channels will be inserted
+            logger.info(f"Portal added with {len(all_channels_map)} channels. Waiting for genre selection...")
         except Exception as e:
             logger.error(f"Error auto-refreshing channels.db: {e}")
         
@@ -3121,14 +3331,36 @@ def portalUpdate():
                 all_channels_map = {}
                 all_genres_dict = {}
                 channel_macs_map = {}
+                mac_playback_limits = {}  # Store playback_limit per MAC
+                mac_has_de = {}  # Store DE content detection per MAC
+                
+                # Region detection patterns (case-insensitive)
+                de_patterns = ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY']
                 
                 for mac in macsout.keys():
                     try:
                         token = stb.getToken(url, mac, proxy)
                         if token:
-                            stb.getProfile(url, mac, token, proxy)
+                            profile = stb.getProfile(url, mac, token, proxy)
+                            # Get playback_limit from profile
+                            if profile:
+                                playback_limit = profile.get("playback_limit", 1)
+                                mac_playback_limits[mac] = playback_limit
+                                logger.info(f"[PORTAL EDIT] MAC {mac} has playback_limit: {playback_limit}")
+                            
                             mac_channels = stb.getAllChannels(url, mac, token, proxy)
                             mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                            
+                            # Detect DE content in genres
+                            has_de = False
+                            if mac_genres:
+                                for genre_id, genre_name in mac_genres.items():
+                                    genre_upper = genre_name.upper()
+                                    if any(pattern in genre_upper for pattern in de_patterns):
+                                        has_de = True
+                                        break
+                            mac_has_de[mac] = has_de
+                            logger.info(f"[PORTAL EDIT] MAC {mac} has DE content: {has_de}")
                             
                             if mac_channels:
                                 for channel in mac_channels:
@@ -3143,6 +3375,12 @@ def portalUpdate():
                                 all_genres_dict.update(mac_genres)
                     except Exception as e:
                         logger.error(f"Error fetching from MAC {mac}: {e}")
+                        mac_has_de[mac] = False
+                
+                # Save DE detection results to portal config
+                portals[id]["mac_has_de"] = mac_has_de
+                savePortals(portals)
+                logger.info(f"Saved DE detection results for {len(mac_has_de)} MACs")
                 
                 # Update channels.db
                 if all_channels_map:
@@ -3151,7 +3389,12 @@ def portalUpdate():
                     
                     for channel_id, channel in all_channels_map.items():
                         stream_cmd = str(channel.get("cmd", ""))
-                        available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                        # Format available_macs with playback_limit: "MAC:limit,MAC:limit"
+                        macs_with_limits = []
+                        for mac in channel_macs_map.get(channel_id, []):
+                            limit = mac_playback_limits.get(mac, 1)
+                            macs_with_limits.append(f"{mac}|{limit}|0|0|0")  # Format: MAC|limit|success|fail|last_ts
+                        available_macs = ",".join(macs_with_limits)
                         
                         cursor.execute('''
                             UPDATE channels 
@@ -3302,35 +3545,9 @@ def portal_load_genres():
         
         logger.info(f"Total channels loaded from all MACs: {len(all_channels_map)}")
         
-        # Save to database for future fast loading
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Delete existing channels for this portal
-            cursor.execute('DELETE FROM channels WHERE portal = ?', (portal_id,))
-            
-            # Insert all channels
-            for channel_id, channel in all_channels_map.items():
-                channel_name = str(channel.get("name", ""))
-                channel_number = str(channel.get("number", ""))
-                genre_id = str(channel.get("tv_genre_id", ""))
-                genre = all_genres_dict.get(genre_id, "")
-                logo = str(channel.get("logo", ""))
-                
-                cursor.execute('''
-                    INSERT INTO channels (
-                        portal, channel_id, portal_name, name, number, genre, logo,
-                        enabled, custom_name, custom_number, custom_genre, 
-                        custom_epg_id, fallback_channel, has_portal_epg
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', '', '', '', '', 0)
-                ''', (portal_id, channel_id, portal_name, channel_name, channel_number, genre, logo))
-            
-            conn.commit()
-            conn.close()
-            logger.info(f"Cached {len(all_channels_map)} channels to database")
-        except Exception as e:
-            logger.error(f"Error caching to database: {e}")
+        # DON'T save to database yet - wait for genre selection
+        # Channels will be inserted when user selects genres
+        logger.info(f"Loaded {len(all_channels_map)} channels. Waiting for genre selection to save to DB...")
         
         # Count channels per genre
         genre_counts = {}
@@ -3376,7 +3593,7 @@ def portal_load_genres():
 @app.route("/portal/mac-regions", methods=["POST"])
 @authorise
 def portal_mac_regions():
-    """Get detected regions for each MAC based on genre names."""
+    """Get cached DE content detection for each MAC from portal config."""
     try:
         portal_id = request.json.get('portal_id')
         
@@ -3388,63 +3605,136 @@ def portal_mac_regions():
         if not portal:
             return flask.jsonify({"error": "Portal not found"}), 404
         
-        url = portal["url"]
-        macs = list(portal["macs"].keys())
-        proxy = portal["proxy"]
+        # Get cached DE detection results from portal config
+        mac_has_de = portal.get("mac_has_de", {})
         
+        # Convert to old format for compatibility (list with 'de' if True)
         mac_regions = {}
-        
-        # Region detection patterns (case-insensitive)
-        region_patterns = {
-            'de': ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY'],
-            'at': ['AT', 'AUSTRIA', 'ÖSTERREICH', 'OESTERREICH', 'AUSTRIAN'],
-            'ch': ['CH', 'SWITZERLAND', 'SCHWEIZ', 'SWISS', 'SUISSE', 'SVIZZERA']
-        }
-        
-        for mac in macs:
-            try:
-                token = stb.getToken(url, mac, proxy)
-                if not token:
-                    mac_regions[mac] = []
-                    continue
-                
-                stb.getProfile(url, mac, token, proxy)
-                mac_genres = stb.getGenreNames(url, mac, token, proxy)
-                
-                if not mac_genres:
-                    mac_regions[mac] = []
-                    continue
-                
-                # Detect regions based on genre names
-                detected_regions = set()
-                
-                for genre_id, genre_name in mac_genres.items():
-                    genre_upper = genre_name.upper()
-                    
-                    # Check for German content
-                    if any(pattern in genre_upper for pattern in region_patterns['de']):
-                        detected_regions.add('de')
-                    
-                    # Check for Austrian content
-                    if any(pattern in genre_upper for pattern in region_patterns['at']):
-                        detected_regions.add('at')
-                    
-                    # Check for Swiss content
-                    if any(pattern in genre_upper for pattern in region_patterns['ch']):
-                        detected_regions.add('ch')
-                
-                mac_regions[mac] = sorted(list(detected_regions))
-                logger.info(f"MAC {mac}: Detected regions {detected_regions}")
-                
-            except Exception as e:
-                logger.error(f"Error detecting regions for MAC {mac}: {e}")
+        for mac, has_de in mac_has_de.items():
+            if has_de:
+                mac_regions[mac] = ['de']
+            else:
                 mac_regions[mac] = []
-                continue
         
+        logger.info(f"Returning cached DE detection for {len(mac_regions)} MACs")
         return flask.jsonify({"mac_regions": mac_regions})
         
     except Exception as e:
         logger.error(f"Error getting MAC regions: {e}")
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/portal/mac-scores", methods=["POST"])
+@authorise
+def portal_mac_scores():
+    """Get average reliability scores for each MAC from channel data."""
+    try:
+        portal_id = request.json.get('portal_id')
+        
+        if not portal_id:
+            return flask.jsonify({"error": "No portal ID provided"}), 400
+        
+        portals = getPortals()
+        portal = portals.get(portal_id)
+        if not portal:
+            return flask.jsonify({"error": "Portal not found"}), 404
+        
+        # Get all channels for this portal from DB
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT available_macs 
+            FROM channels 
+            WHERE portal = ? AND available_macs IS NOT NULL AND available_macs != ''
+        ''', (portal_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Calculate average score per MAC
+        mac_stats = {}  # {mac: {'total_score': float, 'count': int, 'success': int, 'fail': int}}
+        
+        def calculate_mac_score(success_count, fail_count, last_success_ts):
+            """Calculate MAC reliability score (0-100)"""
+            import time
+            current_time = int(time.time())
+            
+            # 1. Success Rate (0-50 points)
+            total = success_count + fail_count
+            if total > 0:
+                success_rate = (success_count / total) * 50
+            else:
+                success_rate = 25  # Neutral for untested
+            
+            # 2. Recency (0-30 points)
+            if last_success_ts > 0:
+                age_hours = (current_time - last_success_ts) / 3600
+                if age_hours < 1:
+                    recency = 30
+                elif age_hours < 24:
+                    recency = 20
+                elif age_hours < 168:  # 1 week
+                    recency = 10
+                else:
+                    recency = 5
+            else:
+                recency = 0  # Never successful
+            
+            # 3. Reliability Bonus (0-20 points)
+            if success_count >= 10:
+                reliability = 20
+            elif success_count >= 5:
+                reliability = 10
+            else:
+                reliability = 0
+            
+            return success_rate + recency + reliability
+        
+        for row in rows:
+            available_macs_raw = row['available_macs'].split(',')
+            
+            for mac_entry in available_macs_raw:
+                parts = mac_entry.split('|')
+                if len(parts) >= 5:  # MAC|limit|success|fail|last_ts
+                    # Format: MAC|limit|success|fail|last_ts
+                    mac = parts[0]
+                    success_count = int(parts[2])
+                    fail_count = int(parts[3])
+                    last_ts = int(parts[4])
+                    
+                    score = calculate_mac_score(success_count, fail_count, last_ts)
+                    
+                    if mac not in mac_stats:
+                        mac_stats[mac] = {'total_score': 0, 'count': 0, 'success': 0, 'fail': 0}
+                    
+                    mac_stats[mac]['total_score'] += score
+                    mac_stats[mac]['count'] += 1
+                    mac_stats[mac]['success'] += success_count
+                    mac_stats[mac]['fail'] += fail_count
+        
+        # Calculate averages
+        mac_scores = {}
+        for mac, stats in mac_stats.items():
+            if stats['count'] > 0:
+                avg_score = stats['total_score'] / stats['count']
+                mac_scores[mac] = {
+                    'score': round(avg_score, 1),
+                    'success': stats['success'],
+                    'fail': stats['fail'],
+                    'channels': stats['count']
+                }
+            else:
+                mac_scores[mac] = {
+                    'score': 25.0,  # Neutral
+                    'success': 0,
+                    'fail': 0,
+                    'channels': 0
+                }
+        
+        return flask.jsonify({"mac_scores": mac_scores})
+        
+    except Exception as e:
+        logger.error(f"Error getting MAC scores: {e}")
         return flask.jsonify({"error": str(e)}), 500
 
 
@@ -3474,6 +3764,7 @@ def portal_save_genre_selection():
         all_channels_map = {}  # channel_id -> channel data
         all_genres_dict = {}  # genre_id -> genre_name
         channel_macs_map = {}  # channel_id -> [mac1, mac2, ...]
+        mac_playback_limits = {}  # Store playback_limit per MAC
         
         logger.info(f"Saving genre selection: fetching from {len(macs)} MACs for portal {portal_name}")
         
@@ -3484,7 +3775,13 @@ def portal_save_genre_selection():
             try:
                 token = stb.getToken(url, mac, proxy)
                 if token:
-                    stb.getProfile(url, mac, token, proxy)
+                    profile = stb.getProfile(url, mac, token, proxy)
+                    # Get playback_limit from profile
+                    if profile:
+                        playback_limit = profile.get("playback_limit", 1)
+                        mac_playback_limits[mac] = playback_limit
+                        logger.info(f"[GENRE SELECTION] MAC {mac} has playback_limit: {playback_limit}")
+                    
                     mac_channels = stb.getAllChannels(url, mac, token, proxy)
                     mac_genres = stb.getGenreNames(url, mac, token, proxy)
                     
@@ -3577,9 +3874,14 @@ def portal_save_genre_selection():
                     # This channel has a selected genre - cache it
                     is_enabled = 1 if channel_id in enabled_channels else 0
                     
-                    # Get stream_cmd and available_macs
+                    # Get stream_cmd and available_macs with playback_limit
                     stream_cmd = str(channel.get("cmd", ""))
-                    available_macs = ",".join(channel_macs_map.get(channel_id, []))
+                    # Format available_macs with playback_limit: "MAC:limit,MAC:limit"
+                    macs_with_limits = []
+                    for mac in channel_macs_map.get(channel_id, []):
+                        limit = mac_playback_limits.get(mac, 1)
+                        macs_with_limits.append(f"{mac}|{limit}|0|0|0")  # Format: MAC|limit|success|fail|last_ts
+                    available_macs = ",".join(macs_with_limits)
                     
                     cursor.execute('''
                         INSERT INTO channels (
@@ -8702,6 +9004,84 @@ def stream_channel(portalId, channelId, xc_user=None):
             except ValueError:
                 pass  # Already removed
             logger.info("Unoccupied Portal({}):MAC({}):User({})".format(portalId, mac, xc_user or "Direct"))
+            
+            # Update MAC score based on stream duration
+            try:
+                import time
+                # Check if startTime exists (might not if error before stream started)
+                if 'startTime' not in locals() and 'startTime' not in globals():
+                    logger.debug("[SCORE UPDATE] No startTime available, skipping score update")
+                    return
+                
+                stream_duration = time.time() - startTime
+                
+                # Get channel from DB to update score
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT available_macs 
+                    FROM channels 
+                    WHERE portal = ? AND channel_id = ?
+                ''', (portalId, channelId))
+                
+                row = cursor.fetchone()
+                if row and row['available_macs']:
+                    available_macs_raw = row['available_macs'].split(',')
+                    
+                    # Parse current stats
+                    mac_stats = {}
+                    mac_limits = {}
+                    for mac_entry in available_macs_raw:
+                        parts = mac_entry.split('|')
+                        if len(parts) >= 5:
+                            m = parts[0]
+                            mac_limits[m] = int(parts[1])
+                            mac_stats[m] = {
+                                'success': int(parts[2]),
+                                'fail': int(parts[3]),
+                                'last_ts': int(parts[4])
+                            }
+                        elif len(parts) == 2:
+                            m = parts[0]
+                            mac_limits[m] = int(parts[1])
+                            mac_stats[m] = {'success': 0, 'fail': 0, 'last_ts': 0}
+                        else:
+                            mac_limits[mac_entry] = 1
+                            mac_stats[mac_entry] = {'success': 0, 'fail': 0, 'last_ts': 0}
+                    
+                    # Update score based on duration
+                    if mac in mac_stats:
+                        if stream_duration >= 5:
+                            # Stream ran for 5+ seconds = success
+                            mac_stats[mac]['success'] += 1
+                            mac_stats[mac]['last_ts'] = int(time.time())
+                            logger.info(f"[SCORE UPDATE] MAC {mac} success (stream ran {stream_duration:.1f}s)")
+                        else:
+                            # Stream died quickly = fail
+                            mac_stats[mac]['fail'] += 1
+                            logger.info(f"[SCORE UPDATE] MAC {mac} fail (stream died after {stream_duration:.1f}s)")
+                        
+                        # Rebuild available_macs string
+                        macs_with_data = []
+                        for m in mac_stats.keys():
+                            limit = mac_limits.get(m, 1)
+                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                        new_available_macs = ",".join(macs_with_data)
+                        
+                        # Update DB
+                        cursor.execute('''
+                            UPDATE channels 
+                            SET available_macs = ?
+                            WHERE portal = ? AND channel_id = ?
+                        ''', (new_available_macs, portalId, channelId))
+                        conn.commit()
+                    else:
+                        logger.debug(f"[SCORE UPDATE] MAC {mac} not in available_macs list, skipping")
+                
+                conn.close()
+            except Exception as e:
+                logger.error(f"[SCORE UPDATE] Error updating score: {e}")
 
         try:
             startTime = datetime.now(timezone.utc).timestamp()
@@ -8710,41 +9090,88 @@ def stream_channel(portalId, channelId, xc_user=None):
                 ffmpegcmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             ) as ffmpeg_sp:
+                bytes_read = 0
                 while True:
                     chunk = ffmpeg_sp.stdout.read(1024)
                     if len(chunk) == 0:
-                        if ffmpeg_sp.poll() != 0:
-                            logger.info("Ffmpeg closed with error({}). Moving MAC({}) for Portal({})".format(str(ffmpeg_sp.poll()), mac, portalName))
+                        returncode = ffmpeg_sp.poll()
+                        # Log stderr output to see why ffmpeg closed (filter out build/config info)
+                        stderr_output = ffmpeg_sp.stderr.read().decode('utf-8', errors='ignore')
+                        if stderr_output:
+                            # Filter out FFmpeg build/config spam (but keep version)
+                            lines = stderr_output.split('\n')
+                            filtered_lines = [l for l in lines if not any(skip in l.lower() for skip in 
+                                ["configuration:", "built with", "lib"])]
+                            filtered_output = '\n'.join(filtered_lines).strip()
+                            if filtered_output:
+                                logger.warning(f"[FFMPEG STDERR] {filtered_output[:500]}")
+                        
+                        if returncode != 0:
+                            logger.info("Ffmpeg closed with error({}). Bytes read: {}. Moving MAC({}) for Portal({})".format(returncode, bytes_read, mac, portalName))
                             moveMac(portalId, mac)
+                        else:
+                            logger.info("Ffmpeg closed normally (exit 0). Bytes read: {}. MAC({}) for Portal({})".format(bytes_read, mac, portalName))
                         break
+                    bytes_read += len(chunk)
                     yield chunk
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Exception in streamData: {e}")
         finally:
             unoccupy()
             ffmpeg_sp.kill()
 
-    def testStream():
+    def test_stream_with_ffprobe(test_link, proxy, mac=None, log_prefix="[FFPROBE]"):
+        """
+        Test stream with ffprobe and return (success, duration).
+        Centralized function to avoid code duplication.
+        """
         timeout = int(getSettings()["ffmpeg timeout"]) * int(1000000)
-        ffprobecmd = [ffprobe_path, "-timeout", str(timeout), "-i", link]
-
+        ffprobe_params_str = getSettings().get("ffprobe params", "-analyzeduration 500000 -probesize 100000")
+        ffprobe_params = ffprobe_params_str.split() if ffprobe_params_str.strip() else []
+        
+        ffprobecmd = [ffprobe_path] + ffprobe_params + ["-timeout", str(timeout), "-i", test_link]
         if proxy:
             ffprobecmd.insert(1, "-http_proxy")
             ffprobecmd.insert(2, proxy)
+        
+        import time
+        ffprobe_start = time.time()
+        try:
+            with subprocess.Popen(
+                ffprobecmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            ) as ffprobe_sb:
+                ffprobe_sb.communicate(timeout=int(getSettings()["ffmpeg timeout"]))
+                ffprobe_duration = time.time() - ffprobe_start
+                
+                if ffprobe_sb.returncode == 0:
+                    mac_info = f"MAC {mac}" if mac else "Stream"
+                    logger.info(f"{log_prefix} ✓ {mac_info} works! (ffprobe: {ffprobe_duration:.2f}s)")
+                    return (True, ffprobe_duration)
+                else:
+                    mac_info = f"MAC {mac}" if mac else "Stream"
+                    logger.warning(f"{log_prefix} ✗ {mac_info} failed (ffprobe: {ffprobe_duration:.2f}s, returncode: {ffprobe_sb.returncode})")
+                    return (False, ffprobe_duration)
+        except subprocess.TimeoutExpired:
+            ffprobe_duration = time.time() - ffprobe_start
+            mac_info = f"MAC {mac}" if mac else "Stream"
+            logger.warning(f"{log_prefix} ✗ {mac_info} timeout (ffprobe: {ffprobe_duration:.2f}s)")
+            return (False, ffprobe_duration)
+        except Exception as e:
+            ffprobe_duration = time.time() - ffprobe_start
+            mac_info = f"MAC {mac}" if mac else "Stream"
+            logger.warning(f"{log_prefix} ✗ {mac_info} error: {e}")
+            return (False, ffprobe_duration)
 
-        with subprocess.Popen(
-            ffprobecmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        ) as ffprobe_sb:
-            ffprobe_sb.communicate()
-            if ffprobe_sb.returncode == 0:
-                return True
-            else:
-                return False
+    def testStream():
+        """Test stream with ffprobe (legacy function for compatibility)"""
+        success, duration = test_stream_with_ffprobe(link, proxy, None, "[STREAM TEST]")
+        return success
+
 
     portal = getPortals().get(portalId)
     
@@ -8765,6 +9192,12 @@ def stream_channel(portalId, channelId, xc_user=None):
         "IP({}) requested Portal({}):Channel({})".format(ip, portalId, channelId)
     )
 
+    # OPTIMIZATION: Check if HLS mode for potential direct redirect (but load MACs first for busy check)
+    output_format = getSettings().get("output format", "mpegts")
+    stream_method = getSettings().get("stream method", "ffmpeg")
+    hls_direct_redirect = output_format == "hls"
+    is_redirect_mode = stream_method == "redirect"
+    
     freeMac = False
     
     # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
@@ -8774,8 +9207,11 @@ def stream_channel(portalId, channelId, xc_user=None):
     cmd = None
     link = None
     channelName = None
-    try_all_macs_setting = getSettings().get("try all macs", "true") == "true"
+    try_all_macs_setting = True  # Always enabled - probiert immer alle MACs durch
     try_all_on_db_miss = getSettings().get("try all macs on db miss", "true") == "true"
+    test_streams_enabled = getSettings().get("test streams", "true") == "true" and not is_redirect_mode  # Skip test in redirect mode
+    skip_busy_macs = getSettings().get("skip busy macs", "false") == "true"
+    already_tested_with_ffprobe = False  # Track if we already tested with ffprobe in MAC RETRY
     
     # 1. Versuche Channel aus DB zu laden
     try:
@@ -8791,40 +9227,484 @@ def stream_channel(portalId, channelId, xc_user=None):
         conn.close()
         
         if row and row['stream_cmd'] and row['available_macs']:
-            # Channel in DB gefunden!
+            # Channel in DB gefunden mit Cache-Daten!
             cmd = row['stream_cmd']
             channelName = row['custom_name'] or row['name']
-            available_macs = row['available_macs'].split(',')
+            available_macs_raw = row['available_macs'].split(',')
             
-            logger.info(f"Channel {channelId} found in DB with {len(available_macs)} MAC(s): {available_macs}")
+            # Parse MACs with scoring data
+            # Format: "MAC:limit:success_count:fail_count:last_success_ts"
+            import time
+            available_macs = []
+            mac_limits = {}
+            mac_stats = {}  # {mac: {'success': int, 'fail': int, 'last_ts': int, 'score': float}}
             
-            # 2. Probiere MACs die den Channel haben
-            mac_found = None
-            for try_mac in available_macs:
-                # Check if MAC is free
-                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
-                if streamsPerMac == 0 or count < streamsPerMac:
-                    logger.info(f"Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
-                    freeMac = True
-                    mac = try_mac
-                    token = stb.getToken(url, mac, proxy)
-                    if token:
-                        stb.getProfile(url, mac, token, proxy)
-                        mac_found = mac
-                        break
+            def calculate_mac_score(success_count, fail_count, last_success_ts):
+                """Calculate MAC reliability score (0-100)"""
+                current_time = int(time.time())
+                
+                # 1. Success Rate (0-50 points)
+                total = success_count + fail_count
+                if total > 0:
+                    success_rate = (success_count / total) * 50
                 else:
-                    logger.debug(f"MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                    success_rate = 25  # Neutral for untested
                 
-                # Respect "try all macs" setting
-                if not try_all_macs_setting:
-                    logger.info("'try all macs' is disabled, stopping after first MAC")
-                    break
+                # 2. Recency (0-30 points)
+                if last_success_ts > 0:
+                    age_hours = (current_time - last_success_ts) / 3600
+                    if age_hours < 1:
+                        recency = 30
+                    elif age_hours < 24:
+                        recency = 20
+                    elif age_hours < 168:  # 1 week
+                        recency = 10
+                    else:
+                        recency = 5
+                else:
+                    recency = 0  # Never successful
+                
+                # 3. Reliability Bonus (0-20 points)
+                if success_count >= 10:
+                    reliability = 20
+                elif success_count >= 5:
+                    reliability = 10
+                else:
+                    reliability = 0
+                
+                return success_rate + recency + reliability
             
-            # 3. Wenn alle bekannten MACs voll sind UND "try all macs on db miss" aktiv
-            if not mac_found and try_all_on_db_miss:
-                logger.info(f"All known MACs busy for channel {channelId}, trying other MACs (try all macs on db miss)")
+            for mac_entry in available_macs_raw:
+                parts = mac_entry.split('|')
+                if len(parts) >= 5:
+                    # Format: MAC|limit|success|fail|last_ts
+                    mac = parts[0]
+                    available_macs.append(mac)
+                    mac_limits[mac] = int(parts[1])
+                    success_count = int(parts[2])
+                    fail_count = int(parts[3])
+                    last_ts = int(parts[4])
+                    score = calculate_mac_score(success_count, fail_count, last_ts)
+                    mac_stats[mac] = {
+                        'success': success_count,
+                        'fail': fail_count,
+                        'last_ts': last_ts,
+                        'score': score
+                    }
+                elif len(parts) == 2:  # MAC|limit (old format)
+                    # Format: MAC|limit (old format)
+                    mac = parts[0]
+                    available_macs.append(mac)
+                    mac_limits[mac] = int(parts[1])
+                    mac_stats[mac] = {
+                        'success': 0,
+                        'fail': 0,
+                        'last_ts': 0,
+                        'score': 25  # Neutral
+                    }
+                else:
+                    # Format: MAC (very old) - assume it's a complete MAC address
+                    available_macs.append(mac_entry)
+                    mac_limits[mac_entry] = 1
+                    mac_stats[mac_entry] = {
+                        'success': 0,
+                        'fail': 0,
+                        'last_ts': 0,
+                        'score': 25
+                    }
+            
+            # Sort MACs by score only (reliability beats capacity) - ALWAYS
+            available_macs.sort(key=lambda m: mac_stats.get(m, {}).get('score', 25), reverse=True)
+            logger.info(f"Channel {channelId} found in DB with {len(available_macs)} MAC(s) (sorted by score):")
+            for m in available_macs:
+                stats = mac_stats.get(m, {})
+                logger.info(f"  {m}: score={stats.get('score', 25):.1f}, limit={mac_limits.get(m, 1)}, success={stats.get('success', 0)}, fail={stats.get('fail', 0)}")
+            
+            # HLS Direct Redirect: Skip ffprobe and redirect to HLS endpoint
+            if hls_direct_redirect and available_macs:
+                # Find best MAC using playback limits, scoring and busy status
+                selected_mac = None
+                for try_mac in available_macs:
+                    # Check playback limit (instant, no delay)
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    if streamsPerMac > 0 and count >= streamsPerMac:
+                        logger.debug(f"[HLS REDIRECT] Skipping MAC {try_mac} (playback limit: {count}/{streamsPerMac})")
+                        continue
+                    
+                    # Check busy status if setting enabled
+                    if skip_busy_macs:
+                        token_temp = stb.getToken(url, try_mac, proxy)
+                        if token_temp:
+                            profile = stb.getProfile(url, try_mac, token_temp, proxy)
+                            watchdog_timeout = profile.get('watchdog_timeout', 999999)
+                            if watchdog_timeout < 60:
+                                logger.debug(f"[HLS REDIRECT] Skipping busy MAC {try_mac} (watchdog: {watchdog_timeout}s)")
+                                continue
+                            logger.debug(f"[HLS REDIRECT] MAC {try_mac} available (watchdog: {watchdog_timeout}s)")
+                    
+                    # MAC is good - use it
+                    selected_mac = try_mac
+                    break
                 
-                # Probiere die ANDEREN MACs (die nicht in available_macs sind)
+                if selected_mac:
+                    logger.info(f"[HLS REDIRECT] Selected MAC {selected_mac} (score: {mac_stats.get(selected_mac, {}).get('score', 25):.1f})")
+                    logger.info(f"[HLS MODE] Direct redirect to HLS endpoint for Portal({portalId}):Channel({channelId})")
+                    hls_url = f"/hls/{portalId}/{channelId}/stream.m3u8"
+                    
+                    # Return M3U8 playlist that points to our HLS endpoint
+                    playlist_content = f"""#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=5000000
+{hls_url}
+"""
+                    return Response(playlist_content, mimetype="application/vnd.apple.mpegurl")
+                else:
+                    logger.warning(f"[HLS REDIRECT] No available MAC found (all busy or at limit)")
+                    # Fall through to normal MAC retry logic
+            
+            # Probiere MACs die den Channel haben - IMMER alle durchprobieren bis eine funktioniert
+            mac_found = None
+            busy_macs = []  # Sammle busy MACs als Fallback
+            
+            # Test Streams enabled: Teste mit ffprobe
+            if test_streams_enabled:
+                logger.info(f"'test streams' enabled - will test all MACs with ffprobe until one works")
+                
+                for try_mac in available_macs:
+                    # Check if MAC is free
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    if streamsPerMac == 0 or count < streamsPerMac:
+                        logger.info(f"Testing Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                        mac = try_mac
+                        token = stb.getToken(url, mac, proxy)
+                        if token:
+                            # Optional: Check portal-side MAC load
+                            is_busy = False
+                            if skip_busy_macs:
+                                profile = stb.getProfile(url, mac, token, proxy)
+                                watchdog_timeout = profile.get('watchdog_timeout', 999999)
+                                
+                                if watchdog_timeout < 60:
+                                    logger.warning(f"[SKIP BUSY] MAC {mac} is very active (watchdog: {watchdog_timeout}s), saving as fallback")
+                                    busy_macs.append(try_mac)
+                                    is_busy = True
+                                else:
+                                    logger.info(f"[SKIP BUSY] MAC {mac} looks available (watchdog: {watchdog_timeout}s)")
+                            else:
+                                stb.getProfile(url, mac, token, proxy)
+                            
+                            if is_busy:
+                                continue  # Skip busy MAC for now
+                            
+                            # Generate link for this MAC
+                            test_link = None
+                            if cmd:
+                                if "http://localhost/" in cmd:
+                                    test_link = stb.getLink(url, mac, token, cmd, proxy)
+                                elif "play_token=" in cmd:
+                                    test_link = cmd.split(" ")[1]
+                                    import re
+                                    stream_match = re.search(r'stream=(\d+)', test_link)
+                                    if stream_match:
+                                        channel_id_from_url = stream_match.group(1)
+                                        dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                        fresh_link = stb.getLink(url, mac, token, dummy_cmd, proxy)
+                                        if fresh_link:
+                                            fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                            if fresh_token_match:
+                                                new_token = fresh_token_match.group(1)
+                                                test_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', test_link)
+                                    if "mac=" in test_link:
+                                        old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                        if old_mac_match:
+                                            old_mac = old_mac_match.group(1)
+                                            test_link = test_link.replace(f"mac={old_mac}", f"mac={mac}")
+                                else:
+                                    # Direct link (not localhost) - extract URL
+                                    test_link = cmd.split(" ")[1]
+                                    # Check if link has mac parameter
+                                    if "mac=" in test_link:
+                                        import re
+                                        old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                        if old_mac_match:
+                                            old_mac = old_mac_match.group(1)
+                                            test_link = test_link.replace(f"mac={old_mac}", f"mac={mac}")
+                                    else:
+                                        # No mac parameter - need to generate fresh link via getLink()
+                                        logger.info(f"[MAC RETRY] Link has no mac parameter, generating fresh link for MAC {mac}")
+                                        # Try to extract channel ID from URL
+                                        import re
+                                        channel_match = re.search(r'/(\d+)$', test_link)
+                                        if channel_match:
+                                            ch_id = channel_match.group(1)
+                                            dummy_cmd = f"ffmpeg http://localhost/ch/{ch_id}_"
+                                            test_link = stb.getLink(url, mac, token, dummy_cmd, proxy)
+                                            if not test_link:
+                                                logger.warning(f"[MAC RETRY] Failed to generate link for MAC {mac}")
+                                        else:
+                                            logger.warning(f"[MAC RETRY] Could not extract channel ID from link: {test_link}")
+                                            test_link = None
+                            
+                            # Test link with ffprobe
+                            if test_link:
+                                logger.info(f"[MAC RETRY] Testing link for MAC {mac}")
+                                success, ffprobe_duration = test_stream_with_ffprobe(test_link, proxy, mac, "[MAC RETRY]")
+                                
+                                if success:
+                                    mac_found = mac
+                                    freeMac = True
+                                    already_tested_with_ffprobe = True  # Mark as already tested
+                                    
+                                    # Update DB: Increment success count and update timestamp
+                                    try:
+                                        current_time = int(time.time())
+                                        stats = mac_stats.get(mac, {'success': 0, 'fail': 0, 'last_ts': 0, 'score': 25})
+                                        stats['success'] += 1
+                                        stats['last_ts'] = current_time
+                                        mac_stats[mac] = stats
+                                        
+                                        # Rebuild available_macs string with updated stats
+                                        macs_with_data = []
+                                        for m in available_macs:
+                                            limit = mac_limits.get(m, 1)
+                                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                        new_available_macs = ",".join(macs_with_data)
+                                        
+                                        conn_update = get_db_connection()
+                                        cursor_update = conn_update.cursor()
+                                        cursor_update.execute('''
+                                            UPDATE channels 
+                                            SET available_macs = ?
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (new_available_macs, portalId, channelId))
+                                        conn_update.commit()
+                                        conn_update.close()
+                                        logger.info(f"[MAC RETRY] Updated DB: MAC {mac} success count: {stats['success']}")
+                                    except Exception as e:
+                                        logger.error(f"[MAC RETRY] Error updating DB: {e}")
+                                    
+                                    break
+                                else:
+                                    logger.warning(f"[MAC RETRY] ✗ MAC {mac} failed test, trying next MAC")
+                                    
+                                    # Update DB: Increment fail count
+                                    try:
+                                        stats = mac_stats.get(mac, {'success': 0, 'fail': 0, 'last_ts': 0, 'score': 25})
+                                        stats['fail'] += 1
+                                        mac_stats[mac] = stats
+                                        
+                                        # Rebuild available_macs string
+                                        macs_with_data = []
+                                        for m in available_macs:
+                                            limit = mac_limits.get(m, 1)
+                                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                        new_available_macs = ",".join(macs_with_data)
+                                        
+                                        conn_update = get_db_connection()
+                                        cursor_update = conn_update.cursor()
+                                        cursor_update.execute('''
+                                            UPDATE channels 
+                                            SET available_macs = ?
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (new_available_macs, portalId, channelId))
+                                        conn_update.commit()
+                                        conn_update.close()
+                                        logger.info(f"[MAC RETRY] Updated DB: MAC {mac} fail count: {stats['fail']}")
+                                    except Exception as e:
+                                        logger.error(f"[MAC RETRY] Error updating DB: {e}")
+                                    
+                                    continue
+                            else:
+                                # No link generated - harder penalty
+                                logger.warning(f"[MAC RETRY] No link generated for MAC {mac}, skipping")
+                                try:
+                                    stats = mac_stats.get(mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                    stats['fail'] += 2  # Harder penalty
+                                    mac_stats[mac] = stats
+                                    
+                                    macs_with_data = []
+                                    for m in available_macs:
+                                        limit = mac_limits.get(m, 1)
+                                        st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                    new_available_macs = ",".join(macs_with_data)
+                                    
+                                    conn_update = get_db_connection()
+                                    cursor_update = conn_update.cursor()
+                                    cursor_update.execute('''
+                                        UPDATE channels 
+                                        SET available_macs = ?
+                                        WHERE portal = ? AND channel_id = ?
+                                    ''', (new_available_macs, portalId, channelId))
+                                    conn_update.commit()
+                                    conn_update.close()
+                                    logger.info(f"[MAC RETRY] Updated DB: MAC {mac} no link penalty (fail +2)")
+                                except Exception as e:
+                                    logger.error(f"[MAC RETRY] Error updating DB: {e}")
+                                continue
+                    else:
+                        logger.debug(f"MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                
+                # Fallback: Wenn keine MAC funktioniert hat, probiere busy MACs
+                if not mac_found and busy_macs:
+                    logger.warning(f"[MAC RETRY] No available MACs worked, trying {len(busy_macs)} busy MAC(s) as fallback")
+                    
+                    for try_mac in busy_macs:
+                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                        if streamsPerMac == 0 or count < streamsPerMac:
+                            logger.info(f"[MAC RETRY FALLBACK] Testing busy MAC {try_mac}")
+                            mac = try_mac
+                            token = stb.getToken(url, mac, proxy)
+                            if token:
+                                stb.getProfile(url, mac, token, proxy)
+                                
+                                # Generate link
+                                test_link = None
+                                if cmd:
+                                    if "http://localhost/" in cmd:
+                                        test_link = stb.getLink(url, mac, token, cmd, proxy)
+                                    elif "play_token=" in cmd:
+                                        test_link = cmd.split(" ")[1]
+                                        import re
+                                        stream_match = re.search(r'stream=(\d+)', test_link)
+                                        if stream_match:
+                                            channel_id_from_url = stream_match.group(1)
+                                            dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                            fresh_link = stb.getLink(url, mac, token, dummy_cmd, proxy)
+                                            if fresh_link:
+                                                fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                                if fresh_token_match:
+                                                    new_token = fresh_token_match.group(1)
+                                                    test_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', test_link)
+                                        if "mac=" in test_link:
+                                            old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                            if old_mac_match:
+                                                old_mac = old_mac_match.group(1)
+                                                test_link = test_link.replace(f"mac={old_mac}", f"mac={mac}")
+                                    else:
+                                        test_link = cmd.split(" ")[1]
+                                        if "mac=" in test_link:
+                                            import re
+                                            old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                            if old_mac_match:
+                                                old_mac = old_mac_match.group(1)
+                                                test_link = test_link.replace(f"mac={old_mac}", f"mac={mac}")
+                                
+                                if test_link:
+                                    timeout = int(getSettings()["ffmpeg timeout"]) * int(1000000)
+                                    # Get custom ffprobe parameters from settings
+                                    ffprobe_params_str = getSettings().get("ffprobe params", "-analyzeduration 500000 -probesize 100000")
+                                    ffprobe_params = ffprobe_params_str.split() if ffprobe_params_str.strip() else []
+                                    
+                                    ffprobecmd = [ffprobe_path] + ffprobe_params + ["-timeout", str(timeout), "-i", test_link]
+                                    if proxy:
+                                        ffprobecmd.insert(1, "-http_proxy")
+                                        ffprobecmd.insert(2, proxy)
+                                        ffprobecmd.insert(2, proxy)
+                                    
+                                    try:
+                                        import time
+                                        ffprobe_start = time.time()
+                                        with subprocess.Popen(
+                                            ffprobecmd,
+                                            stdin=subprocess.DEVNULL,
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE,
+                                        ) as ffprobe_sb:
+                                            ffprobe_sb.communicate(timeout=int(getSettings()["ffmpeg timeout"]))
+                                            ffprobe_duration = time.time() - ffprobe_start
+                                            if ffprobe_sb.returncode == 0:
+                                                logger.info(f"[MAC RETRY FALLBACK] ✓ Busy MAC {mac} works! (ffprobe: {ffprobe_duration:.2f}s)")
+                                                mac_found = mac
+                                                freeMac = True
+                                                already_tested_with_ffprobe = True  # Mark as already tested
+                                                
+                                                # Update DB: Increment success count
+                                                try:
+                                                    import time
+                                                    current_time = int(time.time())
+                                                    stats = mac_stats.get(mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                                    stats['success'] += 1
+                                                    stats['last_ts'] = current_time
+                                                    mac_stats[mac] = stats
+                                                    
+                                                    macs_with_data = []
+                                                    for m in available_macs:
+                                                        limit = mac_limits.get(m, 1)
+                                                        st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                                        macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                                    new_available_macs = ",".join(macs_with_data)
+                                                    
+                                                    conn_update = get_db_connection()
+                                                    cursor_update = conn_update.cursor()
+                                                    cursor_update.execute('''
+                                                        UPDATE channels 
+                                                        SET available_macs = ?
+                                                        WHERE portal = ? AND channel_id = ?
+                                                    ''', (new_available_macs, portalId, channelId))
+                                                    conn_update.commit()
+                                                    conn_update.close()
+                                                    logger.info(f"[MAC RETRY FALLBACK] Updated DB: MAC {mac} success count: {stats['success']}")
+                                                except Exception as e:
+                                                    logger.error(f"[MAC RETRY FALLBACK] Error updating DB: {e}")
+                                                
+                                                break
+                                    except:
+                                        continue
+            else:
+                # Test Streams disabled: Probiere alle MACs ohne ffprobe Test
+                logger.info(f"'test streams' disabled - will try all MACs without ffprobe test")
+                
+                for try_mac in available_macs:
+                    # Check if MAC is free
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    if streamsPerMac == 0 or count < streamsPerMac:
+                        logger.info(f"Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                        freeMac = True
+                        mac = try_mac
+                        token = stb.getToken(url, mac, proxy)
+                        if token:
+                            # Optional: Check portal-side MAC load
+                            if skip_busy_macs:
+                                profile = stb.getProfile(url, mac, token, proxy)
+                                watchdog_timeout = profile.get('watchdog_timeout', 999999)
+                                
+                                if watchdog_timeout < 60:
+                                    logger.warning(f"[SKIP BUSY] MAC {mac} is very active (watchdog: {watchdog_timeout}s), saving as fallback")
+                                    busy_macs.append(try_mac)
+                                    continue
+                                else:
+                                    logger.info(f"[SKIP BUSY] MAC {mac} looks available (watchdog: {watchdog_timeout}s)")
+                                    mac_found = mac
+                                    break
+                            else:
+                                stb.getProfile(url, mac, token, proxy)
+                                mac_found = mac
+                                break
+                    else:
+                        logger.debug(f"MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                
+                # Fallback: Wenn keine MAC gefunden, probiere busy MACs
+                if not mac_found and busy_macs:
+                    logger.warning(f"[SKIP BUSY] No available MACs found, trying {len(busy_macs)} busy MAC(s) as fallback")
+                    
+                    for try_mac in busy_macs:
+                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                        if streamsPerMac == 0 or count < streamsPerMac:
+                            logger.info(f"[SKIP BUSY FALLBACK] Using busy MAC {try_mac}")
+                            mac = try_mac
+                            token = stb.getToken(url, mac, proxy)
+                            if token:
+                                stb.getProfile(url, mac, token, proxy)
+                                mac_found = mac
+                                freeMac = True
+                                break
+            
+            if not mac_found:
+                logger.warning(f"Channel {channelId} not found on known MACs, trying other MACs")
+                # Probiere andere MACs
                 other_macs = [m for m in macs if m not in available_macs]
                 
                 for try_mac in other_macs:
@@ -8835,7 +9715,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                         mac = try_mac
                         token = stb.getToken(url, mac, proxy)
                         if token:
-                            stb.getProfile(url, mac, token, proxy)
+                            profile = stb.getProfile(url, mac, token, proxy)
+                            playback_limit = profile.get('playback_limit', 1) if profile else 1
                             
                             # Lade alle Channels von dieser MAC
                             channels = stb.getAllChannels(url, mac, token, proxy)
@@ -8850,14 +9731,25 @@ def stream_channel(portalId, channelId, xc_user=None):
                                         
                                         # Update DB: Füge diese MAC zu available_macs hinzu
                                         try:
-                                            new_available_macs = ','.join(available_macs + [mac])
+                                            # Add MAC with proper format: MAC|limit|success|fail|last_ts
+                                            new_mac_entry = f"{mac}|{playback_limit}|0|0|0"
+                                            
+                                            # Rebuild available_macs with all MACs
+                                            macs_with_data = []
+                                            for m in available_macs:
+                                                st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                                l = mac_limits.get(m, 1)
+                                                macs_with_data.append(f"{m}|{l}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                            macs_with_data.append(new_mac_entry)
+                                            new_available_macs = ','.join(macs_with_data)
+                                            
                                             conn = get_db_connection()
                                             cursor = conn.cursor()
                                             cursor.execute('''
                                                 UPDATE channels 
-                                                SET stream_cmd = ?, available_macs = ?
+                                                SET available_macs = ?
                                                 WHERE portal = ? AND channel_id = ?
-                                            ''', (cmd, new_available_macs, portalId, channelId))
+                                            ''', (new_available_macs, portalId, channelId))
                                             conn.commit()
                                             conn.close()
                                             logger.info(f"Updated DB: Added MAC {mac} to available_macs for channel {channelId}")
@@ -8877,6 +9769,69 @@ def stream_channel(portalId, channelId, xc_user=None):
             if not mac_found:
                 logger.warning(f"All MACs busy or channel not found on other MACs for channel {channelId}")
                 return make_response("All MACs busy", 503)
+            
+            mac = mac_found
+        elif row:
+            # Channel in DB aber OHNE Cache-Daten (stream_cmd oder available_macs ist NULL)
+            logger.warning(f"Channel {channelId} in DB but missing cache data (stream_cmd or available_macs), falling back to getAllChannels()")
+            channelName = row['custom_name'] or row['name']
+            
+            # FALLBACK: Lade Channel-Daten vom Portal
+            mac_found = None
+            for try_mac in macs:
+                # Check if MAC is free
+                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                if streamsPerMac == 0 or count < streamsPerMac:
+                    logger.info(f"Fallback (missing cache): Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
+                    freeMac = True
+                    mac = try_mac
+                    token = stb.getToken(url, mac, proxy)
+                    if token:
+                        profile = stb.getProfile(url, mac, token, proxy)
+                        playback_limit = profile.get('playback_limit', 1) if profile else 1
+                        
+                        # Lade alle Channels von dieser MAC
+                        channels = stb.getAllChannels(url, mac, token, proxy)
+                        if channels:
+                            # Suche Channel
+                            for ch in channels:
+                                if str(ch["id"]) == str(channelId):
+                                    channel = ch
+                                    cmd = channel["cmd"]
+                                    channelName = channel["name"]
+                                    mac_found = mac
+                                    
+                                    # Speichere Cache-Daten in DB mit proper format
+                                    try:
+                                        # Format: MAC|limit|success|fail|last_ts
+                                        available_macs_entry = f"{mac}|{playback_limit}|0|0|0"
+                                        
+                                        conn = get_db_connection()
+                                        cursor = conn.cursor()
+                                        cursor.execute('''
+                                            UPDATE channels 
+                                            SET stream_cmd = ?, available_macs = ?
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (cmd, available_macs_entry, portalId, channelId))
+                                        conn.commit()
+                                        conn.close()
+                                        logger.info(f"Updated DB: Saved cache data for channel {channelId} (MAC: {mac}, limit: {playback_limit})")
+                                    except Exception as e:
+                                        logger.error(f"Error updating DB: {e}")
+                                    
+                                    break
+                            
+                            if mac_found:
+                                break
+                
+                # Respect "try all macs" setting
+                if not try_all_macs_setting:
+                    logger.info("'try all macs' is disabled, stopping after first MAC")
+                    break
+            
+            if not mac_found:
+                logger.error(f"Channel {channelId} not found on any MAC (missing cache data)")
+                return make_response("Channel not found", 404)
             
             mac = mac_found
         else:
@@ -8943,12 +9898,60 @@ def stream_channel(portalId, channelId, xc_user=None):
     
     # 5. Generate stream link
     if cmd:
+        logger.info(f"[STREAM DEBUG] cmd from DB: {cmd}")
+        
         if "http://localhost/" in cmd:
+            # Localhost URLs brauchen getLink()
             link = stb.getLink(url, mac, token, cmd, proxy)
-            logger.debug(f"Generated stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Generated stream link for MAC {mac}: {link}")
-        else:
+            logger.info(f"[STREAM DEBUG] Used getLink() for localhost URL")
+            logger.info(f"[STREAM DEBUG] Final link: {link}")
+        elif "play_token=" in cmd:
+            # URLs mit play_token: Ersetze nur den Token (nicht getLink aufrufen!)
             link = cmd.split(" ")[1]
-            logger.debug(f"Direct stream link for MAC {mac}: {link[:100]}..." if link and len(link) > 100 else f"Direct stream link for MAC {mac}: {link}")
+            logger.info(f"[STREAM DEBUG] URL with play_token (before token refresh): {link}")
+            
+            # Hole frischen Token durch getLink() mit einem Dummy-cmd
+            # Extrahiere channel_id aus der URL
+            import re
+            stream_match = re.search(r'stream=(\d+)', link)
+            if stream_match:
+                channel_id_from_url = stream_match.group(1)
+                # Erstelle localhost-style cmd für getLink()
+                dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                fresh_link = stb.getLink(url, mac, token, dummy_cmd, proxy)
+                
+                if fresh_link:
+                    # Extrahiere neuen play_token aus fresh_link
+                    fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                    if fresh_token_match:
+                        new_token = fresh_token_match.group(1)
+                        # Ersetze alten Token mit neuem
+                        link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', link)
+                        logger.info(f"[STREAM DEBUG] Refreshed play_token: {new_token}")
+            
+            # Ersetze MAC in URL falls nötig
+            if "mac=" in link:
+                old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', link)
+                if old_mac_match:
+                    old_mac = old_mac_match.group(1)
+                    link = link.replace(f"mac={old_mac}", f"mac={mac}")
+                    logger.info(f"[STREAM DEBUG] Replaced MAC in URL: {old_mac} → {mac}")
+            
+            logger.info(f"[STREAM DEBUG] Final link (after token refresh): {link}")
+        else:
+            # Direct URL - ersetze MAC in URL falls vorhanden
+            link = cmd.split(" ")[1]
+            logger.info(f"[STREAM DEBUG] Direct URL (before MAC replacement): {link}")
+            
+            if "mac=" in link:
+                import re
+                old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', link)
+                if old_mac_match:
+                    old_mac = old_mac_match.group(1)
+                    link = link.replace(f"mac={old_mac}", f"mac={mac}")
+                    logger.info(f"[STREAM DEBUG] Replaced MAC in URL: {old_mac} → {mac}")
+            
+            logger.info(f"[STREAM DEBUG] Final link (after MAC replacement): {link}")
     
     if not link:
         logger.warning(f"No stream link generated for MAC {mac}, channel {channelId}")
@@ -8958,7 +9961,31 @@ def stream_channel(portalId, channelId, xc_user=None):
         return make_response("No stream link available", 404)
 
     if link:
-        if getSettings().get("test streams", "true") == "false" or testStream():
+        # Check output format setting
+        output_format = getSettings().get("output format", "mpegts")
+        
+        if output_format == "hls":
+            # HLS mode: Return playlist URL instead of direct stream
+            # The HLS route will handle MAC retry with FFmpeg stderr monitoring
+            logger.info(f"[HLS MODE] Redirecting to HLS playlist for Portal({portalId}):Channel({channelId})")
+            hls_url = f"/hls/{portalId}/{channelId}/stream.m3u8"
+            
+            # Return M3U8 playlist that points to our HLS endpoint
+            playlist_content = f"""#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=5000000
+{hls_url}
+"""
+            return Response(playlist_content, mimetype="application/vnd.apple.mpegurl")
+        
+        # MPEG-TS mode: Continue with FFmpeg Direct streaming
+        # Skip testStream() if we already tested with ffprobe in MAC RETRY or in redirect mode
+        stream_method = getSettings().get("stream method", "ffmpeg")
+        skip_test = (getSettings().get("test streams", "true") == "false" or 
+                     already_tested_with_ffprobe or 
+                     stream_method == "redirect")
+        
+        if skip_test or testStream():
             if web:
                 ffmpegcmd = [
                     ffmpeg_path,
@@ -9093,6 +10120,7 @@ def hls_stream(portalId, channelId, filename):
     
     # First, check if stream is already active
     stream_exists = stream_key in hls_manager.streams
+    file_path = None  # Initialize file_path
     
     if stream_exists:
         # For active streams, wait a bit for the file if it's a playlist
@@ -9107,14 +10135,18 @@ def hls_stream(portalId, channelId, filename):
                 time.sleep(0.1)
         else:
             file_path = hls_manager.get_file(portalId, channelId, filename)
-    else:
-        file_path = None
     
     # If file doesn't exist and this is a playlist/segment request, start the stream
     if not file_path and (filename.endswith('.m3u8') or filename.endswith('.ts') or filename.endswith('.m4s')):
         # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
         cmd = None
         mac_used = None
+        
+        # Get HLS retry settings
+        hls_auto_retry = True  # Always enabled - probiert immer alle MACs durch
+        hls_retry_timeout_str = getSettings().get("hls retry timeout", "3")
+        hls_retry_timeout = int(hls_retry_timeout_str) if hls_retry_timeout_str and hls_retry_timeout_str != "false" else 3
+        hls_skip_busy = getSettings().get("hls skip busy macs", "false") == "true"
         
         # 1. Versuche Channel aus DB zu laden
         try:
@@ -9131,9 +10163,462 @@ def hls_stream(portalId, channelId, filename):
             
             if row and row['stream_cmd'] and row['available_macs']:
                 cmd = row['stream_cmd']
-                available_macs = row['available_macs'].split(',')
-                mac_used = available_macs[0] if available_macs else None
-                logger.info(f"HLS: Channel {channelId} found in DB, using MAC {mac_used}")
+                available_macs_raw = row['available_macs'].split(',')
+                
+                # Parse MACs with scoring data
+                # Format: "MAC:limit:success_count:fail_count:last_success_ts"
+                import time
+                available_macs = []
+                mac_limits = {}
+                mac_stats = {}
+                
+                def calculate_mac_score(success_count, fail_count, last_success_ts):
+                    """Calculate MAC reliability score (0-100)"""
+                    current_time = int(time.time())
+                    
+                    # 1. Success Rate (0-50 points)
+                    total = success_count + fail_count
+                    if total > 0:
+                        success_rate = (success_count / total) * 50
+                    else:
+                        success_rate = 25  # Neutral for untested
+                    
+                    # 2. Recency (0-30 points)
+                    if last_success_ts > 0:
+                        age_hours = (current_time - last_success_ts) / 3600
+                        if age_hours < 1:
+                            recency = 30
+                        elif age_hours < 24:
+                            recency = 20
+                        elif age_hours < 168:  # 1 week
+                            recency = 10
+                        else:
+                            recency = 5
+                    else:
+                        recency = 0  # Never successful
+                    
+                    # 3. Reliability Bonus (0-20 points)
+                    if success_count >= 10:
+                        reliability = 20
+                    elif success_count >= 5:
+                        reliability = 10
+                    else:
+                        reliability = 0
+                    
+                    return success_rate + recency + reliability
+                
+                for mac_entry in available_macs_raw:
+                    parts = mac_entry.split('|')
+                    if len(parts) >= 5:  # MAC|limit|success|fail|last_ts
+                        # Format: MAC|limit|success|fail|last_ts
+                        mac = parts[0]
+                        available_macs.append(mac)
+                        mac_limits[mac] = int(parts[1])
+                        success_count = int(parts[2])
+                        fail_count = int(parts[3])
+                        last_ts = int(parts[4])
+                        score = calculate_mac_score(success_count, fail_count, last_ts)
+                        mac_stats[mac] = {
+                            'success': success_count,
+                            'fail': fail_count,
+                            'last_ts': last_ts,
+                            'score': score
+                        }
+                    elif len(parts) == 2:
+                        # Format: MAC:limit (old format)
+                        mac = parts[0]
+                        available_macs.append(mac)
+                        mac_limits[mac] = int(parts[1])
+                        mac_stats[mac] = {
+                            'success': 0,
+                            'fail': 0,
+                            'last_ts': 0,
+                            'score': 25
+                        }
+                    else:
+                        # Format: MAC (very old)
+                        available_macs.append(mac_entry)
+                        mac_limits[mac_entry] = 1
+                        mac_stats[mac_entry] = {
+                            'success': 0,
+                            'fail': 0,
+                            'last_ts': 0,
+                            'score': 25
+                        }
+                
+                # Sort MACs by score only (reliability beats capacity) - ALWAYS
+                available_macs.sort(key=lambda m: mac_stats.get(m, {}).get('score', 25), reverse=True)
+                
+                logger.info(f"[HLS] Channel {channelId} found in DB with {len(available_macs)} MAC(s) (sorted by score):")
+                for m in available_macs:
+                    stats = mac_stats.get(m, {})
+                    logger.info(f"  {m}: score={stats.get('score', 25):.1f}, limit={mac_limits.get(m, 1)}, success={stats.get('success', 0)}, fail={stats.get('fail', 0)}")
+                
+                if hls_auto_retry:
+                    logger.info(f"[HLS RETRY] Auto retry enabled, will test all {len(available_macs)} MACs")
+                    
+                    busy_macs = []  # Sammle busy MACs als Fallback
+                    
+                    # Probiere alle MACs durch
+                    for try_mac in available_macs:
+                        try:
+                            logger.info(f"[HLS RETRY] Testing MAC {try_mac}")
+                            
+                            # Get token
+                            token = stb.getToken(url, try_mac, proxy)
+                            if not token:
+                                logger.warning(f"[HLS RETRY] Failed to get token for MAC {try_mac}")
+                                continue
+                            
+                            # Optional: Skip busy MACs
+                            is_busy = False
+                            if hls_skip_busy:
+                                profile = stb.getProfile(url, try_mac, token, proxy)
+                                watchdog = profile.get('watchdog_timeout', 999999)
+                                if watchdog < 60:
+                                    logger.warning(f"[HLS RETRY] MAC {try_mac} is busy (watchdog: {watchdog}s), saving as fallback")
+                                    busy_macs.append(try_mac)
+                                    is_busy = True
+                                else:
+                                    logger.info(f"[HLS RETRY] MAC {try_mac} looks available (watchdog: {watchdog}s)")
+                            else:
+                                stb.getProfile(url, try_mac, token, proxy)
+                            
+                            if is_busy:
+                                continue  # Skip busy MAC for now
+                            
+                            # Generate link
+                            test_link = None
+                            if "http://localhost/" in cmd:
+                                test_link = stb.getLink(url, try_mac, token, cmd, proxy)
+                            elif "play_token=" in cmd:
+                                test_link = cmd.split(" ")[1]
+                                import re
+                                stream_match = re.search(r'stream=(\d+)', test_link)
+                                if stream_match:
+                                    channel_id_from_url = stream_match.group(1)
+                                    dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                    fresh_link = stb.getLink(url, try_mac, token, dummy_cmd, proxy)
+                                    if fresh_link:
+                                        fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                        if fresh_token_match:
+                                            new_token = fresh_token_match.group(1)
+                                            test_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', test_link)
+                                if "mac=" in test_link:
+                                    old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                    if old_mac_match:
+                                        old_mac = old_mac_match.group(1)
+                                        test_link = test_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                            else:
+                                test_link = cmd.split(" ")[1]
+                                if "mac=" in test_link:
+                                    import re
+                                    old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                    if old_mac_match:
+                                        old_mac = old_mac_match.group(1)
+                                        test_link = test_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                            
+                            if not test_link:
+                                logger.warning(f"[HLS RETRY] Failed to generate link for MAC {try_mac}")
+                                
+                                # Update DB: Harder penalty for no link (fail += 2)
+                                try:
+                                    stats = mac_stats.get(try_mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                    stats['fail'] += 2  # Harder penalty: no link at all
+                                    mac_stats[try_mac] = stats
+                                    
+                                    macs_with_data = []
+                                    for m in available_macs:
+                                        limit = mac_limits.get(m, 1)
+                                        st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                    new_available_macs = ",".join(macs_with_data)
+                                    
+                                    conn_update = get_db_connection()
+                                    cursor_update = conn_update.cursor()
+                                    cursor_update.execute('''
+                                        UPDATE channels 
+                                        SET available_macs = ?
+                                        WHERE portal = ? AND channel_id = ?
+                                    ''', (new_available_macs, portalId, channelId))
+                                    conn_update.commit()
+                                    conn_update.close()
+                                    logger.info(f"[HLS RETRY] Updated DB: MAC {try_mac} no link penalty (fail +2)")
+                                except Exception as e:
+                                    logger.error(f"[HLS RETRY] Error updating DB: {e}")
+                                
+                                continue
+                            
+                            # Start HLS stream and test
+                            logger.info(f"[HLS RETRY] Starting stream with MAC {try_mac}")
+                            stream_info = hls_manager.start_stream(portalId, channelId, test_link, proxy)
+                            
+                            # Monitor FFmpeg output instead of polling filesystem
+                            process = stream_info.get('process')
+                            if process:
+                                # Use FFmpeg stderr monitoring (fast!)
+                                stream_ready = monitor_ffmpeg_hls_output(process, timeout_seconds=hls_retry_timeout)
+                            else:
+                                # Passthrough stream (no FFmpeg process)
+                                # Fall back to filesystem check
+                                playlist_path = stream_info.get('playlist_path') or stream_info.get('master_playlist_path')
+                                stream_ready = False
+                                if playlist_path:
+                                    max_wait_iterations = hls_retry_timeout * 10
+                                    for wait_i in range(max_wait_iterations):
+                                        if os.path.exists(playlist_path):
+                                            stream_ready = True
+                                            break
+                                        time.sleep(0.1)
+                            
+                            if stream_ready:
+                                logger.info(f"[HLS RETRY] ✓ MAC {try_mac} works! Playlist created.")
+                                mac_used = try_mac
+                                link = test_link
+                                
+                                # Update DB: Increment success count
+                                try:
+                                    import time
+                                    current_time = int(time.time())
+                                    stats = mac_stats.get(try_mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                    stats['success'] += 1
+                                    stats['last_ts'] = current_time
+                                    mac_stats[try_mac] = stats
+                                    
+                                    macs_with_data = []
+                                    for m in available_macs:
+                                        limit = mac_limits.get(m, 1)
+                                        st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                    new_available_macs = ",".join(macs_with_data)
+                                    
+                                    conn_update = get_db_connection()
+                                    cursor_update = conn_update.cursor()
+                                    cursor_update.execute('''
+                                        UPDATE channels 
+                                        SET available_macs = ?
+                                        WHERE portal = ? AND channel_id = ?
+                                    ''', (new_available_macs, portalId, channelId))
+                                    conn_update.commit()
+                                    conn_update.close()
+                                    logger.info(f"[HLS RETRY] Updated DB: MAC {try_mac} success count: {stats['success']}")
+                                except Exception as e:
+                                    logger.error(f"[HLS RETRY] Error updating DB: {e}")
+                                
+                                break
+                            else:
+                                logger.warning(f"[HLS RETRY] ✗ MAC {try_mac} failed (no playlist after {hls_retry_timeout}s)")
+                                hls_manager.stop_stream(portalId, channelId)
+                                
+                                # Update DB: Increment fail count
+                                try:
+                                    stats = mac_stats.get(try_mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                    stats['fail'] += 1
+                                    mac_stats[try_mac] = stats
+                                    
+                                    macs_with_data = []
+                                    for m in available_macs:
+                                        limit = mac_limits.get(m, 1)
+                                        st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                    new_available_macs = ",".join(macs_with_data)
+                                    
+                                    conn_update = get_db_connection()
+                                    cursor_update = conn_update.cursor()
+                                    cursor_update.execute('''
+                                        UPDATE channels 
+                                        SET available_macs = ?
+                                        WHERE portal = ? AND channel_id = ?
+                                    ''', (new_available_macs, portalId, channelId))
+                                    conn_update.commit()
+                                    conn_update.close()
+                                    logger.info(f"[HLS RETRY] Updated DB: MAC {try_mac} fail count: {stats['fail']}")
+                                except Exception as e:
+                                    logger.error(f"[HLS RETRY] Error updating DB: {e}")
+                                
+                                continue
+                                
+                        except Exception as e:
+                            logger.error(f"[HLS RETRY] Error testing MAC {try_mac}: {e}")
+                            try:
+                                hls_manager.stop_stream(portalId, channelId)
+                            except:
+                                pass
+                            continue
+                    
+                    # Fallback: Wenn keine MAC funktioniert hat, probiere busy MACs
+                    if not mac_used and busy_macs:
+                        logger.warning(f"[HLS RETRY] No available MACs worked, trying {len(busy_macs)} busy MAC(s) as fallback")
+                        
+                        for try_mac in busy_macs:
+                            try:
+                                logger.info(f"[HLS RETRY FALLBACK] Testing busy MAC {try_mac}")
+                                
+                                token = stb.getToken(url, try_mac, proxy)
+                                if not token:
+                                    continue
+                                
+                                stb.getProfile(url, try_mac, token, proxy)
+                                
+                                # Generate link (same logic as above)
+                                test_link = None
+                                if "http://localhost/" in cmd:
+                                    test_link = stb.getLink(url, try_mac, token, cmd, proxy)
+                                elif "play_token=" in cmd:
+                                    test_link = cmd.split(" ")[1]
+                                    import re
+                                    stream_match = re.search(r'stream=(\d+)', test_link)
+                                    if stream_match:
+                                        channel_id_from_url = stream_match.group(1)
+                                        dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                        fresh_link = stb.getLink(url, try_mac, token, dummy_cmd, proxy)
+                                        if fresh_link:
+                                            fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                            if fresh_token_match:
+                                                new_token = fresh_token_match.group(1)
+                                                test_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', test_link)
+                                    if "mac=" in test_link:
+                                        old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                        if old_mac_match:
+                                            old_mac = old_mac_match.group(1)
+                                            test_link = test_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                                else:
+                                    test_link = cmd.split(" ")[1]
+                                    if "mac=" in test_link:
+                                        import re
+                                        old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', test_link)
+                                        if old_mac_match:
+                                            old_mac = old_mac_match.group(1)
+                                            test_link = test_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                                
+                                if not test_link:
+                                    # Harder penalty for no link
+                                    try:
+                                        stats = mac_stats.get(try_mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        stats['fail'] += 2
+                                        mac_stats[try_mac] = stats
+                                        
+                                        macs_with_data = []
+                                        for m in available_macs:
+                                            limit = mac_limits.get(m, 1)
+                                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                        new_available_macs = ",".join(macs_with_data)
+                                        
+                                        conn_update = get_db_connection()
+                                        cursor_update = conn_update.cursor()
+                                        cursor_update.execute('''
+                                            UPDATE channels 
+                                            SET available_macs = ?
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (new_available_macs, portalId, channelId))
+                                        conn_update.commit()
+                                        conn_update.close()
+                                        logger.info(f"[HLS RETRY FALLBACK] Updated DB: MAC {try_mac} no link penalty (fail +2)")
+                                    except Exception as e:
+                                        logger.error(f"[HLS RETRY FALLBACK] Error updating DB: {e}")
+                                    
+                                    continue
+                                
+                                # Start HLS stream and test
+                                stream_info = hls_manager.start_stream(portalId, channelId, test_link, proxy)
+                                
+                                # Monitor FFmpeg output
+                                process = stream_info.get('process')
+                                if process:
+                                    stream_ready = monitor_ffmpeg_hls_output(process, timeout_seconds=hls_retry_timeout)
+                                else:
+                                    # Passthrough stream
+                                    playlist_path = stream_info.get('playlist_path') or stream_info.get('master_playlist_path')
+                                    stream_ready = False
+                                    if playlist_path:
+                                        max_wait_iterations = hls_retry_timeout * 10
+                                        for wait_i in range(max_wait_iterations):
+                                            if os.path.exists(playlist_path):
+                                                stream_ready = True
+                                                break
+                                            time.sleep(0.1)
+                                
+                                if stream_ready:
+                                    logger.info(f"[HLS RETRY FALLBACK] ✓ Busy MAC {try_mac} works!")
+                                    mac_used = try_mac
+                                    link = test_link
+                                    
+                                    # Update DB: Increment success count
+                                    try:
+                                        import time
+                                        current_time = int(time.time())
+                                        stats = mac_stats.get(try_mac, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                        stats['success'] += 1
+                                        stats['last_ts'] = current_time
+                                        mac_stats[try_mac] = stats
+                                        
+                                        macs_with_data = []
+                                        for m in available_macs:
+                                            limit = mac_limits.get(m, 1)
+                                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
+                                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
+                                        new_available_macs = ",".join(macs_with_data)
+                                        
+                                        conn_update = get_db_connection()
+                                        cursor_update = conn_update.cursor()
+                                        cursor_update.execute('''
+                                            UPDATE channels 
+                                            SET available_macs = ?
+                                            WHERE portal = ? AND channel_id = ?
+                                        ''', (new_available_macs, portalId, channelId))
+                                        conn_update.commit()
+                                        conn_update.close()
+                                        logger.info(f"[HLS RETRY FALLBACK] Updated DB: MAC {try_mac} success count: {stats['success']}")
+                                    except Exception as e:
+                                        logger.error(f"[HLS RETRY FALLBACK] Error updating DB: {e}")
+                                    
+                                    break
+                                else:
+                                    hls_manager.stop_stream(portalId, channelId)
+                                    
+                            except Exception as e:
+                                logger.error(f"[HLS RETRY FALLBACK] Error with MAC {try_mac}: {e}")
+                                try:
+                                    hls_manager.stop_stream(portalId, channelId)
+                                except:
+                                    pass
+                                continue
+                    
+                    if not mac_used:
+                        logger.error(f"[HLS RETRY] All MACs failed for channel {channelId}")
+                        return make_response("All MACs failed", 503)
+                else:
+                    # Auto Retry disabled: use first MAC, but skip busy ones if setting is enabled
+                    mac_used = None
+                    
+                    if hls_skip_busy:
+                        logger.info(f"HLS: Skip busy MACs enabled, checking {len(available_macs)} MAC(s)")
+                        # Try to find first non-busy MAC
+                        for try_mac in available_macs:
+                            try:
+                                token = stb.getToken(url, try_mac, proxy)
+                                if token:
+                                    profile = stb.getProfile(url, try_mac, token, proxy)
+                                    watchdog = profile.get('watchdog_timeout', 999999)
+                                    if watchdog >= 60:
+                                        mac_used = try_mac
+                                        logger.info(f"HLS: Using non-busy MAC {mac_used} (watchdog: {watchdog}s)")
+                                        break
+                                    else:
+                                        logger.debug(f"HLS: Skipping busy MAC {try_mac} (watchdog: {watchdog}s)")
+                            except Exception as e:
+                                logger.warning(f"HLS: Error checking MAC {try_mac}: {e}")
+                                continue
+                        
+                        # Fallback: use first MAC even if busy
+                        if not mac_used:
+                            mac_used = available_macs[0]
+                            logger.warning(f"HLS: All MACs busy, using first MAC {mac_used} as fallback")
+                    else:
+                        # Old behavior: use first MAC without checking
+                        mac_used = available_macs[0]
+                        logger.info(f"HLS: Using first MAC {mac_used} (skip busy disabled)")
             else:
                 # Fallback: getAllChannels()
                 logger.warning(f"HLS: Channel {channelId} not in DB, falling back")
@@ -9153,38 +10638,63 @@ def hls_stream(portalId, channelId, filename):
         except Exception as e:
             logger.error(f"HLS: Error loading channel from DB: {e}")
         
-        link = None
-        if cmd and mac_used:
-            try:
-                # Get token for the MAC that has the channel
-                token = stb.getToken(url, mac_used, proxy)
-                if token:
-                    stb.getProfile(url, mac_used, token, proxy)
-                    
-                    if "http://localhost/" in cmd:
-                        link = stb.getLink(url, mac_used, token, cmd, proxy)
-                    else:
-                        link = cmd.split(" ")[1]
-                    
-                    logger.info(f"Stream URL obtained from MAC {mac_used} for Channel {channelId}")
-            except Exception as e:
+        # If auto retry was used, link is already set
+        if not (hls_auto_retry and link):
+            # Generate link for non-retry mode
+            if cmd and mac_used:
+                try:
+                    # Get token for the MAC that has the channel
+                    token = stb.getToken(url, mac_used, proxy)
+                    if token:
+                        stb.getProfile(url, mac_used, token, proxy)
+                        
+                        if "http://localhost/" in cmd:
+                            link = stb.getLink(url, mac_used, token, cmd, proxy)
+                        else:
+                            link = cmd.split(" ")[1]
+                        
+                        logger.info(f"Stream URL obtained from MAC {mac_used} for Channel {channelId}")
+                except Exception as e:
+                    logger.error(f"Error getting stream URL with MAC {mac_used}: {e}")
                 logger.error(f"Error getting stream URL with MAC {mac_used}: {e}")
         
         if not link:
             logger.error(f"Could not get stream URL for Portal({portalId}):Channel({channelId})")
             return make_response("Stream not available", 503)
         
-        # Start the HLS stream
-        try:
-            stream_info = hls_manager.start_stream(portalId, channelId, link, proxy)
-            
-            # Wait for file to be created
-            is_passthrough = stream_info.get('is_passthrough', False)
-            
-            if filename.endswith('.m3u8'):
-                max_wait = 100 if not is_passthrough else 10
+        # Start the HLS stream (skip if already started by auto retry)
+        if not (hls_auto_retry and stream_key in hls_manager.streams):
+            try:
+                stream_info = hls_manager.start_stream(portalId, channelId, link, proxy)
                 
-                for wait_count in range(max_wait):
+                # Wait for file to be created
+                is_passthrough = stream_info.get('is_passthrough', False)
+                
+                if filename.endswith('.m3u8'):
+                    max_wait = 100 if not is_passthrough else 10
+                    
+                    for wait_count in range(max_wait):
+                        file_path = hls_manager.get_file(portalId, channelId, filename)
+                        if file_path:
+                            break
+                        time.sleep(0.1)
+                else:
+                    # For segments, wait a bit
+                    for wait_count in range(30):
+                        file_path = hls_manager.get_file(portalId, channelId, filename)
+                        if file_path:
+                            break
+                        time.sleep(0.1)
+            
+            except Exception as e:
+                logger.error(f"Error starting HLS stream: {e}")
+                return make_response("Error starting stream", 500)
+        else:
+            # Stream was already started by auto retry, just get the file
+            logger.info(f"[HLS] Stream already started by auto retry, getting file {filename}")
+            if filename.endswith('.m3u8'):
+                # Wait for playlist
+                for wait_count in range(100):
                     file_path = hls_manager.get_file(portalId, channelId, filename)
                     if file_path:
                         break
@@ -9196,13 +10706,20 @@ def hls_stream(portalId, channelId, filename):
                     if file_path:
                         break
                     time.sleep(0.1)
-        
-        except Exception as e:
-            logger.error(f"Error starting HLS stream: {e}")
-            return make_response("Error starting stream", 500)
     
     # Serve the file
     if file_path and os.path.exists(file_path):
+        logger.info(f"[HLS] Serving file: {file_path}")
+        
+        # Debug: Log playlist content
+        if filename.endswith('.m3u8'):
+            try:
+                with open(file_path, 'r') as f:
+                    playlist_content = f.read()
+                    logger.debug(f"[HLS] Playlist content ({len(playlist_content)} bytes):\n{playlist_content[:500]}")
+            except Exception as e:
+                logger.error(f"[HLS] Error reading playlist: {e}")
+        
         # Determine MIME type
         if filename.endswith('.m3u8'):
             mimetype = 'application/vnd.apple.mpegurl'
@@ -9217,7 +10734,7 @@ def hls_stream(portalId, channelId, filename):
         
         return send_file(file_path, mimetype=mimetype)
     else:
-        logger.warning(f"File not found: {filename} for stream {stream_key}")
+        logger.warning(f"[HLS] File not found: {filename} for stream {stream_key} (file_path: {file_path})")
         return make_response("File not found", 404)
 
 
@@ -9495,13 +11012,26 @@ def cache_stats():
         # Return DB-based stats instead of channel_cache
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # Count channels with stream data
         cursor.execute('SELECT COUNT(*) FROM channels WHERE stream_cmd IS NOT NULL')
         cached_channels = cursor.fetchone()[0]
+        
+        # Count total channels in DB
+        cursor.execute('SELECT COUNT(*) FROM channels')
+        total_channels = cursor.fetchone()[0]
+        
+        # Count enabled channels
+        cursor.execute('SELECT COUNT(*) FROM channels WHERE enabled = 1')
+        enabled_channels = cursor.fetchone()[0]
+        
         conn.close()
         
         stats = {
             "mode": "db-direct",
             "cached_channels": cached_channels,
+            "total_channels": total_channels,
+            "enabled_channels": enabled_channels,
             "cache_duration": "persistent"
         }
         
@@ -9613,9 +11143,9 @@ def get_recent_logs():
         # Use existing log() function to get log content
         log_content = log()
         
-        # Split into lines and get last 50
+        # Split into lines and get last 200 (increased from 50)
         lines = log_content.split('\n')
-        recent_lines = lines[-50:] if len(lines) > 50 else lines
+        recent_lines = lines[-200:] if len(lines) > 200 else lines
         
         logs = []
         for line in recent_lines:
@@ -9626,9 +11156,21 @@ def get_recent_logs():
             # Parse log format: "2024-01-01 12:00:00,123 [LEVEL] message"
             try:
                 if ' [' in line and '] ' in line:
-                    timestamp_part = line.split(' [')[0]
-                    level_part = line.split(' [')[1].split('] ')[0]
-                    message_part = '] '.join(line.split(' [')[1].split('] ')[1:])
+                    # Split at first occurrence of ' ['
+                    parts = line.split(' [', 1)
+                    timestamp_part = parts[0]
+                    
+                    # Split at first occurrence of '] '
+                    rest = parts[1]
+                    level_and_message = rest.split('] ', 1)
+                    
+                    if len(level_and_message) >= 2:
+                        level_part = level_and_message[0]
+                        message_part = level_and_message[1]
+                    else:
+                        # No message after level
+                        level_part = level_and_message[0]
+                        message_part = ""
                     
                     logs.append({
                         'timestamp': timestamp_part,
@@ -9642,8 +11184,9 @@ def get_recent_logs():
                         'level': 'INFO',
                         'message': line
                     })
-            except:
+            except Exception as e:
                 # Skip malformed lines
+                logger.debug(f"Failed to parse log line: {line[:50]}... Error: {e}")
                 continue
         
         return jsonify(logs)
@@ -9867,3 +11410,4 @@ if __name__ == "__main__":
         asyncore_use_poll=True,        # Use poll() instead of select() (better performance)
         _quiet=True
     ) 
+
