@@ -38,6 +38,10 @@ logger = logging.getLogger("MacReplayXC")
 logger.setLevel(logging.INFO)
 logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
+# Track recent redirects for learning (IP, portal, channel) -> (mac, timestamp)
+recent_redirects = {}
+redirect_lock = threading.Lock()
+
 # Docker-optimized paths
 if os.getenv("CONFIG"):
     configFile = os.getenv("CONFIG")
@@ -445,7 +449,8 @@ d_ffmpegcmd = [
 defaultSettings = {
     "stream method": "ffmpeg",
     "output format": "mpegts",
-    "ffmpeg command": "-re -http_proxy <proxy> -timeout <timeout> -i <url> -map 0 -codec copy -f mpegts -flush_packets 0 -fflags +nobuffer -flags low_delay -strict experimental -analyzeduration 0 -probesize 32 -copyts -threads 12 pipe:",
+    "ffmpeg command": "-re -http_proxy <proxy> -timeout <timeout> -user_agent <user_agent> -i <url> -map 0 -codec copy -f mpegts -flush_packets 0 -fflags +nobuffer -flags low_delay -strict experimental -analyzeduration 0 -probesize 32 -copyts -threads 12 pipe:",
+    "user agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3",
     "hls segment type": "fmp4",
     "hls segment duration": "3",
     "hls playlist size": "8",
@@ -837,9 +842,12 @@ class HLSStreamManager:
                 init_filename = None
             
             # Build FFmpeg command for HLS
+            user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
+            
             ffmpeg_cmd = [
                 "ffmpeg",
                 "-v", "info",  # Add verbose logging to see codec info
+                "-user_agent", user_agent,  # STB emulation
                 "-fflags", "+genpts+discardcorrupt",
                 "-flags", "low_delay",
                 "-reconnect", "1",
@@ -9128,10 +9136,11 @@ def stream_channel(portalId, channelId, xc_user=None):
         Centralized function to avoid code duplication.
         """
         timeout = int(getSettings()["ffmpeg timeout"]) * int(1000000)
+        user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
         ffprobe_params_str = getSettings().get("ffprobe params", "-analyzeduration 500000 -probesize 100000")
         ffprobe_params = ffprobe_params_str.split() if ffprobe_params_str.strip() else []
         
-        ffprobecmd = [ffprobe_path] + ffprobe_params + ["-timeout", str(timeout), "-i", test_link]
+        ffprobecmd = [ffprobe_path] + ffprobe_params + ["-user_agent", user_agent, "-timeout", str(timeout), "-i", test_link]
         if proxy:
             ffprobecmd.insert(1, "-http_proxy")
             ffprobecmd.insert(2, proxy)
@@ -9171,6 +9180,63 @@ def stream_channel(portalId, channelId, xc_user=None):
         """Test stream with ffprobe (legacy function for compatibility)"""
         success, duration = test_stream_with_ffprobe(link, proxy, None, "[STREAM TEST]")
         return success
+
+    def update_mac_stats_on_redirect(portal_id, channel_id, mac, is_success):
+        """Update MAC statistics in DB based on redirect feedback."""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get current stats
+            cursor.execute('''
+                SELECT available_macs FROM channels 
+                WHERE portal = ? AND channel_id = ?
+            ''', (portal_id, channel_id))
+            
+            row = cursor.fetchone()
+            if not row or not row['available_macs']:
+                conn.close()
+                return
+            
+            available_macs_raw = row['available_macs'].split(',')
+            updated_macs = []
+            
+            for mac_entry in available_macs_raw:
+                parts = mac_entry.split('|')
+                if len(parts) >= 5:
+                    entry_mac = parts[0]
+                    if entry_mac == mac:
+                        # Update this MAC's stats
+                        limit = int(parts[1])
+                        success_count = int(parts[2])
+                        fail_count = int(parts[3])
+                        last_ts = int(parts[4])
+                        
+                        if is_success:
+                            success_count += 1
+                            last_ts = int(time.time())
+                            logger.info(f"[REDIRECT LEARN] ✓ MAC {mac} success (now: {success_count} successes)")
+                        else:
+                            fail_count += 1
+                            logger.info(f"[REDIRECT LEARN] ✗ MAC {mac} failed (now: {fail_count} failures)")
+                        
+                        updated_macs.append(f"{entry_mac}|{limit}|{success_count}|{fail_count}|{last_ts}")
+                    else:
+                        updated_macs.append(mac_entry)
+                else:
+                    updated_macs.append(mac_entry)
+            
+            # Update DB
+            cursor.execute('''
+                UPDATE channels SET available_macs = ? 
+                WHERE portal = ? AND channel_id = ?
+            ''', (','.join(updated_macs), portal_id, channel_id))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error updating MAC stats on redirect: {e}")
 
 
     portal = getPortals().get(portalId)
@@ -9347,6 +9413,35 @@ def stream_channel(portalId, channelId, xc_user=None):
                     break
                 
                 if selected_mac:
+                    # Check for recent redirect (learning logic)
+                    redirect_key = (ip, portalId, channelId)
+                    now = time.time()
+                    excluded_mac = None
+                    
+                    with redirect_lock:
+                        if redirect_key in recent_redirects:
+                            last_mac, last_time = recent_redirects[redirect_key]
+                            time_diff = now - last_time
+                            
+                            if time_diff < 10:  # Within 10s = previous MAC failed
+                                logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} likely failed")
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                                excluded_mac = last_mac
+                                # Select different MAC
+                                for try_mac in available_macs:
+                                    if try_mac != excluded_mac:
+                                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                                        if streamsPerMac == 0 or count < streamsPerMac:
+                                            selected_mac = try_mac
+                                            logger.info(f"[REDIRECT LEARN] Switching to MAC {selected_mac}")
+                                            break
+                            elif time_diff > 60:  # After 60s = previous MAC succeeded
+                                logger.info(f"[REDIRECT LEARN] User still watching after {time_diff:.1f}s - MAC {last_mac} success")
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, True)
+                        
+                        # Track this redirect
+                        recent_redirects[redirect_key] = (selected_mac, now)
+                    
                     logger.info(f"[HLS REDIRECT] Selected MAC {selected_mac} (score: {mac_stats.get(selected_mac, {}).get('score', 25):.1f})")
                     logger.info(f"[HLS MODE] Direct redirect to HLS endpoint for Portal({portalId}):Channel({channelId})")
                     hls_url = f"/hls/{portalId}/{channelId}/stream.m3u8"
@@ -9594,14 +9689,14 @@ def stream_channel(portalId, channelId, xc_user=None):
                                 
                                 if test_link:
                                     timeout = int(getSettings()["ffmpeg timeout"]) * int(1000000)
+                                    user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
                                     # Get custom ffprobe parameters from settings
                                     ffprobe_params_str = getSettings().get("ffprobe params", "-analyzeduration 500000 -probesize 100000")
                                     ffprobe_params = ffprobe_params_str.split() if ffprobe_params_str.strip() else []
                                     
-                                    ffprobecmd = [ffprobe_path] + ffprobe_params + ["-timeout", str(timeout), "-i", test_link]
+                                    ffprobecmd = [ffprobe_path] + ffprobe_params + ["-user_agent", user_agent, "-timeout", str(timeout), "-i", test_link]
                                     if proxy:
                                         ffprobecmd.insert(1, "-http_proxy")
-                                        ffprobecmd.insert(2, proxy)
                                         ffprobecmd.insert(2, proxy)
                                     
                                     try:
@@ -10012,8 +10107,10 @@ def stream_channel(portalId, channelId, xc_user=None):
                 return response
             else:
                 if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
+                    user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
                     ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
                     ffmpegcmd = ffmpegcmd.replace("<url>", link)
+                    ffmpegcmd = ffmpegcmd.replace("<user_agent>", user_agent)
                     ffmpegcmd = ffmpegcmd.replace(
                         "<timeout>",
                         str(int(getSettings()["ffmpeg timeout"]) * int(1000000)),
@@ -10030,6 +10127,26 @@ def stream_channel(portalId, channelId, xc_user=None):
                         streamData(), mimetype="application/octet-stream"
                     )
                 else:
+                    # Redirect mode - add learning logic
+                    redirect_key = (ip, portalId, channelId)
+                    now = time.time()
+                    
+                    with redirect_lock:
+                        if redirect_key in recent_redirects:
+                            last_mac, last_time = recent_redirects[redirect_key]
+                            time_diff = now - last_time
+                            
+                            if time_diff < 10:  # Within 10s = previous MAC failed
+                                logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} likely failed")
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                                # Note: MAC already selected, can't change now
+                            elif time_diff > 60:  # After 60s = previous MAC succeeded
+                                logger.info(f"[REDIRECT LEARN] User still watching after {time_diff:.1f}s - MAC {last_mac} success")
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, True)
+                        
+                        # Track this redirect
+                        recent_redirects[redirect_key] = (mac, now)
+                    
                     logger.info("Redirect sent")
                     return redirect(link)
         else:
