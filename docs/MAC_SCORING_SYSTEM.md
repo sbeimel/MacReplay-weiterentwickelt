@@ -10,26 +10,46 @@ Traditionell wurden MACs nach `playback_limit` (Kapazität) sortiert. Problem: E
 
 **Lösung**: Intelligentes Scoring-System das Zuverlässigkeit über Kapazität stellt.
 
-## Score-Berechnung (0-100 Punkte)
+## Score-Berechnung (0-110+ Punkte mit Failure Rate Acceleration)
 
-### 1. Erfolgsrate (0-50 Punkte)
+### 1. Erfolgsrate (0-45 Punkte mit Bonus/Penalty)
 ```
-Erfolgsrate = (Erfolge / (Erfolge + Fehler)) × 50
+Base: (Erfolge / (Erfolge + Fehler)) × 40
+
+Soft Start (erste 5 Versuche):
+- Minimum 15 Punkte (verhindert zu harte Bestrafung)
+- Beispiel: 0 Erfolge, 1 Fehler → 15 Punkte (statt 0)
+
+Failure Rate Acceleration (ab 10 Versuchen):
+
+BONUS (<5% Fehlerrate):
+- 0% Fehler → +5 Punkte
+- 2% Fehler → +3 Punkte
+- 5% Fehler → +0 Punkte
+
+NEUTRAL (5-15% Fehlerrate):
+- Keine Änderung
+
+PENALTY (>15% Fehlerrate):
+- 15% Fehler → -0 Punkte
+- 25% Fehler → -4 Punkte
+- 50% Fehler → -14 Punkte
 
 Beispiele:
-- 10 Erfolge, 0 Fehler → 50 Punkte
-- 5 Erfolge, 5 Fehler → 25 Punkte
-- 0 Erfolge, 10 Fehler → 0 Punkte
-- Nie getestet → 25 Punkte (neutral)
+- 100 Erfolge, 0 Fehler → 40 + 5 = 45 Punkte (Bonus!)
+- 98 Erfolge, 2 Fehler → 39.2 + 3 = 42.2 Punkte (Bonus!)
+- 90 Erfolge, 10 Fehler → 36 Punkte (Neutral)
+- 75 Erfolge, 25 Fehler → 30 - 4 = 26 Punkte (Penalty!)
 ```
 
-### 2. Aktualität (0-30 Punkte)
+### 2. Aktualität (0-40 Punkte, erhöht!)
 ```
 Wie kürzlich war der letzte Erfolg?
+Für IPTV: "Funktioniert jetzt" wichtiger als "Funktionierte oft"
 
-- < 1 Stunde → 30 Punkte
-- < 24 Stunden → 20 Punkte
-- < 1 Woche → 10 Punkte
+- < 1 Stunde → 40 Punkte
+- < 24 Stunden → 30 Punkte
+- < 1 Woche → 15 Punkte
 - > 1 Woche → 5 Punkte
 - Nie erfolgreich → 0 Punkte
 ```
@@ -48,10 +68,21 @@ Bewährte MACs bekommen Bonus:
 Score = Erfolgsrate + Aktualität + Zuverlässigkeit
 
 Beispiele:
-- MAC_A: 50 Erfolge, 2 Fehler, vor 10min → Score: 95
-- MAC_B: 5 Erfolge, 5 Fehler, vor 1h → Score: 45
-- MAC_C: 0 Erfolge, 10 Fehler → Score: 0
-- MAC_D: Nie getestet → Score: 25
+- MAC_A: 100 Erfolge, 0 Fehler, vor 10min → Score: 45 + 40 + 20 = 105 (Perfekt!)
+- MAC_B: 98 Erfolge, 2 Fehler, vor 1h → Score: 42.2 + 40 + 20 = 102.2 (Sehr gut!)
+- MAC_C: 90 Erfolge, 10 Fehler, vor 1h → Score: 36 + 40 + 20 = 96 (Gut)
+- MAC_D: 75 Erfolge, 25 Fehler, vor 1h → Score: 26 + 40 + 20 = 86 (Schlecht)
+- MAC_E: 0 Erfolge, 1 Fehler (neu) → Score: 15 + 0 + 0 = 15 (Soft Start!)
+- MAC_F: Nie getestet → Score: 25
+```
+
+### Score-Bereiche
+```
+105-110: 🌟 Perfekte MACs (0-2% Fehler, kürzlich erfolgreich)
+95-105:  ✅ Sehr gute MACs (2-5% Fehler)
+85-95:   👍 Gute MACs (5-15% Fehler)
+75-85:   ⚠️ Mäßige MACs (15-25% Fehler)
+<75:     ❌ Schlechte MACs (>25% Fehler)
 ```
 
 ## Sortierung
@@ -70,14 +101,23 @@ Vor dem Lernen (alle Score: 25):
 3. MAC_C (limit:2, score:25)
 
 Nach Tests:
-MAC_A: 10 Erfolge, 0 Fehler → Score: 95
-MAC_B: 2 Erfolge, 8 Fehler → Score: 15
-MAC_C: 8 Erfolge, 0 Fehler → Score: 85
+MAC_A: 100 Erfolge, 0 Fehler, vor 1h → Score: 45 + 40 + 20 = 105 (Perfekt!)
+MAC_B: 80 Erfolge, 20 Fehler, vor 1h → Score: 28 + 40 + 20 = 88 (Penalty!)
+MAC_C: 98 Erfolge, 2 Fehler, vor 1h → Score: 42.2 + 40 + 20 = 102.2 (Bonus!)
 
 Neue Sortierung (nur nach Score):
-1. MAC_A (score:95, limit:5) ← Beste
-2. MAC_C (score:85, limit:2) ← Zuverlässig schlägt Kapazität!
-3. MAC_B (score:15, limit:5) ← Unzuverlässig, ganz hinten
+1. MAC_A (score:105, limit:5) ← Perfekt! (0% Fehler)
+2. MAC_C (score:102.2, limit:2) ← Sehr gut! (2% Fehler, Bonus trotz niedrigem Limit!)
+3. MAC_B (score:88, limit:5) ← Mäßig (20% Fehler, Penalty!)
+
+Soft Start Beispiel (neue MAC mit 1 Fehler):
+MAC_D: 0 Erfolge, 1 Fehler → Score: 15 (statt 0!)
+→ Nicht komplett unten, kann sich schnell erholen
+
+Failure Rate Acceleration in Aktion:
+- Perfekte MACs (0-5% Fehler) bekommen Bonus → Score >100 möglich!
+- Schlechte MACs (>15% Fehler) bekommen Penalty → Schnell aussortiert
+- Normale MACs (5-15% Fehler) bleiben neutral → Faire Behandlung
 ```
 
 ## Score-Updates (Automatisches Lernen)

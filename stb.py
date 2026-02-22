@@ -258,8 +258,11 @@ def getToken(url, mac, proxy=None):
     url_path = parsed.path.rstrip('/')
     
     # Try different endpoint variations
+    # Strategy: Try without token= first (works with current portals),
+    # then with token= as fallback (Stalker protocol compliance for strict portals)
     endpoints = []
     
+    # ROUND 1: Without token= parameter (current working portals)
     # CRITICAL: If URL already ends with .php, use it directly first
     if url_path.endswith('.php'):
         # URL is already a complete endpoint like /portal.php
@@ -280,6 +283,26 @@ def getToken(url, mac, proxy=None):
             "/server/load.php?type=stb&action=handshake&JsHttpRequest=1-xml",  # Standard load.php
             "/stalker_portal/server/load.php?type=stb&action=handshake&JsHttpRequest=1-xml",  # Stalker path
             "/c/portal.php?type=stb&action=handshake&JsHttpRequest=1-xml",  # /c/ path
+        ])
+    
+    # ROUND 2: With token= parameter as fallback (Stalker protocol compliance)
+    # Only tried if Round 1 fails - ensures backward compatibility
+    if url_path.endswith('.php'):
+        endpoints.append(f"{url_path}?type=stb&action=handshake&token=&JsHttpRequest=1-xml")
+    elif url_path and url_path != '/':
+        endpoints.extend([
+            f"{url_path}/portal.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",
+            f"{url_path}/server/load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",
+            f"{url_path}?type=stb&action=handshake&token=&JsHttpRequest=1-xml",
+        ])
+    
+    if not url_path.endswith('.php'):
+        endpoints.extend([
+            "?type=stb&action=handshake&token=&JsHttpRequest=1-xml",  # Root with token
+            "/portal.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",  # Standard with token
+            "/server/load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",  # Load.php with token
+            "/stalker_portal/server/load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",  # Stalker with token
+            "/c/portal.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml",  # /c/ with token
         ])
     
     for endpoint in endpoints:
@@ -1562,8 +1585,10 @@ def calculateStreamUsage(watchdog_timeout, playback_limit):
 def checkMacStatus(url, mac, proxy=None):
     """Check the real-time status of a single MAC address.
     
+    Uses Stalker Legacy API (watchdog_timeout) to determine MAC availability.
+    
     Returns a dict with MAC status information including:
-    - watchdog_timeout: seconds since last activity
+    - watchdog_timeout: seconds since last activity (used for scoring)
     - playback_limit: max concurrent streams allowed
     - account_active: whether account is active
     - is_blocked: whether MAC is blocked
@@ -1573,12 +1598,21 @@ def checkMacStatus(url, mac, proxy=None):
     - success: whether check was successful
     """
     try:
-        # Clear session to ensure clean state and avoid cookie pollution from previous MACs
+        logger.info(f"[MAC CHECK] Starting MAC status check for: {mac}")
+        
+        # ========================================================================
+        # PRIMARY METHOD: Stalker Legacy API (watchdog_timeout)
+        # ========================================================================
+        
+        logger.info(f"[MAC CHECK] Using PRIMARY method: Stalker Legacy API (watchdog)")
+        
+        # Clear session to ensure clean state
         clear_session()
         
         # Get token first
         token = getToken(url, mac, proxy)
         if not token:
+            logger.error(f"[MAC CHECK] ❌ FAILED - Could not get token for MAC: {mac}")
             return {
                 'success': False,
                 'mac': mac,
@@ -1588,6 +1622,7 @@ def checkMacStatus(url, mac, proxy=None):
         # Get profile information (contains watchdog_timeout)
         profile = getProfile(url, mac, token, proxy)
         if not profile:
+            logger.error(f"[MAC CHECK] ❌ FAILED - Could not get profile for MAC: {mac}")
             return {
                 'success': False,
                 'mac': mac,
@@ -1607,15 +1642,14 @@ def checkMacStatus(url, mac, proxy=None):
         internal_usage = getInternalUsage(mac)
         is_internally_used = isInternallyUsed(mac)
         
-        # Calculate stream usage
+        # Calculate stream usage from watchdog (ESTIMATION)
         streams_used, max_streams, usage_ratio = calculateStreamUsage(watchdog_timeout, playback_limit)
         
         # Adjust status based on internal usage
         if is_internally_used:
-            # If we're using it internally, mark as at least partially used
             streams_used = max(streams_used, 1)
         
-        return {
+        result = {
             'success': True,
             'mac': mac,
             'watchdog_timeout': watchdog_timeout,
@@ -1628,11 +1662,27 @@ def checkMacStatus(url, mac, proxy=None):
             'is_internally_used': is_internally_used,
             'streams_used': streams_used,
             'max_streams': max_streams,
-            'usage_ratio': usage_ratio
+            'usage_ratio': usage_ratio,
+            # Store additional API data for future use (not used in scoring yet)
+            'ministra_data': ministra_result if ministra_result.get('success') else None,
+            'xc_data': xc_result if xc_result.get('success') else None
         }
         
+        logger.info(f"[MAC CHECK] ✅ PRIMARY RESULT - Watchdog: {watchdog_timeout}s, Estimated Streams: {streams_used}/{max_streams}, Usage: {usage_ratio:.1%}")
+        
+        # Compare with modern API data if available
+        if ministra_result.get('success') or xc_result.get('success'):
+            logger.info(f"[MAC CHECK] 📊 COMPARISON:")
+            logger.info(f"  ├─ Watchdog Estimation: {streams_used}/{max_streams} streams")
+            if ministra_result.get('success'):
+                logger.info(f"  ├─ Ministra Modern API: {ministra_result.get('active_sessions')}/{ministra_result.get('max_sessions')} sessions (online={ministra_result.get('online')})")
+            if xc_result.get('success'):
+                logger.info(f"  └─ XC/XUI API: {xc_result.get('active_cons')}/{xc_result.get('max_connections')} connections")
+        
+        return result
+        
     except Exception as e:
-        logger.error(f"Error checking MAC status for {mac}: {e}")
+        logger.error(f"[MAC CHECK] ❌ ERROR checking MAC status for {mac}: {e}")
         return {
             'success': False,
             'mac': mac,
@@ -1640,59 +1690,6 @@ def checkMacStatus(url, mac, proxy=None):
         }
 
 
-def getMacAvailabilityScore(mac_status):
-    """Calculate availability score for a MAC address based on its status.
-    
-    Returns a score from 0-100 where:
-    - 100 = Completely free and available
-    - 0 = Completely unavailable
-    
-    Factors considered:
-    - Stream usage (lower usage = higher score)
-    - Internal usage (penalize if we're using it)
-    - Account status (active = good)
-    - Blocked status (blocked = bad)
-    - Available stream slots
-    """
-    if not mac_status.get('success', False):
-        return 0
-    
-    score = 0
-    
-    # Account must be active and not blocked
-    if not mac_status.get('account_active', False):
-        return 0
-    
-    if mac_status.get('is_blocked', False):
-        return 0
-    
-    # Base score for working MAC
-    score = 20
-    
-    # Stream usage scoring (most important factor)
-    streams_used = mac_status.get('streams_used', 0)
-    max_streams = mac_status.get('max_streams', 1)
-    usage_ratio = mac_status.get('usage_ratio', 0.0)
-    
-    if usage_ratio == 0.0:  # No streams used
-        score += 60
-    elif usage_ratio <= 0.33:  # Low usage (1/3 or less)
-        score += 40
-    elif usage_ratio <= 0.66:  # Medium usage (2/3 or less)
-        score += 20
-    else:  # High usage (more than 2/3)
-        score += 0
-    
-    # Internal usage penalty
-    if mac_status.get('is_internally_used', False):
-        score -= 15  # Penalty for internal usage
-    
-    # Available streams bonus
-    available_streams = max_streams - streams_used
-    if available_streams > 0:
-        score += min(available_streams * 5, 20)  # Up to 20 bonus points
-    
-    return max(0, min(score, 100))
 
 
 def selectBestMac(url, mac_list, proxy=None, min_score=50):
@@ -1800,21 +1797,6 @@ def getLinkWithSmartMac(url, mac_list, cmd, proxy=None):
     return result
 
 
-def getEpgWithSmartMac(url, mac_list, period, proxy=None):
-    """Get EPG using the best available MAC address.
-    
-    Automatically selects the most suitable MAC and retrieves EPG data.
-    """
-    best_mac = selectBestMac(url, mac_list, proxy)
-    if not best_mac:
-        logger.error("No suitable MAC address available for getting EPG")
-        return None
-    
-    mac = best_mac['mac']
-    token = best_mac['status']['token']
-    
-    logger.info(f"Getting EPG using MAC {mac}")
-    return getEpg(url, mac, token, period, proxy)
 
 
 def getVodCategoriesWithSmartMac(url, mac_list, proxy=None):
@@ -1831,18 +1813,6 @@ def getVodCategoriesWithSmartMac(url, mac_list, proxy=None):
     return getVodCategories(url, mac, token, proxy)
 
 
-def getVodItemsWithSmartMac(url, mac_list, category_id, page=1, proxy=None):
-    """Get VOD items using the best available MAC address."""
-    best_mac = selectBestMac(url, mac_list, proxy)
-    if not best_mac:
-        logger.error("No suitable MAC address available for getting VOD items")
-        return None
-    
-    mac = best_mac['mac']
-    token = best_mac['status']['token']
-    
-    logger.info(f"Getting VOD items using MAC {mac}")
-    return getVodItems(url, mac, token, category_id, page, proxy)
 
 
 def getSeriesCategoriesWithSmartMac(url, mac_list, proxy=None):
@@ -1887,58 +1857,5 @@ def getVodLinkWithSmartMac(url, mac_list, cmd, proxy=None):
     return getVodLink(url, mac, token, cmd, proxy)
 
 
-def getSeriesLinkWithSmartMac(url, mac_list, cmd, episode_num, season_id=None, episode_id=None, proxy=None):
-    """Get Series playback link using the best available MAC address."""
-    best_mac = selectBestMac(url, mac_list, proxy)
-    if not best_mac:
-        logger.error("No suitable MAC address available for getting Series link")
-        return None
-    
-    mac = best_mac['mac']
-    token = best_mac['status']['token']
-    
-    logger.info(f"Getting Series link using MAC {mac}")
-    return getSeriesLink(url, mac, token, cmd, episode_num, season_id, episode_id, proxy)
 
 
-def getMacStatusSummary(url, mac_list, proxy=None):
-    """Get a summary of all MAC statuses for monitoring/debugging.
-    
-    Returns a list of MAC status information for all provided MACs.
-    """
-    logger.info(f"Getting status summary for {len(mac_list)} MAC addresses...")
-    
-    mac_statuses = []
-    for mac in mac_list:
-        status = checkMacStatus(url, mac, proxy)
-        score = getMacAvailabilityScore(status) if status['success'] else 0
-        
-        # Determine availability status
-        if not status['success']:
-            availability = 'Unavailable'
-        elif status.get('is_internally_used', False):
-            availability = 'Used (Internal)'
-        elif status.get('streams_used', 0) >= status.get('max_streams', 1):
-            availability = 'Used (Full)'
-        elif status.get('streams_used', 0) > 0:
-            streams_used = status.get('streams_used', 0)
-            max_streams = status.get('max_streams', 1)
-            availability = f'Used ({streams_used}/{max_streams})'
-        elif score >= 50:
-            availability = 'Available'
-        else:
-            availability = 'Busy'
-        
-        mac_statuses.append({
-            'mac': mac,
-            'status': status,
-            'score': score,
-            'availability': availability,
-            'stream_usage': f"{status.get('streams_used', 0)}/{status.get('max_streams', 1)}" if status['success'] else 'N/A',
-            'internal_usage': status.get('is_internally_used', False)
-        })
-    
-    # Sort by score for easy viewing
-    mac_statuses.sort(key=lambda x: x['score'], reverse=True)
-    
-    return mac_statuses

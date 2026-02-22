@@ -3,6 +3,7 @@ import shutil
 import time
 import gzip
 import io
+import secrets
 import requests
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
@@ -32,7 +33,7 @@ except ImportError:
         logger_json.info("Using standard json library (consider installing orjson for better performance)")
 
 # Version
-__version__ = "3.0.0"
+__version__ = "4.2.0"
 
 logger = logging.getLogger("MacReplayXC")
 logger.setLevel(logging.INFO)
@@ -41,6 +42,41 @@ logFormat = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 # Track recent redirects for learning (IP, portal, channel) -> (mac, timestamp)
 recent_redirects = {}
 redirect_lock = threading.Lock()
+
+def cleanup_recent_redirects():
+    """Periodically clean up old entries from recent_redirects dictionary.
+    
+    Removes entries older than 1 hour to prevent unbounded memory growth.
+    This function runs in a background thread every 30 minutes.
+    """
+    global recent_redirects
+    
+    try:
+        now = time.time()
+        max_age = 3600  # 1 hour
+        
+        with redirect_lock:
+            keys_to_delete = [
+                k for k, (_, ts) in recent_redirects.items()
+                if now - ts > max_age
+            ]
+            
+            for k in keys_to_delete:
+                del recent_redirects[k]
+            
+            if keys_to_delete:
+                logger.info(f"[MEMORY CLEANUP] Removed {len(keys_to_delete)} old redirect entries (older than 1 hour)")
+        
+        # Schedule next cleanup in 30 minutes
+        threading.Timer(1800, cleanup_recent_redirects).start()
+        
+    except Exception as e:
+        logger.error(f"[MEMORY CLEANUP] Error during recent_redirects cleanup: {e}")
+        # Try to schedule next cleanup anyway
+        try:
+            threading.Timer(1800, cleanup_recent_redirects).start()
+        except:
+            pass
 
 # Docker-optimized paths
 if os.getenv("CONFIG"):
@@ -58,8 +94,16 @@ os.makedirs("/app/logs", exist_ok=True)
 # Log file path for container
 log_file_path = os.path.join("/app/logs", "MacReplayXC.log")
 
-# Set up logging
-fileHandler = logging.FileHandler(log_file_path)
+# Set up logging with rotation
+from logging.handlers import RotatingFileHandler
+
+# Rotating file handler: max 10 MB per file, keep 5 backup files
+fileHandler = RotatingFileHandler(
+    log_file_path,
+    maxBytes=10*1024*1024,  # 10 MB
+    backupCount=5,  # Keep 5 old log files (MacReplayXC.log.1, .2, .3, .4, .5)
+    encoding='utf-8'
+)
 fileHandler.setFormatter(logFormat)
 logger.addHandler(fileHandler)
 
@@ -69,7 +113,7 @@ consoleHandler.setFormatter(consoleFormat)
 logger.addHandler(consoleHandler)
 
 # Ensure log file exists with initial entry
-logger.info(f"MacReplayXC v{__version__} - Logging initialized")
+logger.info(f"MacReplayXC v{__version__} - Logging initialized with rotation (10MB x 5 files)")
 
 # Log cleanup function
 def cleanup_old_logs():
@@ -109,6 +153,201 @@ def schedule_log_cleanup():
     """Schedule periodic log cleanup every 6 hours."""
     cleanup_old_logs()  # Run immediately on startup
     threading.Timer(6 * 60 * 60, schedule_log_cleanup).start()  # Schedule next run in 6 hours
+
+
+# ============================================================================
+# Global MAC Scoring Function
+# ============================================================================
+
+def calculate_mac_score(success_count, fail_count, last_success_ts, consecutive_failures=0):
+    """Calculate MAC reliability score (0-110+)
+    
+    Global function used by all streaming modes (FFmpeg, Proxy, HLS, Redirect).
+    
+    Optimized for IPTV with Failure Rate Acceleration:
+    - Recency weighted higher (40 points) - "works now" > "worked often"
+    - Soft start for new MACs (minimum 15 points) - prevents harsh punishment
+    - Bonus for excellent MACs (<5% failure rate) - rewards reliability
+    - Penalty for poor MACs (>15% failure rate) - punishes unreliability
+    - Consecutive failure penalty (exponential) - avoids MACs with failure streaks
+    
+    Args:
+        success_count (int): Number of successful streams
+        fail_count (int): Number of failed streams
+        last_success_ts (int): Unix timestamp of last successful stream
+        consecutive_failures (int): Number of consecutive failures (default: 0)
+        
+    Returns:
+        float: Score between 0 and 110+ (higher is better)
+    """
+    current_time = int(time.time())
+    
+    # 1. Success Rate (0-45 points with Failure Rate Acceleration)
+    total = success_count + fail_count
+    if total > 0:
+        failure_rate = fail_count / total
+        
+        # Soft start: First 5 attempts get minimum 15 points
+        if total <= 5:
+            success_rate = max(15, (success_count / total) * 40)
+        elif total <= 10:
+            # Transition phase: Soft start bonus fades out gradually
+            # This prevents sudden score drops when soft start ends
+            soft_start_bonus = (10 - total) / 5 * 15  # 15 → 0 over 5 attempts
+            base_rate = (success_count / total) * 40
+            success_rate = base_rate + soft_start_bonus
+            logger.debug(f"[SCORE] Transition phase: base={base_rate:.1f} + bonus={soft_start_bonus:.1f} = {success_rate:.1f}")
+        else:
+            base_success_rate = (success_count / total) * 40
+            
+            # Failure Rate Acceleration (only after 10+ attempts)
+            if total >= 10:
+                # PENALTY: High failure rate (>15%)
+                if failure_rate > 0.15:
+                    penalty = (failure_rate - 0.15) * 40
+                    success_rate = max(0, base_success_rate - penalty)
+                # BONUS: Low failure rate (<5%)
+                elif failure_rate < 0.05:
+                    bonus = min(5, (0.05 - failure_rate) * 100)  # Cap bonus at 5 points
+                    success_rate = min(45, base_success_rate + bonus)  # Cap total at 45 points
+                # NEUTRAL: Normal failure rate (5-15%)
+                else:
+                    success_rate = base_success_rate
+            else:
+                success_rate = base_success_rate
+    else:
+        success_rate = 25  # Neutral for untested
+    
+    # 2. Recency (0-40 points, increased from 30)
+    # For IPTV: Recent success is more important than historical success
+    if last_success_ts > 0:
+        age_hours = (current_time - last_success_ts) / 3600
+        if age_hours < 1:
+            recency = 40
+        elif age_hours < 24:
+            recency = 30
+        elif age_hours < 168:  # 1 week
+            recency = 15
+        else:
+            recency = 5
+    else:
+        recency = 0  # Never successful
+    
+    # 3. Reliability Bonus (0-20 points, unchanged)
+    if success_count >= 10:
+        reliability = 20
+    elif success_count >= 5:
+        reliability = 10
+    else:
+        reliability = 0
+    
+    # 4. Consecutive Failure Penalty (exponential)
+    # Heavily penalize MACs with failure streaks to avoid repeated attempts
+    consecutive_penalty = 0
+    if consecutive_failures > 0:
+        # Exponential penalty: 5 * (2^n), capped at 30 points
+        # 1 fail = -10, 2 fails = -20, 3 fails = -30 (max)
+        consecutive_penalty = min(30, 5 * (2 ** min(consecutive_failures, 4)))
+        logger.debug(f"[SCORE] Consecutive failure penalty: -{consecutive_penalty} (streak: {consecutive_failures})")
+    
+    total_score = success_rate + recency + reliability - consecutive_penalty
+    return max(0, total_score)  # Never go below 0
+
+
+# ============================================================================
+# End of Global MAC Scoring Function
+# ============================================================================
+
+
+def parse_and_sort_macs(available_macs_raw):
+    """Parse MACs from DB format and sort by score.
+    
+    Global function used by all streaming modes to parse MAC data from DB
+    and sort them by reliability score.
+    
+    Args:
+        available_macs_raw (str): Comma-separated MAC entries from DB
+                                  Format: "MAC|limit|success|fail|last_ts,..."
+    
+    Returns:
+        tuple: (available_macs, mac_limits, mac_stats)
+            - available_macs (list): Sorted list of MAC addresses (highest score first)
+            - mac_limits (dict): {mac: playback_limit}
+            - mac_stats (dict): {mac: {'success': int, 'fail': int, 'last_ts': int, 'score': float}}
+    """
+    available_macs = []
+    mac_limits = {}
+    mac_stats = {}
+    
+    for mac_entry in available_macs_raw.split(','):
+        parts = mac_entry.split('|')
+        if len(parts) >= 6:
+            # Format: MAC|limit|success|fail|last_ts|consecutive_failures
+            mac = parts[0]
+            available_macs.append(mac)
+            mac_limits[mac] = int(parts[1])
+            success_count = int(parts[2])
+            fail_count = int(parts[3])
+            last_ts = int(parts[4])
+            consecutive_failures = int(parts[5])
+            score = calculate_mac_score(success_count, fail_count, last_ts, consecutive_failures)
+            mac_stats[mac] = {
+                'success': success_count,
+                'fail': fail_count,
+                'last_ts': last_ts,
+                'consecutive_failures': consecutive_failures,
+                'score': score
+            }
+        elif len(parts) >= 5:
+            # Format: MAC|limit|success|fail|last_ts (old format without consecutive_failures)
+            mac = parts[0]
+            available_macs.append(mac)
+            mac_limits[mac] = int(parts[1])
+            success_count = int(parts[2])
+            fail_count = int(parts[3])
+            last_ts = int(parts[4])
+            score = calculate_mac_score(success_count, fail_count, last_ts, 0)
+            mac_stats[mac] = {
+                'success': success_count,
+                'fail': fail_count,
+                'last_ts': last_ts,
+                'consecutive_failures': 0,
+                'score': score
+            }
+        elif len(parts) == 2:
+            # Format: MAC|limit (old format)
+            mac = parts[0]
+            available_macs.append(mac)
+            mac_limits[mac] = int(parts[1])
+            mac_stats[mac] = {
+                'success': 0,
+                'fail': 0,
+                'last_ts': 0,
+                'consecutive_failures': 0,
+                'score': 25  # Neutral
+            }
+        else:
+            # Format: MAC (very old) - assume it's a complete MAC address
+            available_macs.append(mac_entry)
+            mac_limits[mac_entry] = 1
+            mac_stats[mac_entry] = {
+                'success': 0,
+                'fail': 0,
+                'last_ts': 0,
+                'consecutive_failures': 0,
+                'score': 25  # Neutral
+            }
+    
+    # CRITICAL: Sort MACs by score (highest first)
+    available_macs.sort(key=lambda mac: mac_stats.get(mac, {}).get('score', 0), reverse=True)
+    
+    return available_macs, mac_limits, mac_stats
+
+
+# ============================================================================
+# End of Global Parse and Sort Function
+# ============================================================================
+
 
 # Docker-optimized ffmpeg paths (system-installed)
 ffmpeg_path = "ffmpeg"
@@ -260,7 +499,9 @@ def validate_authentication(username, password, settings=None, client_ip=None):
     system_username = settings.get("username", "admin")
     system_password = settings.get("password", "12345")
     
-    if username != system_username or password != system_password:
+    # Use constant-time comparison to prevent timing attacks
+    if not (secrets.compare_digest(username, system_username) and 
+            secrets.compare_digest(password, system_password)):
         logger.warning(f"Authentication failed for user '{username}' from IP: {client_ip}")
         return (False, "Invalid credentials")
     
@@ -273,8 +514,10 @@ try:
     subprocess.run([ffmpeg_path, "-version"], capture_output=True, check=True)
     subprocess.run([ffprobe_path, "-version"], capture_output=True, check=True)
     logger.info("FFmpeg and FFprobe found and working")
-except (subprocess.CalledProcessError, FileNotFoundError):
-    logger.error("Error: ffmpeg or ffprobe not found!")
+except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    logger.error("CRITICAL: ffmpeg or ffprobe not found!")
+    logger.error("FFmpeg is required for streaming. Please install FFmpeg.")
+    raise RuntimeError("FFmpeg is required but not found. Please install FFmpeg and ensure it's in PATH.") from e
 
 import flask
 from flask import Flask, jsonify
@@ -296,6 +539,7 @@ from flask import (
     make_response,
     flash,
     send_file,
+    stream_with_context,
 )
 from datetime import datetime, timezone
 from functools import wraps
@@ -329,6 +573,28 @@ app.wsgi_app = ProxyFix(
 )
 logger.info("ProxyFix middleware enabled for reverse proxy support")
 
+# Rate Limiting (NEW in v4.2.0)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+def is_localhost():
+    """Check if request is from localhost - exempt from rate limiting."""
+    remote_addr = request.remote_addr
+    return remote_addr in ['127.0.0.1', '::1', 'localhost']
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
+
+# Exempt localhost from rate limiting using decorator
+limiter.request_filter(is_localhost)
+
+logger.info("Rate limiting enabled: 200/day, 50/hour (default), localhost exempt")
+
 # ============================================
 # Vavoo Integration (Separate Container)
 # ============================================
@@ -353,8 +619,12 @@ logger.info(f"Using database file: {dbPath}")
 vodsDbPath = os.path.join(log_dir, "vods.db")
 logger.info(f"Using VOD database file: {vodsDbPath}")
 
+# Thread-safe dictionaries with locks
 occupied = {}
+occupied_lock = threading.Lock()
 config = {}
+config_lock = threading.Lock()
+mac_score_update_lock = threading.Lock()  # NEW: Lock for MAC score updates to prevent race conditions
 cached_lineup = []
 cached_playlist = None
 last_playlist_host = None
@@ -371,24 +641,25 @@ def cleanup_occupied_streams():
     
     try:
         cleaned_count = 0
-        for portal_id in list(occupied.keys()):
-            if portal_id not in occupied:
-                continue
+        with occupied_lock:
+            for portal_id in list(occupied.keys()):
+                if portal_id not in occupied:
+                    continue
+                    
+                streams = occupied[portal_id]
+                # Keep only streams younger than max_age
+                active_streams = [
+                    s for s in streams 
+                    if current_time - s.get("start time", 0) < max_age
+                ]
                 
-            streams = occupied[portal_id]
-            # Keep only streams younger than max_age
-            active_streams = [
-                s for s in streams 
-                if current_time - s.get("start time", 0) < max_age
-            ]
-            
-            cleaned_count += len(streams) - len(active_streams)
-            
-            if active_streams:
-                occupied[portal_id] = active_streams
-            else:
-                # Remove empty portal entries
-                del occupied[portal_id]
+                cleaned_count += len(streams) - len(active_streams)
+                
+                if active_streams:
+                    occupied[portal_id] = active_streams
+                else:
+                    # Remove empty portal entries
+                    del occupied[portal_id]
         
         if cleaned_count > 0:
             logger.info(f"Cleaned up {cleaned_count} expired stream(s) from occupied dictionary (older than 30 minutes)")
@@ -398,6 +669,252 @@ def cleanup_occupied_streams():
     
     # Schedule next cleanup in 3 minutes (reduced from 5 minutes)
     threading.Timer(180, cleanup_occupied_streams).start()
+
+
+def cleanup_recent_redirects():
+    """Automatically clean up old entries from recent_redirects dictionary to prevent memory leaks."""
+    global recent_redirects
+    current_time = time.time()
+    max_age = 3600  # 1 hour
+    
+    try:
+        cleaned_count = 0
+        with redirect_lock:
+            keys_to_delete = [
+                k for k, (_, ts) in recent_redirects.items()
+                if current_time - ts > max_age
+            ]
+            
+            for k in keys_to_delete:
+                del recent_redirects[k]
+                cleaned_count += 1
+        
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old redirect(s) from recent_redirects dictionary (older than 1 hour)")
+        
+    except Exception as e:
+        logger.error(f"Error during recent redirects cleanup: {e}")
+    
+    # Schedule next cleanup in 30 minutes
+    threading.Timer(1800, cleanup_recent_redirects).start()
+
+
+def update_mac_score_in_db(portal_id, channel_id, mac, is_success, duration=None):
+    """
+    Thread-safe function to update MAC score in database.
+    Prevents race conditions when multiple streams update scores simultaneously.
+    
+    Args:
+        portal_id (str): Portal ID
+        channel_id (str): Channel ID
+        mac (str): MAC address to update
+        is_success (bool): True for success, False for failure
+        duration (float): Optional stream duration in seconds
+    """
+    with mac_score_update_lock:
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get current stats
+            cursor.execute('''
+                SELECT available_macs FROM channels 
+                WHERE portal = ? AND channel_id = ?
+            ''', (portal_id, channel_id))
+            
+            row = cursor.fetchone()
+            if not row or not row['available_macs']:
+                logger.debug(f"[SCORE UPDATE] Channel {channel_id} not found in DB")
+                return
+            
+            available_macs_raw = row['available_macs'].split(',')
+            updated_macs = []
+            mac_found = False
+            
+            for mac_entry in available_macs_raw:
+                parts = mac_entry.split('|')
+                if len(parts) >= 6:
+                    entry_mac = parts[0]
+                    if entry_mac == mac:
+                        # Update this MAC's stats
+                        mac_found = True
+                        limit = int(parts[1])
+                        success_count = int(parts[2])
+                        fail_count = int(parts[3])
+                        last_ts = int(parts[4])
+                        consecutive_failures = int(parts[5])
+                        
+                        if is_success:
+                            success_count += 1
+                            last_ts = int(time.time())
+                            consecutive_failures = 0  # Reset on success
+                            duration_str = f", duration: {duration:.1f}s" if duration else ""
+                            logger.info(f"[SCORE UPDATE] ✓ MAC {mac} success (now: {success_count} successes, streak reset{duration_str})")
+                        else:
+                            fail_count += 1
+                            consecutive_failures += 1  # Increment on failure
+                            duration_str = f", duration: {duration:.1f}s" if duration else ""
+                            logger.info(f"[SCORE UPDATE] ✗ MAC {mac} fail (now: {fail_count} failures, streak: {consecutive_failures}{duration_str})")
+                        
+                        updated_macs.append(f"{entry_mac}|{limit}|{success_count}|{fail_count}|{last_ts}|{consecutive_failures}")
+                    else:
+                        updated_macs.append(mac_entry)
+                elif len(parts) >= 5:
+                    # Old format: MAC|limit|success|fail|last_ts (upgrade to new format)
+                    entry_mac = parts[0]
+                    if entry_mac == mac:
+                        mac_found = True
+                        limit = int(parts[1])
+                        success_count = int(parts[2])
+                        fail_count = int(parts[3])
+                        last_ts = int(parts[4])
+                        
+                        if is_success:
+                            success_count += 1
+                            last_ts = int(time.time())
+                            consecutive_failures = 0
+                            duration_str = f", duration: {duration:.1f}s" if duration else ""
+                            logger.info(f"[SCORE UPDATE] ✓ MAC {mac} success (now: {success_count} successes{duration_str})")
+                        else:
+                            fail_count += 1
+                            consecutive_failures = 1  # Start tracking
+                            duration_str = f", duration: {duration:.1f}s" if duration else ""
+                            logger.info(f"[SCORE UPDATE] ✗ MAC {mac} fail (now: {fail_count} failures, streak: 1{duration_str})")
+                        
+                        updated_macs.append(f"{entry_mac}|{limit}|{success_count}|{fail_count}|{last_ts}|{consecutive_failures}")
+                    else:
+                        updated_macs.append(mac_entry)
+                elif len(parts) == 2:
+                    # Old format: MAC|limit
+                    entry_mac = parts[0]
+                    if entry_mac == mac:
+                        mac_found = True
+                        limit = int(parts[1])
+                        if is_success:
+                            updated_macs.append(f"{entry_mac}|{limit}|1|0|{int(time.time())}|0")
+                            logger.info(f"[SCORE UPDATE] ✓ MAC {mac} success (first success)")
+                        else:
+                            updated_macs.append(f"{entry_mac}|{limit}|0|1|0|1")
+                            logger.info(f"[SCORE UPDATE] ✗ MAC {mac} fail (first fail, streak: 1)")
+                    else:
+                        updated_macs.append(mac_entry)
+                else:
+                    updated_macs.append(mac_entry)
+            
+            if not mac_found:
+                logger.debug(f"[SCORE UPDATE] MAC {mac} not in available_macs list, skipping")
+                return
+            
+            # Update DB
+            cursor.execute('''
+                UPDATE channels SET available_macs = ? 
+                WHERE portal = ? AND channel_id = ?
+            ''', (','.join(updated_macs), portal_id, channel_id))
+            
+            conn.commit()
+            
+        except Exception as e:
+            logger.error(f"[SCORE UPDATE] Error updating MAC score: {e}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
+
+
+def cleanup_recent_redirects():
+    """Automatically clean up old entries from recent_redirects dictionary to prevent memory leaks."""
+    global recent_redirects
+    current_time = time.time()
+    max_age = 3600  # 1 hour
+    
+    try:
+        cleaned_count = 0
+        with redirect_lock:
+            keys_to_delete = [
+                k for k, (_, ts) in recent_redirects.items()
+                if current_time - ts > max_age
+            ]
+            for k in keys_to_delete:
+                del recent_redirects[k]
+                cleaned_count += 1
+        
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old redirect(s) from recent_redirects dictionary (older than 1 hour)")
+        
+    except Exception as e:
+        logger.error(f"Error during recent_redirects cleanup: {e}")
+    
+    # Schedule next cleanup in 30 minutes
+    threading.Timer(1800, cleanup_recent_redirects).start()
+
+
+def refresh_tokens_for_active_streams():
+    """Refresh tokens for all active streams every 50 minutes to prevent expiration.
+    
+    Stalker tokens typically expire after ~1 hour. This function proactively
+    refreshes tokens for streams older than 45 minutes, ensuring uninterrupted playback.
+    Runs in a background thread every 50 minutes.
+    """
+    try:
+        # Get all active streams (thread-safe)
+        active_streams = []
+        with occupied_lock:
+            for portal_id, streams in occupied.items():
+                for stream_info in streams:
+                    mac = stream_info.get('mac')
+                    start_time = stream_info.get('start time', 0)
+                    stream_age = time.time() - start_time
+                    
+                    # Only refresh if stream is older than 45 minutes
+                    if mac and stream_age > 2700:  # 45 minutes
+                        active_streams.append({
+                            'portal_id': portal_id,
+                            'mac': mac,
+                            'age': stream_age
+                        })
+        
+        # Refresh tokens outside the lock
+        if active_streams:
+            logger.info(f"[TOKEN REFRESH] Found {len(active_streams)} active stream(s) needing token refresh")
+            
+            for stream in active_streams:
+                try:
+                    portal_id = stream['portal_id']
+                    mac = stream['mac']
+                    age_minutes = stream['age'] / 60
+                    
+                    # Get portal info
+                    portals = getPortals()
+                    portal = portals.get(portal_id)
+                    if not portal:
+                        continue
+                    
+                    url = portal.get('url')
+                    proxy = portal.get('proxy')
+                    
+                    # Get fresh token
+                    new_token = stb.getToken(url, mac, proxy)
+                    if new_token:
+                        logger.info(f"[TOKEN REFRESH] ✓ Refreshed token for Portal({portal_id}):MAC({mac}) (stream age: {age_minutes:.1f} min)")
+                    else:
+                        logger.warning(f"[TOKEN REFRESH] ✗ Failed to refresh token for Portal({portal_id}):MAC({mac})")
+                
+                except Exception as e:
+                    logger.error(f"[TOKEN REFRESH] Error refreshing token for stream: {e}")
+        else:
+            logger.debug(f"[TOKEN REFRESH] No active streams needing refresh")
+    
+    except Exception as e:
+        logger.error(f"[TOKEN REFRESH] Error in refresh loop: {e}")
+    finally:
+        # Always schedule next refresh in 50 minutes
+        try:
+            threading.Timer(3000, refresh_tokens_for_active_streams).start()
+        except Exception as e:
+            logger.error(f"[TOKEN REFRESH] Failed to schedule next refresh: {e}")
 
 
 # ============================================
@@ -451,6 +968,9 @@ defaultSettings = {
     "output format": "mpegts",
     "ffmpeg command": "-re -http_proxy <proxy> -timeout <timeout> -user_agent <user_agent> -i <url> -map 0 -codec copy -f mpegts -flush_packets 0 -fflags +nobuffer -flags low_delay -strict experimental -analyzeduration 0 -probesize 32 -copyts -threads 12 pipe:",
     "user agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3",
+    "proxy buffer size": "4096",  # KB (4MB for smooth video streaming, prevents stuttering)
+    "proxy connect timeout": "5",  # seconds
+    "proxy read timeout": "30",  # seconds
     "hls segment type": "fmp4",
     "hls segment duration": "3",
     "hls playlist size": "8",
@@ -459,7 +979,6 @@ defaultSettings = {
     "hls connection timeout": "5",
     "hls auto retry": "false",
     "hls retry timeout": "6",
-    "hls skip busy macs": "true",
     "ffmpeg timeout": "5",
     "test streams": "true",
     "try all macs": "true",
@@ -700,14 +1219,34 @@ class HLSStreamManager:
                     except Exception as kill_error:
                         logger.error(f"Error killing FFmpeg process for {stream_key}: {kill_error}")
             
-            # Clean up temp directory
+            # Clean up temp directory and HLS segments
             try:
                 temp_dir = stream_info.get('temp_dir')
                 if temp_dir and os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir, ignore_errors=True)
-                    logger.debug(f"Cleaned up temp directory for {stream_key}")
+                    logger.info(f"[HLS CLEANUP] Removed temp directory and segments: {temp_dir}")
             except Exception as e:
                 logger.error(f"Error cleaning up temp dir for {stream_key}: {e}")
+            
+            # Additional cleanup: Check for orphaned HLS directories in /dev/shm
+            try:
+                portal_id = stream_info.get('portal_id')
+                channel_id = stream_info.get('channel_id')
+                if portal_id and channel_id:
+                    # Clean up any orphaned directories matching this stream
+                    shm_path = '/dev/shm'
+                    if os.path.exists(shm_path):
+                        pattern = f"MacReplayXC_hls_{portal_id}_{channel_id}_"
+                        for item in os.listdir(shm_path):
+                            if item.startswith(pattern):
+                                orphan_path = os.path.join(shm_path, item)
+                                try:
+                                    shutil.rmtree(orphan_path, ignore_errors=True)
+                                    logger.info(f"[HLS CLEANUP] Removed orphaned directory: {orphan_path}")
+                                except Exception as cleanup_error:
+                                    logger.debug(f"Could not remove orphaned dir {orphan_path}: {cleanup_error}")
+            except Exception as e:
+                logger.debug(f"Error during orphaned directory cleanup for {stream_key}: {e}")
             
             # Remove from active streams
             del self.streams[stream_key]
@@ -732,14 +1271,30 @@ class HLSStreamManager:
                 except Exception as e:
                     logger.error(f"Error killing FFmpeg for {stream_key}: {e}")
             
-            # Clean up temp directory
+            # Clean up temp directory and HLS segments
             try:
                 temp_dir = stream_info.get('temp_dir')
                 if temp_dir and os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir, ignore_errors=True)
-                    logger.debug(f"Cleaned up temp directory for {stream_key}")
+                    logger.info(f"[HLS CLEANUP] Removed temp directory and segments: {temp_dir}")
             except Exception as e:
                 logger.error(f"Error cleaning up temp dir for {stream_key}: {e}")
+            
+            # Additional cleanup: Check for orphaned HLS directories in /dev/shm
+            try:
+                shm_path = '/dev/shm'
+                if os.path.exists(shm_path):
+                    pattern = f"MacReplayXC_hls_{portal_id}_{channel_id}_"
+                    for item in os.listdir(shm_path):
+                        if item.startswith(pattern):
+                            orphan_path = os.path.join(shm_path, item)
+                            try:
+                                shutil.rmtree(orphan_path, ignore_errors=True)
+                                logger.info(f"[HLS CLEANUP] Removed orphaned directory: {orphan_path}")
+                            except Exception as cleanup_error:
+                                logger.debug(f"Could not remove orphaned dir {orphan_path}: {cleanup_error}")
+            except Exception as e:
+                logger.debug(f"Error during orphaned directory cleanup for {stream_key}: {e}")
             
             # Remove from active streams
             del self.streams[stream_key]
@@ -842,7 +1397,7 @@ class HLSStreamManager:
                 init_filename = None
             
             # Build FFmpeg command for HLS
-            user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
+            user_agent = str(getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3"))
             
             ffmpeg_cmd = [
                 "ffmpeg",
@@ -871,6 +1426,7 @@ class HLSStreamManager:
                 "-hls_time", segment_duration,
                 "-hls_list_size", playlist_size,
                 "-hls_flags", "independent_segments+omit_endlist+delete_segments",
+                "-hls_delete_threshold", "10",  # Keep 10 extra segments (~30s buffer at 3s/segment)
                 "-hls_segment_type", segment_type,
                 "-hls_segment_filename", segment_pattern,
                 "-hls_allow_cache", "0",
@@ -882,7 +1438,8 @@ class HLSStreamManager:
             
             ffmpeg_cmd.append(playlist_path)
             
-            # Start FFmpeg process
+            # Start FFmpeg process with guaranteed cleanup
+            process = None
             try:
                 logger.info(f"[HLS] Starting FFmpeg process for {stream_key}")
                 logger.info(f"[HLS] FFmpeg command: {' '.join(ffmpeg_cmd)}")
@@ -910,16 +1467,28 @@ class HLSStreamManager:
                 }
                 
                 self.streams[stream_key] = stream_info
-                logger.info(f"HLS stream started for {stream_key}")
+                logger.info(f"[HLS] FFmpeg stream started for {stream_key}")
                 return stream_info
                 
             except Exception as e:
-                logger.error(f"Error starting FFmpeg for {stream_key}: {e}")
+                logger.error(f"[HLS] Error starting FFmpeg for {stream_key}: {e}")
+                
+                # CRITICAL: Ensure FFmpeg process is killed on error
+                if process:
+                    try:
+                        logger.warning(f"[HLS] Killing FFmpeg process due to error")
+                        process.kill()
+                        process.wait(timeout=2)
+                    except Exception as kill_error:
+                        logger.error(f"[HLS] Error killing FFmpeg process: {kill_error}")
+                
                 # Clean up temp directory
                 try:
                     shutil.rmtree(temp_dir, ignore_errors=True)
-                except:
-                    pass
+                    logger.debug(f"[HLS] Cleaned up temp directory after error")
+                except Exception as cleanup_error:
+                    logger.debug(f"[HLS] Error cleaning temp dir: {cleanup_error}")
+                
                 raise
     
     def get_file(self, portal_id, channel_id, filename):
@@ -1018,15 +1587,17 @@ def loadConfig():
 
 def getPortals():
     global config
-    if not config:
-        config = loadConfig()
-    return config["portals"]
+    with config_lock:
+        if not config:
+            config = loadConfig()
+        return config["portals"]
 
 def savePortals(portals):
     try:
-        with open(configFile, "w") as f:
-            config["portals"] = portals
-            json.dump(config, f, indent=4)
+        with config_lock:
+            with open(configFile, "w") as f:
+                config["portals"] = portals
+                json.dump(config, f, indent=4)
         logger.debug(f"Portals saved to {configFile}")
         
         # ENTFERNT: Aggressive Cache-Invalidierung bei jeder Portal-Speicherung
@@ -1038,15 +1609,17 @@ def savePortals(portals):
 
 def getSettings():
     global config
-    if not config:
-        config = loadConfig()
-    return config["settings"]
+    with config_lock:
+        if not config:
+            config = loadConfig()
+        return config["settings"]
 
 def saveSettings(settings):
     try:
-        with open(configFile, "w") as f:
-            config["settings"] = settings
-            json.dump(config, f, indent=4)
+        with config_lock:
+            with open(configFile, "w") as f:
+                config["settings"] = settings
+                json.dump(config, f, indent=4)
         logger.debug(f"Settings saved to {configFile}")
     except Exception as e:
         logger.error(f"Error saving settings: {e}")
@@ -1067,78 +1640,88 @@ def get_db_connection():
 
 def init_db():
     """Initialize the database and create tables if they don't exist."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS channels (
-            portal TEXT NOT NULL,
-            channel_id TEXT NOT NULL,
-            portal_name TEXT,
-            name TEXT,
-            number TEXT,
-            genre TEXT,
-            logo TEXT,
-            enabled INTEGER DEFAULT 0,
-            custom_name TEXT,
-            custom_number TEXT,
-            custom_genre TEXT,
-            custom_epg_id TEXT,
-            fallback_channel TEXT,
-            has_portal_epg INTEGER DEFAULT 0,
-            stream_cmd TEXT,
-            available_macs TEXT,
-            PRIMARY KEY (portal, channel_id)
-        )
-    ''')
-    
-    # Add columns if they don't exist (migration)
+    conn = None
     try:
-        cursor.execute('ALTER TABLE channels ADD COLUMN has_portal_epg INTEGER DEFAULT 0')
-        logger.info("Added has_portal_epg column to database")
-    except:
-        pass  # Column already exists
-    
-    try:
-        cursor.execute('ALTER TABLE channels ADD COLUMN stream_cmd TEXT')
-        logger.info("Added stream_cmd column to database")
-    except:
-        pass  # Column already exists
-    
-    try:
-        cursor.execute('ALTER TABLE channels ADD COLUMN available_macs TEXT')
-        logger.info("Added available_macs column to database")
-    except:
-        pass  # Column already exists
-    
-    # Create indexes for better query performance
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_channels_enabled 
-        ON channels(enabled)
-    ''')
-    
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_channels_name 
-        ON channels(name)
-    ''')
-    
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_channels_portal 
-        ON channels(portal)
-    ''')
-    
-    # Create table for selected genres per portal
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS portal_genres (
-            portal TEXT NOT NULL,
-            genre TEXT NOT NULL,
-            PRIMARY KEY (portal, genre)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS channels (
+                portal TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                portal_name TEXT,
+                name TEXT,
+                number TEXT,
+                genre TEXT,
+                logo TEXT,
+                enabled INTEGER DEFAULT 0,
+                custom_name TEXT,
+                custom_number TEXT,
+                custom_genre TEXT,
+                custom_epg_id TEXT,
+                fallback_channel TEXT,
+                has_portal_epg INTEGER DEFAULT 0,
+                stream_cmd TEXT,
+                available_macs TEXT,
+                PRIMARY KEY (portal, channel_id)
+            )
+        ''')
+        
+        # Add columns if they don't exist (migration)
+        try:
+            cursor.execute('ALTER TABLE channels ADD COLUMN has_portal_epg INTEGER DEFAULT 0')
+            logger.info("Added has_portal_epg column to database")
+        except:
+            pass  # Column already exists
+        
+        try:
+            cursor.execute('ALTER TABLE channels ADD COLUMN stream_cmd TEXT')
+            logger.info("Added stream_cmd column to database")
+        except:
+            pass  # Column already exists
+        
+        try:
+            cursor.execute('ALTER TABLE channels ADD COLUMN available_macs TEXT')
+            logger.info("Added available_macs column to database")
+        except:
+            pass  # Column already exists
+        
+        # Create indexes for better query performance
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_channels_enabled 
+            ON channels(enabled)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_channels_name 
+            ON channels(name)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_channels_portal 
+            ON channels(portal)
+        ''')
+        
+        # Create table for selected genres per portal
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS portal_genres (
+                portal TEXT NOT NULL,
+                genre TEXT NOT NULL,
+                PRIMARY KEY (portal, genre)
+            )
+        ''')
+        
+        conn.commit()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        raise
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 def get_vod_db_connection():
@@ -1150,112 +1733,122 @@ def get_vod_db_connection():
 
 def init_vod_db():
     """Initialize the VOD database and create tables if they don't exist."""
-    conn = get_vod_db_connection()
-    cursor = conn.cursor()
-    
-    # VOD Categories table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vod_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            portal_id TEXT NOT NULL,
-            category_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content_type TEXT NOT NULL,
-            item_count INTEGER DEFAULT 0,
-            working_mac TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(portal_id, category_id, content_type)
-        )
-    ''')
-    
-    # VOD Items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vod_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            portal_id TEXT NOT NULL,
-            category_id TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            content_type TEXT NOT NULL,
-            name TEXT NOT NULL,
-            year TEXT,
-            description TEXT,
-            genre TEXT,
-            duration TEXT,
-            rating TEXT,
-            poster_url TEXT,
-            cmd TEXT NOT NULL,
-            working_macs TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(portal_id, item_id, content_type)
-        )
-    ''')
-    
-    # Series Episodes table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS series_episodes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            portal_id TEXT NOT NULL,
-            series_id TEXT NOT NULL,
-            season_number INTEGER NOT NULL,
-            episode_number INTEGER NOT NULL,
-            title TEXT,
-            cmd TEXT NOT NULL,
-            working_macs TEXT,
-            UNIQUE(portal_id, series_id, season_number, episode_number)
-        )
-    ''')
-    
-    # User Selections table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vod_selections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            portal_id TEXT NOT NULL,
-            category_key TEXT NOT NULL,
-            enabled INTEGER DEFAULT 1,
-            UNIQUE(portal_id, category_key)
-        )
-    ''')
-    
-    # VOD Settings table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vod_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    ''')
-    
-    # Create indexes for performance
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_vod_categories_portal 
-        ON vod_categories(portal_id)
-    ''')
-    
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_vod_items_portal_category 
-        ON vod_items(portal_id, category_id)
-    ''')
-    
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_vod_items_name 
-        ON vod_items(name)
-    ''')
-    
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_series_episodes_series 
-        ON series_episodes(portal_id, series_id)
-    ''')
-    
-    # Insert default settings if not exist
-    cursor.execute('''
-        INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('stream_type', 'ffmpeg')
-    ''')
-    cursor.execute('''
-        INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('mac_rotation', 'true')
-    ''')
-    
-    conn.commit()
-    conn.close()
-    logger.info("VOD database initialized successfully")
+    conn = None
+    try:
+        conn = get_vod_db_connection()
+        cursor = conn.cursor()
+        
+        # VOD Categories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vod_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portal_id TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                item_count INTEGER DEFAULT 0,
+                working_mac TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(portal_id, category_id, content_type)
+            )
+        ''')
+        
+        # VOD Items table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vod_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portal_id TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                year TEXT,
+                description TEXT,
+                genre TEXT,
+                duration TEXT,
+                rating TEXT,
+                poster_url TEXT,
+                cmd TEXT NOT NULL,
+                working_macs TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(portal_id, item_id, content_type)
+            )
+        ''')
+        
+        # Series Episodes table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS series_episodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portal_id TEXT NOT NULL,
+                series_id TEXT NOT NULL,
+                season_number INTEGER NOT NULL,
+                episode_number INTEGER NOT NULL,
+                title TEXT,
+                cmd TEXT NOT NULL,
+                working_macs TEXT,
+                UNIQUE(portal_id, series_id, season_number, episode_number)
+            )
+        ''')
+        
+        # User Selections table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vod_selections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portal_id TEXT NOT NULL,
+                category_key TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                UNIQUE(portal_id, category_key)
+            )
+        ''')
+        
+        # VOD Settings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vod_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        ''')
+        
+        # Create indexes for performance
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_vod_categories_portal 
+            ON vod_categories(portal_id)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_vod_items_portal_category 
+            ON vod_items(portal_id, category_id)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_vod_items_name 
+            ON vod_items(name)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_series_episodes_series 
+            ON series_episodes(portal_id, series_id)
+        ''')
+        
+        # Insert default settings if not exist
+        cursor.execute('''
+            INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('stream_type', 'ffmpeg')
+        ''')
+        cursor.execute('''
+            INSERT OR IGNORE INTO vod_settings (key, value) VALUES ('mac_rotation', 'true')
+        ''')
+        
+        conn.commit()
+        logger.info("VOD database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing VOD database: {e}")
+        raise
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 def refresh_channels_cache_with_progress():
@@ -1298,19 +1891,18 @@ def refresh_channels_cache():
             macs = list(portal["macs"].keys())
             proxy = portal["proxy"]
             
-            # Get selected genres for this portal (from JSON or DB)
-            selected_genres = portal.get("selected genres", [])
-            
-            # Fallback: Load from database if not in JSON
-            if not selected_genres:
-                try:
-                    cursor.execute('SELECT genre FROM portal_genres WHERE portal = ?', (portal_id,))
-                    selected_genres = [row['genre'] for row in cursor.fetchall()]
-                    if selected_genres:
-                        logger.info(f"Loaded {len(selected_genres)} genres from database for portal {portal_name}")
-                except Exception as e:
-                    logger.error(f"Error loading genres from database: {e}")
-                    selected_genres = []
+            # Get selected genres for this portal from database (single source of truth)
+            selected_genres = []
+            try:
+                cursor.execute('SELECT genre FROM portal_genres WHERE portal = ?', (portal_id,))
+                selected_genres = [row['genre'] for row in cursor.fetchall()]
+                if selected_genres:
+                    logger.info(f"Loaded {len(selected_genres)} genres from database for portal {portal_name}")
+                else:
+                    logger.info(f"No genres selected in database for portal {portal_name}")
+            except Exception as e:
+                logger.error(f"Error loading genres from database: {e}")
+                selected_genres = []
             
             # Update progress
             editor_refresh_progress["current_portal"] = portal_name
@@ -1318,7 +1910,10 @@ def refresh_channels_cache():
             editor_refresh_progress["portals_done"] = portal_index - 1
             
             logger.info(f"Fetching channels for portal: {portal_name} from {len(macs)} MACs")
-            logger.info(f"Selected genres: {selected_genres}")
+            if selected_genres:
+                logger.info(f"Selected genres ({len(selected_genres)}): {selected_genres}")
+            else:
+                logger.info(f"No genre filter - will cache ALL channels")
             editor_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s)"
             
             # Fetch from ALL MACs and merge
@@ -1373,25 +1968,31 @@ def refresh_channels_cache():
                 logger.info(f"Processing {len(all_channels_map)} total channels for {portal_name}")
                 editor_refresh_progress["current_step"] = f"{portal_name}: Updating cache data..."
                 
-                # Update ONLY channels that are in DB (respects genre filtering)
-                updated_count = 0
+                # Delete old channels for this portal first (clean slate)
+                cursor.execute('DELETE FROM channels WHERE portal = ?', (portal_id,))
+                deleted_count = cursor.rowcount
+                conn.commit()
+                logger.info(f"Deleted {deleted_count} old channels for portal {portal_name}")
+                
+                # Insert ONLY channels with selected genres
                 inserted_count = 0
                 skipped_count = 0
                 
                 for channel_id, channel in all_channels_map.items():
                     genre_id = str(channel.get("tv_genre_id", ""))
-                    genre = str(all_genres_dict.get(genre_id, ""))
+                    genre = str(all_genres_dict.get(genre_id, "")).strip()  # Remove whitespace
                     
-                    # Skip if no genres selected OR genre not in selected genres
-                    if not selected_genres:
-                        # No genres selected - skip all channels
-                        skipped_count += 1
-                        continue
-                    
-                    if genre not in selected_genres:
-                        # Genre not selected - skip this channel
-                        skipped_count += 1
-                        continue
+                    # Skip if genre not selected
+                    if selected_genres:
+                        # Normalize selected genres (strip whitespace)
+                        selected_genres_normalized = [g.strip() for g in selected_genres]
+                        
+                        if genre not in selected_genres_normalized:
+                            # Genres are selected but this channel's genre is not selected - skip
+                            if skipped_count < 5:  # Log first 5 skipped channels for debugging
+                                logger.debug(f"Skipping channel '{channel.get('name', '')}' - genre '{genre}' not in {selected_genres_normalized}")
+                            skipped_count += 1
+                            continue
                     
                     # Get stream_cmd and available_macs with playback_limits and initial scores
                     stream_cmd = str(channel.get("cmd", ""))
@@ -1399,44 +2000,31 @@ def refresh_channels_cache():
                     # Format: "MAC|limit|success|fail|last_ts" (initial: 0|0|0)
                     available_macs = ",".join([f"{mac}|{mac_playback_limits.get(mac, 1)}|0|0|0" for mac in macs_for_channel])
                     
-                    # Check if channel exists in DB
-                    cursor.execute('SELECT channel_id FROM channels WHERE portal = ? AND channel_id = ?', (portal_id, channel_id))
-                    exists = cursor.fetchone()
+                    # Insert channel (all channels are new since we deleted old ones)
+                    channel_name = str(channel.get("name", ""))
+                    channel_number = str(channel.get("number", ""))
+                    logo = str(channel.get("logo", ""))
+                    is_enabled = 1  # Enable by default since genre is selected
                     
-                    if exists:
-                        # Update existing channel
-                        cursor.execute('''
-                            UPDATE channels 
-                            SET stream_cmd = ?, available_macs = ?
-                            WHERE portal = ? AND channel_id = ?
-                        ''', (stream_cmd, available_macs, portal_id, channel_id))
-                        updated_count += 1
-                    else:
-                        # Insert new channel (happens after Clear Cache or if genre was newly selected)
-                        channel_name = str(channel.get("name", ""))
-                        channel_number = str(channel.get("number", ""))
-                        logo = str(channel.get("logo", ""))
-                        is_enabled = 1  # Enable by default since genre is selected
-                        
-                        cursor.execute('''
-                            INSERT INTO channels (
-                                portal, channel_id, portal_name, name, number, genre, logo,
-                                enabled, custom_name, custom_number, custom_genre, 
-                                custom_epg_id, fallback_channel, has_portal_epg,
-                                stream_cmd, available_macs
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0, ?, ?)
-                        ''', (
-                            portal_id, channel_id, portal_name, channel_name, channel_number,
-                            genre, logo, is_enabled, stream_cmd, available_macs
-                        ))
-                        inserted_count += 1
+                    cursor.execute('''
+                        INSERT INTO channels (
+                            portal, channel_id, portal_name, name, number, genre, logo,
+                            enabled, custom_name, custom_number, custom_genre, 
+                            custom_epg_id, fallback_channel, has_portal_epg,
+                            stream_cmd, available_macs
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', 0, ?, ?)
+                    ''', (
+                        portal_id, channel_id, portal_name, channel_name, channel_number,
+                        genre, logo, is_enabled, stream_cmd, available_macs
+                    ))
+                    inserted_count += 1
                     
                     total_channels += 1
                 
                 conn.commit()
-                logger.info(f"Updated {updated_count} channels, inserted {inserted_count} new channels in {portal_name}")
+                logger.info(f"Inserted {inserted_count} channels for {portal_name}")
                 logger.info(f"Skipped {skipped_count} channels (genres not selected)")
-                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {updated_count + inserted_count} channels cached"
+                editor_refresh_progress["current_step"] = f"{portal_name}: Completed - {inserted_count} channels cached"
                 editor_refresh_progress["portals_done"] = portal_index
             else:
                 logger.error(f"Failed to fetch channels for portal: {portal_name}")
@@ -1470,15 +2058,17 @@ def refresh_channels_cache():
 
 def getXCUsers():
     """Get all XC API users."""
-    return config.get("xc_users", {})
+    with config_lock:
+        return config.get("xc_users", {})
 
 
 def saveXCUsers(users):
     """Save XC API users."""
     try:
-        with open(configFile, "w") as f:
-            config["xc_users"] = users
-            json.dump(config, f, indent=4)
+        with config_lock:
+            with open(configFile, "w") as f:
+                config["xc_users"] = users
+                json.dump(config, f, indent=4)
         logger.debug(f"XC users saved to {configFile}")
     except Exception as e:
         logger.error(f"Error saving XC users: {e}")
@@ -1708,6 +2298,7 @@ def block_data_access(filename):
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
 def login():
     """Login page."""
     if request.method == "POST":
@@ -1810,6 +2401,7 @@ def vods_page():
 @authorise
 def vods_portals():
     """Get all portals with VOD/Series category counts."""
+    conn = None
     try:
         portals = getPortals()
         conn = get_vod_db_connection()
@@ -1850,17 +2442,23 @@ def vods_portals():
                 "has_cache": (cached_counts.get("vod", 0) + cached_counts.get("series", 0)) > 0
             })
         
-        conn.close()
         return jsonify({"success": True, "portals": result})
     except Exception as e:
         logger.error(f"Error getting VOD portals: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/categories/<portal_id>", methods=["GET"])
 @authorise
 def vods_categories(portal_id):
     """Get VOD/Series categories for a portal from cache."""
+    conn = None
     try:
         conn = get_vod_db_connection()
         cursor = conn.cursor()
@@ -1882,17 +2480,23 @@ def vods_categories(portal_id):
                 "working_mac": row['working_mac'] or "N/A"
             })
         
-        conn.close()
         return jsonify({"success": True, "categories": categories})
     except Exception as e:
         logger.error(f"Error getting VOD categories: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/items/<portal_id>/<content_type>/<category_id>", methods=["GET"])
 @authorise
 def vods_items(portal_id, content_type, category_id):
     """Get VOD/Series items for a category from cache."""
+    conn = None
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
@@ -1933,7 +2537,6 @@ def vods_items(portal_id, content_type, category_id):
                 "working_mac": row['working_macs'].split(',')[0] if row['working_macs'] else None
             })
         
-        conn.close()
         return jsonify({
             "success": True, 
             "items": items, 
@@ -1944,12 +2547,19 @@ def vods_items(portal_id, content_type, category_id):
     except Exception as e:
         logger.error(f"Error getting VOD items: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/selection/<portal_id>", methods=["GET"])
 @authorise
 def vods_selection_get(portal_id):
     """Get selected categories for a portal."""
+    conn = None
     try:
         conn = get_vod_db_connection()
         cursor = conn.cursor()
@@ -1960,12 +2570,17 @@ def vods_selection_get(portal_id):
         ''', (portal_id,))
         
         selected = [row['category_key'] for row in cursor.fetchall()]
-        conn.close()
         
         return jsonify({"success": True, "selected_categories": selected})
     except Exception as e:
         logger.error(f"Error getting VOD selection: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 # Global state for VOD items loading progress
@@ -2217,24 +2832,31 @@ def vods_items_load_progress():
 @authorise
 def vods_settings_get():
     """Get VOD settings."""
+    conn = None
     try:
         conn = get_vod_db_connection()
         cursor = conn.cursor()
         
         cursor.execute('SELECT key, value FROM vod_settings')
         settings = {row['key']: row['value'] for row in cursor.fetchall()}
-        conn.close()
         
         return jsonify({"success": True, "settings": settings})
     except Exception as e:
         logger.error(f"Error getting VOD settings: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/settings", methods=["POST"])
 @authorise
 def vods_settings_save():
     """Save VOD settings."""
+    conn = None
     try:
         data = request.get_json()
         
@@ -2247,15 +2869,21 @@ def vods_settings_save():
             ''', (key, str(value)))
         
         conn.commit()
-        conn.close()
         
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error saving VOD settings: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/refresh", methods=["POST"])
+@limiter.limit("3 per minute")
 @authorise
 def vods_refresh():
     """Start VOD cache refresh in background - tests ALL MACs and merges categories."""
@@ -2424,6 +3052,7 @@ def vods_refresh_progress():
 @authorise
 def vods_load_categories():
     """Load categories for a single portal on-demand - tests ALL MACs and merges categories."""
+    conn = None
     try:
         data = request.get_json()
         portal_id = data.get('portal_id')
@@ -2577,7 +3206,6 @@ def vods_load_categories():
             })
         
         conn.commit()
-        conn.close()
         
         logger.info(f"Loaded {len(all_vod_categories)} VOD and {len(all_series_categories)} Series categories from {working_macs_count} MACs for portal {portal_id}")
         
@@ -2590,12 +3218,19 @@ def vods_load_categories():
     except Exception as e:
         logger.error(f"Error loading categories: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/stream", methods=["POST"])
 @authorise
 def vods_stream():
     """Get stream URL for VOD item."""
+    conn = None
     try:
         data = request.get_json()
         portal_id = data.get('portal_id')
@@ -2626,7 +3261,6 @@ def vods_stream():
         cursor = conn.cursor()
         cursor.execute('SELECT key, value FROM vod_settings')
         settings = {row['key']: row['value'] for row in cursor.fetchall()}
-        conn.close()
         
         stream_type = settings.get('stream_type', 'ffmpeg')
         mac_rotation = settings.get('mac_rotation', 'true') == 'true'
@@ -2666,12 +3300,19 @@ def vods_stream():
     except Exception as e:
         logger.error(f"Error getting VOD stream: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/items/load", methods=["POST"])
 @authorise
 def vods_load_items():
     """Load items for a category on-demand and cache them."""
+    conn = None
     try:
         data = request.get_json()
         portal_id = data.get('portal_id')
@@ -2752,7 +3393,6 @@ def vods_load_items():
             page += 1
         
         conn.commit()
-        conn.close()
         
         return jsonify({
             "success": True,
@@ -2762,6 +3402,12 @@ def vods_load_items():
     except Exception as e:
         logger.error(f"Error loading VOD items: {e}")
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/vods/debug/test-api", methods=["POST"])
@@ -3662,41 +4308,7 @@ def portal_mac_scores():
         # Calculate average score per MAC
         mac_stats = {}  # {mac: {'total_score': float, 'count': int, 'success': int, 'fail': int}}
         
-        def calculate_mac_score(success_count, fail_count, last_success_ts):
-            """Calculate MAC reliability score (0-100)"""
-            import time
-            current_time = int(time.time())
-            
-            # 1. Success Rate (0-50 points)
-            total = success_count + fail_count
-            if total > 0:
-                success_rate = (success_count / total) * 50
-            else:
-                success_rate = 25  # Neutral for untested
-            
-            # 2. Recency (0-30 points)
-            if last_success_ts > 0:
-                age_hours = (current_time - last_success_ts) / 3600
-                if age_hours < 1:
-                    recency = 30
-                elif age_hours < 24:
-                    recency = 20
-                elif age_hours < 168:  # 1 week
-                    recency = 10
-                else:
-                    recency = 5
-            else:
-                recency = 0  # Never successful
-            
-            # 3. Reliability Bonus (0-20 points)
-            if success_count >= 10:
-                reliability = 20
-            elif success_count >= 5:
-                reliability = 10
-            else:
-                reliability = 0
-            
-            return success_rate + recency + reliability
+        # Use global calculate_mac_score function
         
         for row in rows:
             available_macs_raw = row['available_macs'].split(',')
@@ -3987,17 +4599,24 @@ def generate_portal_m3u(portal_id):
     channels = []
     
     # Get enabled channels from database for specific portal
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id
-        FROM channels 
-        WHERE enabled = 1 AND portal = ?
-        ORDER BY channel_id
-    ''', (portal_id,))
-    db_channels = cursor.fetchall()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+                   number, custom_number, custom_epg_id
+            FROM channels 
+            WHERE enabled = 1 AND portal = ?
+            ORDER BY channel_id
+        ''', (portal_id,))
+        db_channels = cursor.fetchall()
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
     
     # Get portal info
     portals = getPortals()
@@ -4105,17 +4724,24 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
     channels = []
     
     # Get enabled channels from database for specific portal
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id
-        FROM channels 
-        WHERE enabled = 1 AND portal = ?
-        ORDER BY channel_id
-    ''', (portal_id,))
-    db_channels = cursor.fetchall()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+                   number, custom_number, custom_epg_id
+            FROM channels 
+            WHERE enabled = 1 AND portal = ?
+            ORDER BY channel_id
+        ''', (portal_id,))
+        db_channels = cursor.fetchall()
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
     
     # Get portal info
     portals = getPortals()
@@ -4620,6 +5246,7 @@ def editor():
 @authorise
 def editor_data():
     """Get channel data from database cache."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4657,19 +5284,24 @@ def editor_data():
                 "link": f"{request_scheme}://{request_host}/play/{row['portal']}/{row['channel_id']}?web=true",
             })
         
-        conn.close()
-        
         logger.info(f"Returned {len(channels)} enabled channels from database cache")
         return flask.jsonify({"data": channels})
         
     except Exception as e:
         logger.error(f"Error in editor_data: {e}")
         return flask.jsonify({"data": [], "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 @app.route("/editor/portals", methods=["GET"])
 @authorise
 def editor_portals():
     """Get list of unique portals for filter dropdown."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4682,19 +5314,25 @@ def editor_portals():
         """)
         
         portals = [row['portal_name'] for row in cursor.fetchall()]
-        conn.close()
         
         logger.info(f"Returning {len(portals)} portals from database")
         return flask.jsonify({"portals": portals})
     except Exception as e:
         logger.error(f"Error in editor_portals: {e}")
         return flask.jsonify({"portals": [], "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/genres", methods=["GET"])
 @authorise
 def editor_genres():
     """Get list of unique genres for filter dropdown."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4709,19 +5347,25 @@ def editor_genres():
         """)
         
         genres = [row['genre'] for row in cursor.fetchall()]
-        conn.close()
         
         logger.info(f"Returning {len(genres)} genres from database")
         return flask.jsonify({"genres": genres})
     except Exception as e:
         logger.error(f"Error in editor_genres: {e}")
         return flask.jsonify({"genres": [], "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/portal-stats", methods=["GET"])
 @authorise
 def editor_portal_stats():
     """Get portal statistics with all channels (enabled and disabled)."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4763,18 +5407,24 @@ def editor_portal_stats():
                 "enabled_genres": genres_with_enabled
             })
         
-        conn.close()
         logger.info(f"Returning {len(portals)} portal stats")
         return flask.jsonify({"portals": portals})
     except Exception as e:
         logger.error(f"Error in editor_portal_stats: {e}")
         return flask.jsonify({"portals": [], "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/portal-channels/<portal_id>", methods=["GET"])
 @authorise
 def editor_portal_channels(portal_id):
     """Get all channels for a specific portal (enabled and disabled)."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4814,8 +5464,6 @@ def editor_portal_channels(portal_id):
                 "link": f"{request_scheme}://{request_host}/play/{row['portal']}/{row['channel_id']}?web=true",
             })
         
-        conn.close()
-        
         # Info message about genre filtering
         if len(channels) == 0:
             logger.warning(f"No channels found for portal {portal_id} - may need to select more genres")
@@ -4826,6 +5474,12 @@ def editor_portal_channels(portal_id):
     except Exception as e:
         logger.error(f"Error in editor_portal_channels: {e}")
         return flask.jsonify({"channels": [], "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/save", methods=["POST"])
@@ -4936,6 +5590,7 @@ def editorSave():
 
 
 @app.route("/editor/bulk-edit", methods=["POST"])
+@limiter.limit("10 per minute")
 @authorise
 def editor_bulk_edit():
     """Apply bulk search & replace to channel names and genres."""
@@ -5130,6 +5785,7 @@ def editor_bulk_edit():
 @authorise
 def editor_bulk_edit_undo():
     """Undo the last bulk edit operation."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5161,7 +5817,6 @@ def editor_bulk_edit_undo():
         cursor.execute('DELETE FROM bulk_edit_history WHERE id = ?', (history['id'],))
         
         conn.commit()
-        conn.close()
         
         # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
@@ -5177,12 +5832,19 @@ def editor_bulk_edit_undo():
     except Exception as e:
         logger.error(f"Error undoing bulk edit: {e}")
         return flask.jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/bulk-edit/history", methods=["GET"])
 @authorise
 def editor_bulk_edit_history():
     """Get bulk edit history."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5193,7 +5855,6 @@ def editor_bulk_edit_history():
             LIMIT 10
         ''')
         history = cursor.fetchall()
-        conn.close()
         
         import json
         history_list = []
@@ -5213,12 +5874,19 @@ def editor_bulk_edit_history():
     except Exception as e:
         logger.error(f"Error getting bulk edit history: {e}")
         return flask.jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/bulk-edit/saved-rules", methods=["GET"])
 @authorise
 def editor_bulk_edit_saved_rules():
     """Get saved bulk edit rules."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5230,7 +5898,6 @@ def editor_bulk_edit_saved_rules():
             LIMIT 50
         ''')
         rules = cursor.fetchall()
-        conn.close()
         
         rules_list = []
         for rule in rules:
@@ -5248,19 +5915,25 @@ def editor_bulk_edit_saved_rules():
     except Exception as e:
         logger.error(f"Error getting saved rules: {e}")
         return flask.jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/bulk-edit/clear-saved-rules", methods=["POST"])
 @authorise
 def editor_bulk_edit_clear_saved_rules():
     """Clear all saved bulk edit rules."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute('DELETE FROM bulk_edit_saved_rules')
         conn.commit()
-        conn.close()
         
         logger.info("Cleared all saved bulk edit rules")
         
@@ -5272,12 +5945,19 @@ def editor_bulk_edit_clear_saved_rules():
     except Exception as e:
         logger.error(f"Error clearing saved rules: {e}")
         return flask.jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/reset-all", methods=["POST"])
 @authorise
 def editor_reset_all_customizations():
     """Reset all custom names and genres to original values."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5289,7 +5969,6 @@ def editor_reset_all_customizations():
         ''')
         
         conn.commit()
-        conn.close()
         
         # Force M3U playlist regeneration
         global cached_xmltv, last_playlist_host
@@ -5305,16 +5984,23 @@ def editor_reset_all_customizations():
     except Exception as e:
         logger.error(f"Error resetting customizations: {e}")
         return flask.jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 
 @app.route("/editor/reset", methods=["POST"])
 @authorise
 def editorReset():
     """Reset all channel customizations in the database."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    conn = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
         cursor.execute('''
             UPDATE channels 
             SET enabled = 0,
@@ -5330,16 +6016,22 @@ def editorReset():
         flash("Playlist reset!", "success")
         
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.error(f"Error resetting channels: {e}")
         flash(f"Error resetting: {e}", "danger")
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
     
     return redirect("/editor", code=302)
 
 
 @app.route("/editor/refresh", methods=["POST"])
+@limiter.limit("3 per minute")
 @authorise
 def editor_refresh():
     """Manually trigger a refresh of the channel cache."""
@@ -5379,6 +6071,7 @@ def editor_refresh_progress_status():
 @authorise
 def editor_deactivate_duplicates():
     """Deactivate duplicate enabled channels, keeping only the first occurrence."""
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5423,7 +6116,6 @@ def editor_deactivate_duplicates():
             deactivated_count += 1
         
         conn.commit()
-        conn.close()
         
         # Reset playlist cache to force regeneration
         global last_playlist_host
@@ -5444,6 +6136,12 @@ def editor_deactivate_duplicates():
             "deactivated": 0,
             "error": str(e)
         }), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 @app.route("/settings", methods=["GET"])
 @authorise
@@ -5830,6 +6528,7 @@ def update_playlistm3u():
 
 def cleanup_orphaned_channels():
     """Remove channels from database that belong to portals that no longer exist."""
+    conn = None
     try:
         portals = getPortals()
         valid_portal_ids = set(portals.keys())
@@ -5852,9 +6551,14 @@ def cleanup_orphaned_channels():
             
             conn.commit()
         
-        conn.close()
     except Exception as e:
         logger.error(f"Error cleaning up orphaned channels: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 def generate_playlist():
     global cached_playlist
@@ -5867,17 +6571,24 @@ def generate_playlist():
     channels = []
     
     # Get enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id
-        FROM channels 
-        WHERE enabled = 1
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+                   number, custom_number, custom_epg_id
+            FROM channels 
+            WHERE enabled = 1
         ORDER BY portal, channel_id
     ''')
-    db_channels = cursor.fetchall()
-    conn.close()
+        db_channels = cursor.fetchall()
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
     
     # Get portal info
     portals = getPortals()
@@ -6205,28 +6916,35 @@ def refresh_xmltv():
 
     # IMPROVEMENT #3: M3U/XMLTV Alignment - Load database channels for 100% match
     # Get all enabled channels from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, number, custom_number, 
-               genre, custom_genre, logo, custom_epg_id
-        FROM channels 
-        WHERE enabled = 1
-    ''')
-    db_channels = {}
-    for row in cursor.fetchall():
-        portal_id = row['portal']
-        channel_id = row['channel_id']
-        if portal_id not in db_channels:
-            db_channels[portal_id] = {}
-        db_channels[portal_id][channel_id] = {
-            'name': row['custom_name'] or row['name'],
-            'number': row['custom_number'] or row['number'],
-            'genre': row['custom_genre'] or row['genre'],
-            'logo': row['logo'],
-            'custom_epg_id': row['custom_epg_id']
-        }
-    conn.close()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, number, custom_number, 
+                   genre, custom_genre, logo, custom_epg_id
+            FROM channels 
+            WHERE enabled = 1
+        ''')
+        db_channels = {}
+        for row in cursor.fetchall():
+            portal_id = row['portal']
+            channel_id = row['channel_id']
+            if portal_id not in db_channels:
+                db_channels[portal_id] = {}
+            db_channels[portal_id][channel_id] = {
+                'name': row['custom_name'] or row['name'],
+                'number': row['custom_number'] or row['number'],
+                'genre': row['custom_genre'] or row['genre'],
+                'logo': row['logo'],
+                'custom_epg_id': row['custom_epg_id']
+            }
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
     # IMPROVEMENT #5: Variant Deduplication - Track base channel names
     # Map to deduplicate HD/FHD/UHD variants
@@ -7079,6 +7797,7 @@ def epg_save_mapping():
 
 
 @app.route("/epg/refresh", methods=["POST"])
+@limiter.limit("3 per minute")
 @authorise
 def epg_refresh():
     """Force refresh EPG cache."""
@@ -7483,7 +8202,7 @@ def xc_get_live_categories(user):
 
 
 def xc_get_live_streams(user):
-    """Get live streams."""
+    """Get live streams - OPTIMIZED: Fixed N+1 Query Pattern."""
     portals = getPortals()
     allowed_portals = user.get("allowed_portals", [])
     settings = getSettings()
@@ -7491,18 +8210,10 @@ def xc_get_live_streams(user):
     
     streams = []
     
-    # Get enabled channels from database
+    # OPTIMIZATION: Query per portal instead of loading all channels
+    # This fixes the N+1 query pattern by filtering in SQL instead of Python
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
-               number, custom_number, custom_epg_id, logo
-        FROM channels 
-        WHERE enabled = 1
-        ORDER BY portal, channel_id
-    ''')
-    db_channels = cursor.fetchall()
-    conn.close()
     
     # Create a copy to avoid RuntimeError if dictionary changes during iteration
     for portal_id, portal in list(portals.items()):
@@ -7511,8 +8222,16 @@ def xc_get_live_streams(user):
         if allowed_portals and portal_id not in allowed_portals:
             continue
         
-        # Get channels for this portal from database
-        portal_channels = [ch for ch in db_channels if ch['portal'] == portal_id]
+        # OPTIMIZED: SQL-based filtering (uses idx_channels_portal index)
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, genre, custom_genre, 
+                   number, custom_number, custom_epg_id, logo
+            FROM channels 
+            WHERE enabled = 1 AND portal = ?
+            ORDER BY channel_id
+        ''', (portal_id,))
+        portal_channels = cursor.fetchall()
+        
         if not portal_channels:
             continue
         
@@ -7558,6 +8277,7 @@ def xc_get_live_streams(user):
                 "container_extension": "ts"
             })
     
+    conn.close()
     return flask.jsonify(streams)
 
 
@@ -8982,21 +9702,22 @@ def stream_channel(portalId, channelId, xc_user=None):
     """Internal function to stream a channel without authentication."""
     def streamData():
         def occupy():
-            occupied.setdefault(portalId, [])
-            stream_info = {
-                "mac": mac,
-                "channel id": channelId,
-                "channel name": channelName,
-                "client": ip,
-                "portal name": portalName,
-                "start time": startTime,
-            }
-            if xc_user:
-                stream_info["xc_user"] = xc_user
-            occupied.get(portalId, []).append(stream_info)
+            with occupied_lock:
+                occupied.setdefault(portalId, [])
+                stream_info = {
+                    "mac": mac,
+                    "channel id": channelId,
+                    "channel name": channelName,
+                    "client": ip,
+                    "portal name": portalName,
+                    "start time": startTime,
+                }
+                if xc_user:
+                    stream_info["xc_user"] = xc_user
+                occupied.get(portalId, []).append(stream_info)
             logger.info("Occupied Portal({}):MAC({}):User({})".format(portalId, mac, xc_user or "Direct"))
 
-        def unoccupy():
+        def unoccupy(ffmpeg_returncode=None):
             stream_info = {
                 "mac": mac,
                 "channel id": channelId,
@@ -9008,86 +9729,28 @@ def stream_channel(portalId, channelId, xc_user=None):
             if xc_user:
                 stream_info["xc_user"] = xc_user
             try:
-                occupied.get(portalId, []).remove(stream_info)
+                with occupied_lock:
+                    occupied.get(portalId, []).remove(stream_info)
             except ValueError:
                 pass  # Already removed
             logger.info("Unoccupied Portal({}):MAC({}):User({})".format(portalId, mac, xc_user or "Direct"))
             
-            # Update MAC score based on stream duration
+            # Update MAC score based on stream duration AND FFmpeg exit code (thread-safe)
             try:
                 import time
-                # Check if startTime exists (might not if error before stream started)
-                if 'startTime' not in locals() and 'startTime' not in globals():
-                    logger.debug("[SCORE UPDATE] No startTime available, skipping score update")
-                    return
-                
                 stream_duration = time.time() - startTime
                 
-                # Get channel from DB to update score
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT available_macs 
-                    FROM channels 
-                    WHERE portal = ? AND channel_id = ?
-                ''', (portalId, channelId))
+                # Determine success/failure based on FFmpeg exit code or duration
+                if ffmpeg_returncode is not None:
+                    # Use FFmpeg exit code for accurate detection
+                    is_success = (ffmpeg_returncode == 0)
+                else:
+                    # Fallback: Use duration-based detection (for non-FFmpeg modes)
+                    is_success = (stream_duration >= 5)
                 
-                row = cursor.fetchone()
-                if row and row['available_macs']:
-                    available_macs_raw = row['available_macs'].split(',')
-                    
-                    # Parse current stats
-                    mac_stats = {}
-                    mac_limits = {}
-                    for mac_entry in available_macs_raw:
-                        parts = mac_entry.split('|')
-                        if len(parts) >= 5:
-                            m = parts[0]
-                            mac_limits[m] = int(parts[1])
-                            mac_stats[m] = {
-                                'success': int(parts[2]),
-                                'fail': int(parts[3]),
-                                'last_ts': int(parts[4])
-                            }
-                        elif len(parts) == 2:
-                            m = parts[0]
-                            mac_limits[m] = int(parts[1])
-                            mac_stats[m] = {'success': 0, 'fail': 0, 'last_ts': 0}
-                        else:
-                            mac_limits[mac_entry] = 1
-                            mac_stats[mac_entry] = {'success': 0, 'fail': 0, 'last_ts': 0}
-                    
-                    # Update score based on duration
-                    if mac in mac_stats:
-                        if stream_duration >= 5:
-                            # Stream ran for 5+ seconds = success
-                            mac_stats[mac]['success'] += 1
-                            mac_stats[mac]['last_ts'] = int(time.time())
-                            logger.info(f"[SCORE UPDATE] MAC {mac} success (stream ran {stream_duration:.1f}s)")
-                        else:
-                            # Stream died quickly = fail
-                            mac_stats[mac]['fail'] += 1
-                            logger.info(f"[SCORE UPDATE] MAC {mac} fail (stream died after {stream_duration:.1f}s)")
-                        
-                        # Rebuild available_macs string
-                        macs_with_data = []
-                        for m in mac_stats.keys():
-                            limit = mac_limits.get(m, 1)
-                            st = mac_stats.get(m, {'success': 0, 'fail': 0, 'last_ts': 0})
-                            macs_with_data.append(f"{m}|{limit}|{st['success']}|{st['fail']}|{st['last_ts']}")
-                        new_available_macs = ",".join(macs_with_data)
-                        
-                        # Update DB
-                        cursor.execute('''
-                            UPDATE channels 
-                            SET available_macs = ?
-                            WHERE portal = ? AND channel_id = ?
-                        ''', (new_available_macs, portalId, channelId))
-                        conn.commit()
-                    else:
-                        logger.debug(f"[SCORE UPDATE] MAC {mac} not in available_macs list, skipping")
+                # Update score using thread-safe function
+                update_mac_score_in_db(portalId, channelId, mac, is_success, stream_duration)
                 
-                conn.close()
             except Exception as e:
                 logger.error(f"[SCORE UPDATE] Error updating score: {e}")
 
@@ -9101,10 +9764,11 @@ def stream_channel(portalId, channelId, xc_user=None):
                 stderr=subprocess.PIPE,
             ) as ffmpeg_sp:
                 bytes_read = 0
+                ffmpeg_returncode = None
                 while True:
                     chunk = ffmpeg_sp.stdout.read(1024)
                     if len(chunk) == 0:
-                        returncode = ffmpeg_sp.poll()
+                        ffmpeg_returncode = ffmpeg_sp.poll()
                         # Log stderr output to see why ffmpeg closed (filter out build/config info)
                         stderr_output = ffmpeg_sp.stderr.read().decode('utf-8', errors='ignore')
                         if stderr_output:
@@ -9116,8 +9780,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                             if filtered_output:
                                 logger.warning(f"[FFMPEG STDERR] {filtered_output[:500]}")
                         
-                        if returncode != 0:
-                            logger.info("Ffmpeg closed with error({}). Bytes read: {}. Moving MAC({}) for Portal({})".format(returncode, bytes_read, mac, portalName))
+                        if ffmpeg_returncode != 0:
+                            logger.info("Ffmpeg closed with error({}). Bytes read: {}. Moving MAC({}) for Portal({})".format(ffmpeg_returncode, bytes_read, mac, portalName))
                             moveMac(portalId, mac)
                         else:
                             logger.info("Ffmpeg closed normally (exit 0). Bytes read: {}. MAC({}) for Portal({})".format(bytes_read, mac, portalName))
@@ -9127,7 +9791,7 @@ def stream_channel(portalId, channelId, xc_user=None):
         except Exception as e:
             logger.error(f"Exception in streamData: {e}")
         finally:
-            unoccupy()
+            unoccupy(ffmpeg_returncode)
             ffmpeg_sp.kill()
 
     def test_stream_with_ffprobe(test_link, proxy, mac=None, log_prefix="[FFPROBE]"):
@@ -9182,61 +9846,8 @@ def stream_channel(portalId, channelId, xc_user=None):
         return success
 
     def update_mac_stats_on_redirect(portal_id, channel_id, mac, is_success):
-        """Update MAC statistics in DB based on redirect feedback."""
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Get current stats
-            cursor.execute('''
-                SELECT available_macs FROM channels 
-                WHERE portal = ? AND channel_id = ?
-            ''', (portal_id, channel_id))
-            
-            row = cursor.fetchone()
-            if not row or not row['available_macs']:
-                conn.close()
-                return
-            
-            available_macs_raw = row['available_macs'].split(',')
-            updated_macs = []
-            
-            for mac_entry in available_macs_raw:
-                parts = mac_entry.split('|')
-                if len(parts) >= 5:
-                    entry_mac = parts[0]
-                    if entry_mac == mac:
-                        # Update this MAC's stats
-                        limit = int(parts[1])
-                        success_count = int(parts[2])
-                        fail_count = int(parts[3])
-                        last_ts = int(parts[4])
-                        
-                        if is_success:
-                            success_count += 1
-                            last_ts = int(time.time())
-                            logger.info(f"[REDIRECT LEARN] ✓ MAC {mac} success (now: {success_count} successes)")
-                        else:
-                            fail_count += 1
-                            logger.info(f"[REDIRECT LEARN] ✗ MAC {mac} failed (now: {fail_count} failures)")
-                        
-                        updated_macs.append(f"{entry_mac}|{limit}|{success_count}|{fail_count}|{last_ts}")
-                    else:
-                        updated_macs.append(mac_entry)
-                else:
-                    updated_macs.append(mac_entry)
-            
-            # Update DB
-            cursor.execute('''
-                UPDATE channels SET available_macs = ? 
-                WHERE portal = ? AND channel_id = ?
-            ''', (','.join(updated_macs), portal_id, channel_id))
-            
-            conn.commit()
-            conn.close()
-            
-        except Exception as e:
-            logger.error(f"Error updating MAC stats on redirect: {e}")
+        """Update MAC statistics in DB based on redirect feedback (thread-safe)."""
+        update_mac_score_in_db(portal_id, channel_id, mac, is_success)
 
 
     portal = getPortals().get(portalId)
@@ -9258,11 +9869,14 @@ def stream_channel(portalId, channelId, xc_user=None):
         "IP({}) requested Portal({}):Channel({})".format(ip, portalId, channelId)
     )
 
-    # OPTIMIZATION: Check if HLS mode for potential direct redirect (but load MACs first for busy check)
+    # OPTIMIZATION: Check redirect mode settings
     output_format = getSettings().get("output format", "mpegts")
     stream_method = getSettings().get("stream method", "ffmpeg")
-    hls_direct_redirect = output_format == "hls"
     is_redirect_mode = stream_method == "redirect"
+    
+    # Direct redirect is ONLY active when stream method is "redirect"
+    # (output format determines HLS vs MPEG-TS redirect target)
+    direct_redirect = is_redirect_mode
     
     freeMac = False
     
@@ -9275,7 +9889,8 @@ def stream_channel(portalId, channelId, xc_user=None):
     channelName = None
     try_all_macs_setting = True  # Always enabled - probiert immer alle MACs durch
     try_all_on_db_miss = getSettings().get("try all macs on db miss", "true") == "true"
-    test_streams_enabled = getSettings().get("test streams", "true") == "true" and not is_redirect_mode  # Skip test in redirect mode
+    # Test streams: Skip in redirect mode AND proxy mode (both don't need ffprobe testing)
+    test_streams_enabled = getSettings().get("test streams", "true") == "true" and stream_method not in ["redirect", "proxy"]
     skip_busy_macs = getSettings().get("skip busy macs", "false") == "true"
     already_tested_with_ffprobe = False  # Track if we already tested with ffprobe in MAC RETRY
     
@@ -9298,103 +9913,262 @@ def stream_channel(portalId, channelId, xc_user=None):
             channelName = row['custom_name'] or row['name']
             available_macs_raw = row['available_macs'].split(',')
             
-            # Parse MACs with scoring data
-            # Format: "MAC:limit:success_count:fail_count:last_success_ts"
+            # Parse MACs with scoring data and sort by score
             import time
-            available_macs = []
-            mac_limits = {}
-            mac_stats = {}  # {mac: {'success': int, 'fail': int, 'last_ts': int, 'score': float}}
+            available_macs, mac_limits, mac_stats = parse_and_sort_macs(','.join(available_macs_raw))
             
-            def calculate_mac_score(success_count, fail_count, last_success_ts):
-                """Calculate MAC reliability score (0-100)"""
-                current_time = int(time.time())
-                
-                # 1. Success Rate (0-50 points)
-                total = success_count + fail_count
-                if total > 0:
-                    success_rate = (success_count / total) * 50
-                else:
-                    success_rate = 25  # Neutral for untested
-                
-                # 2. Recency (0-30 points)
-                if last_success_ts > 0:
-                    age_hours = (current_time - last_success_ts) / 3600
-                    if age_hours < 1:
-                        recency = 30
-                    elif age_hours < 24:
-                        recency = 20
-                    elif age_hours < 168:  # 1 week
-                        recency = 10
-                    else:
-                        recency = 5
-                else:
-                    recency = 0  # Never successful
-                
-                # 3. Reliability Bonus (0-20 points)
-                if success_count >= 10:
-                    reliability = 20
-                elif success_count >= 5:
-                    reliability = 10
-                else:
-                    reliability = 0
-                
-                return success_rate + recency + reliability
-            
-            for mac_entry in available_macs_raw:
-                parts = mac_entry.split('|')
-                if len(parts) >= 5:
-                    # Format: MAC|limit|success|fail|last_ts
-                    mac = parts[0]
-                    available_macs.append(mac)
-                    mac_limits[mac] = int(parts[1])
-                    success_count = int(parts[2])
-                    fail_count = int(parts[3])
-                    last_ts = int(parts[4])
-                    score = calculate_mac_score(success_count, fail_count, last_ts)
-                    mac_stats[mac] = {
-                        'success': success_count,
-                        'fail': fail_count,
-                        'last_ts': last_ts,
-                        'score': score
-                    }
-                elif len(parts) == 2:  # MAC|limit (old format)
-                    # Format: MAC|limit (old format)
-                    mac = parts[0]
-                    available_macs.append(mac)
-                    mac_limits[mac] = int(parts[1])
-                    mac_stats[mac] = {
-                        'success': 0,
-                        'fail': 0,
-                        'last_ts': 0,
-                        'score': 25  # Neutral
-                    }
-                else:
-                    # Format: MAC (very old) - assume it's a complete MAC address
-                    available_macs.append(mac_entry)
-                    mac_limits[mac_entry] = 1
-                    mac_stats[mac_entry] = {
-                        'success': 0,
-                        'fail': 0,
-                        'last_ts': 0,
-                        'score': 25
-                    }
-            
-            # Sort MACs by score only (reliability beats capacity) - ALWAYS
-            available_macs.sort(key=lambda m: mac_stats.get(m, {}).get('score', 25), reverse=True)
             logger.info(f"Channel {channelId} found in DB with {len(available_macs)} MAC(s) (sorted by score):")
             for m in available_macs:
                 stats = mac_stats.get(m, {})
                 logger.info(f"  {m}: score={stats.get('score', 25):.1f}, limit={mac_limits.get(m, 1)}, success={stats.get('success', 0)}, fail={stats.get('fail', 0)}")
             
-            # HLS Direct Redirect: Skip ffprobe and redirect to HLS endpoint
-            if hls_direct_redirect and available_macs:
-                # Find best MAC using playback limits, scoring and busy status
-                selected_mac = None
+            # PROXY MODE: Early exit with MAC retry logic
+            if stream_method == "proxy":
+                logger.info(f"[PROXY MODE] Starting proxy streaming with {len(available_macs)} MAC(s)")
+                
+                # Import at function level
+                import requests
+                from flask import stream_with_context
+                
+                def proxyStreamDataWithRetry():
+                    """Stream data directly from portal to client with automatic MAC retry"""
+                    
+                    # Get settings
+                    buffer_size_kb = int(getSettings().get("proxy buffer size", "1024"))
+                    buffer_size = buffer_size_kb * 1024
+                    connect_timeout = int(getSettings().get("proxy connect timeout", "5"))
+                    read_timeout = int(getSettings().get("proxy read timeout", "30"))
+                    skip_busy = getSettings().get("skip busy macs", "false") == "true"
+                    
+                    # Setup request headers
+                    headers = {
+                        'User-Agent': str(getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3"))
+                    }
+                    
+                    # Setup proxy if configured
+                    proxies = None
+                    if proxy:
+                        proxies = {'http': proxy, 'https': proxy}
+                    
+                    timeout = (connect_timeout, read_timeout)
+                    
+                    # Try all MACs until one works
+                    for try_mac in available_macs:
+                        # Check if MAC is free (local tracking) - thread-safe
+                        with occupied_lock:
+                            count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                        if streamsPerMac > 0 and count >= streamsPerMac:
+                            logger.debug(f"[PROXY RETRY] MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
+                            continue
+                        
+                        # Get token for this MAC
+                        try_token = stb.getToken(url, try_mac, proxy)
+                        if not try_token:
+                            logger.warning(f"[PROXY RETRY] Failed to get token for MAC {try_mac}, trying next")
+                            continue
+                        
+                        # Check if MAC is busy (if setting enabled)
+                        if skip_busy:
+                            profile = stb.getProfile(url, try_mac, try_token, proxy)
+                            # Validate watchdog_timeout field exists
+                            if 'watchdog_timeout' not in profile:
+                                logger.warning(f"[PROXY RETRY] MAC {try_mac} - watchdog_timeout missing in profile, assuming busy")
+                                continue
+                            watchdog_timeout = profile['watchdog_timeout']
+                            
+                            if watchdog_timeout < 60:
+                                logger.warning(f"[PROXY RETRY] MAC {try_mac} is busy (watchdog: {watchdog_timeout}s), trying next")
+                                continue
+                            logger.info(f"[PROXY RETRY] MAC {try_mac} looks available (watchdog: {watchdog_timeout}s)")
+                        else:
+                            stb.getProfile(url, try_mac, try_token, proxy)
+                        
+                        # Generate link for this MAC
+                        try_link = None
+                        if cmd:
+                            if "http://localhost/" in cmd:
+                                try_link = stb.getLink(url, try_mac, try_token, cmd, proxy)
+                            elif "play_token=" in cmd:
+                                try_link = cmd.split(" ")[1]
+                                import re
+                                stream_match = re.search(r'stream=(\d+)', try_link)
+                                if stream_match:
+                                    channel_id_from_url = stream_match.group(1)
+                                    dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                    fresh_link = stb.getLink(url, try_mac, try_token, dummy_cmd, proxy)
+                                    if fresh_link:
+                                        fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                        if fresh_token_match:
+                                            new_token = fresh_token_match.group(1)
+                                            try_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', try_link)
+                                if "mac=" in try_link:
+                                    old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', try_link)
+                                    if old_mac_match:
+                                        old_mac = old_mac_match.group(1)
+                                        try_link = try_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                            else:
+                                try_link = cmd.split(" ")[1]
+                                if "mac=" in try_link:
+                                    import re
+                                    old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', try_link)
+                                    if old_mac_match:
+                                        old_mac = old_mac_match.group(1)
+                                        try_link = try_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                        
+                        if not try_link:
+                            logger.warning(f"[PROXY RETRY] Failed to generate link for MAC {try_mac}, trying next")
+                            continue
+                        
+                        # Try to connect with this MAC
+                        startTime = datetime.now().timestamp()
+                        logger.info(f"[PROXY RETRY] Trying MAC {try_mac} (buffer: {buffer_size_kb}KB, timeout: {connect_timeout}s/{read_timeout}s)")
+                        logger.info(f"[PROXY RETRY] Connecting to {try_link}")
+                        
+                        try:
+                            # Open stream connection
+                            response = requests.get(try_link, stream=True, headers=headers, proxies=proxies, timeout=timeout)
+                            
+                            if response.status_code == 200:
+                                # Success! Mark as occupied and stream to client - thread-safe
+                                with occupied_lock:
+                                    occupied.setdefault(portalId, [])
+                                    stream_info = {
+                                        "mac": try_mac,
+                                        "channel id": channelId,
+                                        "channel name": channelName,
+                                        "client": ip,
+                                        "portal name": portalName,
+                                        "start time": startTime,
+                                    }
+                                    if xc_user:
+                                        stream_info["xc_user"] = xc_user
+                                    occupied[portalId].append(stream_info)
+                                
+                                logger.info(f"[PROXY] ✓ MAC {try_mac} connected successfully, streaming to client")
+                                
+                                try:
+                                    # Stream data to client with validation
+                                    bytes_sent = 0
+                                    first_chunk_checked = False
+                                    
+                                    for chunk in response.iter_content(chunk_size=buffer_size):
+                                        if chunk:
+                                            # Option B: Check first chunk for HTML/invalid data
+                                            if not first_chunk_checked and len(chunk) > 100:
+                                                first_chunk_checked = True
+                                                # Check if portal sent HTML instead of video
+                                                if chunk.startswith(b'<!DOCTYPE') or chunk.startswith(b'<html') or chunk.startswith(b'<HTML'):
+                                                    logger.error(f"[PROXY] ✗ MAC {try_mac} sent HTML instead of video")
+                                                    # Update DB: fail
+                                                    update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                                                    break  # Stop streaming
+                                            
+                                            bytes_sent += len(chunk)
+                                            
+                                            # Option C: Bitrate monitoring (after 10 seconds)
+                                            elapsed = datetime.now().timestamp() - startTime
+                                            if elapsed >= 10 and bytes_sent > 0:
+                                                bitrate_kbps = (bytes_sent * 8) / elapsed / 1000
+                                                if bitrate_kbps < 50:  # Very low bitrate = dying stream
+                                                    logger.error(f"[PROXY] ✗ MAC {try_mac} bitrate too low ({bitrate_kbps:.1f} kbps)")
+                                                    # Update DB: fail
+                                                    update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                                                    break  # Stop streaming
+                                            
+                                            yield chunk
+                                    
+                                    logger.info(f"[PROXY] Stream ended normally (sent {bytes_sent / 1024 / 1024:.2f} MB)")
+                                    
+                                    # Update DB: success (only if stream ran ≥5 seconds)
+                                    stream_duration = datetime.now().timestamp() - startTime
+                                    if stream_duration >= 5:
+                                        update_mac_score_in_db(portalId, channelId, try_mac, is_success=True)
+                                        logger.info(f"[PROXY] Updated DB: MAC {try_mac} success++ (duration: {stream_duration:.1f}s)")
+                                    else:
+                                        # Stream too short = fail
+                                        update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                                        logger.info(f"[PROXY] Updated DB: MAC {try_mac} fail++ (stream too short: {stream_duration:.1f}s)")
+                                    
+                                except GeneratorExit:
+                                    logger.info(f"[PROXY] Stream closed by client")
+                                finally:
+                                    try:
+                                        with occupied_lock:
+                                            occupied.get(portalId, []).remove(stream_info)
+                                    except ValueError:
+                                        pass
+                                    stream_duration = datetime.now().timestamp() - startTime
+                                    logger.info(f"[PROXY] Unoccupied Portal({portalId}):MAC({try_mac}), duration: {stream_duration:.1f}s")
+                                
+                                return  # Success - exit retry loop
+                                
+                            else:
+                                # Failed - try next MAC
+                                logger.error(f"[PROXY RETRY] ✗ MAC {try_mac} failed with status {response.status_code}")
+                                response.close()
+                                
+                                # Update DB: fail
+                                update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                                
+                                continue
+                                
+                        except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout, requests.exceptions.Timeout) as e:
+                            logger.error(f"[PROXY RETRY] ✗ MAC {try_mac} timeout: {e}")
+                            
+                            # Update DB: fail (timeout is always a portal problem)
+                            update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                            
+                            continue
+                        except requests.exceptions.RequestException as e:
+                            logger.error(f"[PROXY RETRY] ✗ MAC {try_mac} error: {e}")
+                            
+                            # Update DB: fail (connection error is always a portal problem)
+                            update_mac_score_in_db(portalId, channelId, try_mac, is_success=False)
+                            
+                            continue
+                        except Exception as e:
+                            logger.error(f"[PROXY RETRY] ✗ MAC {try_mac} unexpected: {e}")
+                            continue
+                    
+                    # All MACs failed
+                    logger.error(f"[PROXY RETRY] All {len(available_macs)} MAC(s) failed for channel {channelId}")
+                    yield b""
+                
+                return Response(stream_with_context(proxyStreamDataWithRetry()), mimetype="video/mp2t")
+            
+            # DIRECT REDIRECT MODE: Early exit with MAC retry logic
+            if direct_redirect:
+                logger.info(f"[DIRECT REDIRECT] Starting redirect mode with {len(available_macs)} MAC(s)")
+                
+                # Check for recent redirect (learning logic)
+                redirect_key = (ip, portalId, channelId)
+                now = time.time()
+                excluded_mac = None
+                
+                with redirect_lock:
+                    if redirect_key in recent_redirects:
+                        last_mac, last_time = recent_redirects[redirect_key]
+                        time_diff = now - last_time
+                        
+                        if time_diff < 5:  # Within 5s = definitely failed
+                            logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} definitely failed")
+                            update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                            # Harder penalty for very quick return
+                            update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                            excluded_mac = last_mac
+                        elif time_diff < 10:  # Within 10s = likely failed
+                            logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} likely failed")
+                            update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                            excluded_mac = last_mac
+                        elif time_diff > 30:  # After 30s = success
+                            logger.info(f"[REDIRECT LEARN] User still watching after {time_diff:.1f}s - MAC {last_mac} success")
+                            update_mac_stats_on_redirect(portalId, channelId, last_mac, True)
+                
+                # Try all MACs until one works
                 for try_mac in available_macs:
-                    # Check playback limit (instant, no delay)
-                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
-                    if streamsPerMac > 0 and count >= streamsPerMac:
-                        logger.debug(f"[HLS REDIRECT] Skipping MAC {try_mac} (playback limit: {count}/{streamsPerMac})")
+                    # Skip excluded MAC (recently failed)
+                    if try_mac == excluded_mac:
+                        logger.debug(f"[DIRECT REDIRECT] Skipping recently failed MAC {try_mac}")
                         continue
                     
                     # Check busy status if setting enabled
@@ -9402,72 +10176,100 @@ def stream_channel(portalId, channelId, xc_user=None):
                         token_temp = stb.getToken(url, try_mac, proxy)
                         if token_temp:
                             profile = stb.getProfile(url, try_mac, token_temp, proxy)
-                            watchdog_timeout = profile.get('watchdog_timeout', 999999)
-                            if watchdog_timeout < 60:
-                                logger.debug(f"[HLS REDIRECT] Skipping busy MAC {try_mac} (watchdog: {watchdog_timeout}s)")
+                            # Validate watchdog_timeout field exists
+                            if 'watchdog_timeout' not in profile:
+                                logger.debug(f"[DIRECT REDIRECT] MAC {try_mac} - watchdog_timeout missing, skipping")
                                 continue
-                            logger.debug(f"[HLS REDIRECT] MAC {try_mac} available (watchdog: {watchdog_timeout}s)")
+                            watchdog_timeout = profile['watchdog_timeout']
+                            if watchdog_timeout < 60:
+                                logger.debug(f"[DIRECT REDIRECT] Skipping busy MAC {try_mac} (watchdog: {watchdog_timeout}s)")
+                                continue
+                            logger.debug(f"[DIRECT REDIRECT] MAC {try_mac} available (watchdog: {watchdog_timeout}s)")
                     
-                    # MAC is good - use it
-                    selected_mac = try_mac
-                    break
-                
-                if selected_mac:
-                    # Check for recent redirect (learning logic)
-                    redirect_key = (ip, portalId, channelId)
-                    now = time.time()
-                    excluded_mac = None
+                    # Get token and link for this MAC
+                    token = stb.getToken(url, try_mac, proxy)
+                    if not token:
+                        logger.warning(f"[DIRECT REDIRECT] Failed to get token for MAC {try_mac}, trying next")
+                        continue
                     
+                    stb.getProfile(url, try_mac, token, proxy)
+                    
+                    # Generate link
+                    redirect_link = None
+                    if cmd:
+                        if "http://localhost/" in cmd:
+                            redirect_link = stb.getLink(url, try_mac, token, cmd, proxy)
+                        elif "play_token=" in cmd:
+                            redirect_link = cmd.split(" ")[1]
+                            import re
+                            stream_match = re.search(r'stream=(\d+)', redirect_link)
+                            if stream_match:
+                                channel_id_from_url = stream_match.group(1)
+                                dummy_cmd = f"ffmpeg http://localhost/ch/{channel_id_from_url}_"
+                                fresh_link = stb.getLink(url, try_mac, token, dummy_cmd, proxy)
+                                if fresh_link:
+                                    fresh_token_match = re.search(r'play_token=([^&]+)', fresh_link)
+                                    if fresh_token_match:
+                                        new_token = fresh_token_match.group(1)
+                                        redirect_link = re.sub(r'play_token=[^&]+', f'play_token={new_token}', redirect_link)
+                            if "mac=" in redirect_link:
+                                old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', redirect_link)
+                                if old_mac_match:
+                                    old_mac = old_mac_match.group(1)
+                                    redirect_link = redirect_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                        else:
+                            redirect_link = cmd.split(" ")[1]
+                            if "mac=" in redirect_link:
+                                import re
+                                old_mac_match = re.search(r'mac=([0-9A-Fa-f:]+)', redirect_link)
+                                if old_mac_match:
+                                    old_mac = old_mac_match.group(1)
+                                    redirect_link = redirect_link.replace(f"mac={old_mac}", f"mac={try_mac}")
+                    
+                    if not redirect_link:
+                        logger.warning(f"[DIRECT REDIRECT] Failed to generate link for MAC {try_mac}, trying next")
+                        continue
+                    
+                    # Success! Track this redirect and return
                     with redirect_lock:
-                        if redirect_key in recent_redirects:
-                            last_mac, last_time = recent_redirects[redirect_key]
-                            time_diff = now - last_time
-                            
-                            if time_diff < 10:  # Within 10s = previous MAC failed
-                                logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} likely failed")
-                                update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
-                                excluded_mac = last_mac
-                                # Select different MAC
-                                for try_mac in available_macs:
-                                    if try_mac != excluded_mac:
-                                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
-                                        if streamsPerMac == 0 or count < streamsPerMac:
-                                            selected_mac = try_mac
-                                            logger.info(f"[REDIRECT LEARN] Switching to MAC {selected_mac}")
-                                            break
-                            elif time_diff > 60:  # After 60s = previous MAC succeeded
-                                logger.info(f"[REDIRECT LEARN] User still watching after {time_diff:.1f}s - MAC {last_mac} success")
-                                update_mac_stats_on_redirect(portalId, channelId, last_mac, True)
-                        
-                        # Track this redirect
-                        recent_redirects[redirect_key] = (selected_mac, now)
+                        recent_redirects[redirect_key] = (try_mac, now)
                     
-                    logger.info(f"[HLS REDIRECT] Selected MAC {selected_mac} (score: {mac_stats.get(selected_mac, {}).get('score', 25):.1f})")
-                    logger.info(f"[HLS MODE] Direct redirect to HLS endpoint for Portal({portalId}):Channel({channelId})")
-                    hls_url = f"/hls/{portalId}/{channelId}/stream.m3u8"
+                    # Check output format setting
+                    output_format = getSettings().get("output format", "mpegts")
                     
-                    # Return M3U8 playlist that points to our HLS endpoint
-                    playlist_content = f"""#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-STREAM-INF:BANDWIDTH=5000000
-{hls_url}
-"""
-                    return Response(playlist_content, mimetype="application/vnd.apple.mpegurl")
-                else:
-                    logger.warning(f"[HLS REDIRECT] No available MAC found (all busy or at limit)")
-                    # Fall through to normal MAC retry logic
+                    if output_format == "hls" and ".m3u8" in redirect_link:
+                        # HLS format preferred and available
+                        logger.info(f"[DIRECT REDIRECT] ✓ MAC {try_mac} (score: {mac_stats.get(try_mac, {}).get('score', 25):.1f})")
+                        logger.info(f"[DIRECT REDIRECT] Redirecting to Portal HLS: {redirect_link}")
+                        return redirect(redirect_link)
+                    elif output_format == "hls" and ".m3u8" not in redirect_link:
+                        # HLS preferred but not available - fallback to MPEG-TS
+                        logger.info(f"[DIRECT REDIRECT] ✓ MAC {try_mac} (score: {mac_stats.get(try_mac, {}).get('score', 25):.1f})")
+                        logger.info(f"[DIRECT REDIRECT] HLS not available, using Portal MPEG-TS: {redirect_link}")
+                        return redirect(redirect_link)
+                    else:
+                        # MPEG-TS format (default)
+                        logger.info(f"[DIRECT REDIRECT] ✓ MAC {try_mac} (score: {mac_stats.get(try_mac, {}).get('score', 25):.1f})")
+                        logger.info(f"[DIRECT REDIRECT] Redirecting to Portal MPEG-TS: {redirect_link}")
+                        return redirect(redirect_link)
+                
+                # All MACs failed
+                logger.error(f"[DIRECT REDIRECT] All {len(available_macs)} MAC(s) failed for channel {channelId}")
+                return make_response("No working MAC available for redirect", 503)
             
             # Probiere MACs die den Channel haben - IMMER alle durchprobieren bis eine funktioniert
             mac_found = None
-            busy_macs = []  # Sammle busy MACs als Fallback
+            busy_macs = []  # Sammle busy MACs als Fallback (max 10)
+            MAX_BUSY_MACS = 10  # Limit to prevent unbounded growth
             
             # Test Streams enabled: Teste mit ffprobe
             if test_streams_enabled:
                 logger.info(f"'test streams' enabled - will test all MACs with ffprobe until one works")
                 
                 for try_mac in available_macs:
-                    # Check if MAC is free
-                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    # Check if MAC is free - thread-safe
+                    with occupied_lock:
+                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                     if streamsPerMac == 0 or count < streamsPerMac:
                         logger.info(f"Testing Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                         mac = try_mac
@@ -9477,14 +10279,22 @@ def stream_channel(portalId, channelId, xc_user=None):
                             is_busy = False
                             if skip_busy_macs:
                                 profile = stb.getProfile(url, mac, token, proxy)
-                                watchdog_timeout = profile.get('watchdog_timeout', 999999)
-                                
-                                if watchdog_timeout < 60:
-                                    logger.warning(f"[SKIP BUSY] MAC {mac} is very active (watchdog: {watchdog_timeout}s), saving as fallback")
-                                    busy_macs.append(try_mac)
+                                # Validate watchdog_timeout field exists
+                                if 'watchdog_timeout' not in profile:
+                                    logger.warning(f"[SKIP BUSY] MAC {mac} - watchdog_timeout missing, treating as busy")
+                                    if len(busy_macs) < MAX_BUSY_MACS:
+                                        busy_macs.append(try_mac)
                                     is_busy = True
                                 else:
-                                    logger.info(f"[SKIP BUSY] MAC {mac} looks available (watchdog: {watchdog_timeout}s)")
+                                    watchdog_timeout = profile['watchdog_timeout']
+                                    
+                                    if watchdog_timeout < 60:
+                                        logger.warning(f"[SKIP BUSY] MAC {mac} is very active (watchdog: {watchdog_timeout}s), saving as fallback")
+                                        if len(busy_macs) < MAX_BUSY_MACS:
+                                            busy_macs.append(try_mac)
+                                        is_busy = True
+                                    else:
+                                        logger.info(f"[SKIP BUSY] MAC {mac} looks available (watchdog: {watchdog_timeout}s)")
                             else:
                                 stb.getProfile(url, mac, token, proxy)
                             
@@ -9647,7 +10457,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                     logger.warning(f"[MAC RETRY] No available MACs worked, trying {len(busy_macs)} busy MAC(s) as fallback")
                     
                     for try_mac in busy_macs:
-                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                        with occupied_lock:
+                            count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                         if streamsPerMac == 0 or count < streamsPerMac:
                             logger.info(f"[MAC RETRY FALLBACK] Testing busy MAC {try_mac}")
                             mac = try_mac
@@ -9753,8 +10564,9 @@ def stream_channel(portalId, channelId, xc_user=None):
                 logger.info(f"'test streams' disabled - will try all MACs without ffprobe test")
                 
                 for try_mac in available_macs:
-                    # Check if MAC is free
-                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    # Check if MAC is free - thread-safe
+                    with occupied_lock:
+                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                     if streamsPerMac == 0 or count < streamsPerMac:
                         logger.info(f"Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                         freeMac = True
@@ -9764,11 +10576,18 @@ def stream_channel(portalId, channelId, xc_user=None):
                             # Optional: Check portal-side MAC load
                             if skip_busy_macs:
                                 profile = stb.getProfile(url, mac, token, proxy)
-                                watchdog_timeout = profile.get('watchdog_timeout', 999999)
+                                # Validate watchdog_timeout field exists
+                                if 'watchdog_timeout' not in profile:
+                                    logger.warning(f"[SKIP BUSY] MAC {mac} - watchdog_timeout missing, treating as busy")
+                                    if len(busy_macs) < MAX_BUSY_MACS:
+                                        busy_macs.append(try_mac)
+                                    continue
+                                watchdog_timeout = profile['watchdog_timeout']
                                 
                                 if watchdog_timeout < 60:
                                     logger.warning(f"[SKIP BUSY] MAC {mac} is very active (watchdog: {watchdog_timeout}s), saving as fallback")
-                                    busy_macs.append(try_mac)
+                                    if len(busy_macs) < MAX_BUSY_MACS:
+                                        busy_macs.append(try_mac)
                                     continue
                                 else:
                                     logger.info(f"[SKIP BUSY] MAC {mac} looks available (watchdog: {watchdog_timeout}s)")
@@ -9786,7 +10605,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                     logger.warning(f"[SKIP BUSY] No available MACs found, trying {len(busy_macs)} busy MAC(s) as fallback")
                     
                     for try_mac in busy_macs:
-                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                        with occupied_lock:
+                            count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                         if streamsPerMac == 0 or count < streamsPerMac:
                             logger.info(f"[SKIP BUSY FALLBACK] Using busy MAC {try_mac}")
                             mac = try_mac
@@ -9803,7 +10623,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                 other_macs = [m for m in macs if m not in available_macs]
                 
                 for try_mac in other_macs:
-                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                    with occupied_lock:
+                        count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                     if streamsPerMac == 0 or count < streamsPerMac:
                         logger.info(f"Trying other MAC: Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                         freeMac = True
@@ -9874,8 +10695,9 @@ def stream_channel(portalId, channelId, xc_user=None):
             # FALLBACK: Lade Channel-Daten vom Portal
             mac_found = None
             for try_mac in macs:
-                # Check if MAC is free
-                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                # Check if MAC is free - thread-safe
+                with occupied_lock:
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                 if streamsPerMac == 0 or count < streamsPerMac:
                     logger.info(f"Fallback (missing cache): Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                     freeMac = True
@@ -9935,8 +10757,9 @@ def stream_channel(portalId, channelId, xc_user=None):
             
             mac_found = None
             for try_mac in macs:
-                # Check if MAC is free
-                count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
+                # Check if MAC is free - thread-safe
+                with occupied_lock:
+                    count = sum(1 for i in occupied.get(portalId, []) if i["mac"] == try_mac)
                 if streamsPerMac == 0 or count < streamsPerMac:
                     logger.info(f"Fallback: Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                     freeMac = True
@@ -10074,11 +10897,11 @@ def stream_channel(portalId, channelId, xc_user=None):
             return Response(playlist_content, mimetype="application/vnd.apple.mpegurl")
         
         # MPEG-TS mode: Continue with FFmpeg Direct streaming
-        # Skip testStream() if we already tested with ffprobe in MAC RETRY or in redirect mode
+        # Skip testStream() if we already tested with ffprobe in MAC RETRY or in redirect/proxy mode
         stream_method = getSettings().get("stream method", "ffmpeg")
         skip_test = (getSettings().get("test streams", "true") == "false" or 
                      already_tested_with_ffprobe or 
-                     stream_method == "redirect")
+                     stream_method in ["redirect", "proxy"])
         
         if skip_test or testStream():
             if web:
@@ -10106,7 +10929,9 @@ def stream_channel(portalId, channelId, xc_user=None):
                 response.headers['Accept-Ranges'] = 'none'
                 return response
             else:
-                if getSettings().get("stream method", "ffmpeg") == "ffmpeg":
+                stream_method = getSettings().get("stream method", "ffmpeg")
+                
+                if stream_method == "ffmpeg":
                     user_agent = getSettings().get("user agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3")
                     ffmpegcmd = f"{ffmpeg_path} {getSettings()['ffmpeg command']}"
                     ffmpegcmd = ffmpegcmd.replace("<url>", link)
@@ -10136,11 +10961,16 @@ def stream_channel(portalId, channelId, xc_user=None):
                             last_mac, last_time = recent_redirects[redirect_key]
                             time_diff = now - last_time
                             
-                            if time_diff < 10:  # Within 10s = previous MAC failed
+                            if time_diff < 5:  # Within 5s = definitely failed
+                                logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} definitely failed")
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                                # Harder penalty for very quick return
+                                update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
+                            elif time_diff < 10:  # Within 10s = likely failed
                                 logger.info(f"[REDIRECT LEARN] User re-requested within {time_diff:.1f}s - MAC {last_mac} likely failed")
                                 update_mac_stats_on_redirect(portalId, channelId, last_mac, False)
                                 # Note: MAC already selected, can't change now
-                            elif time_diff > 60:  # After 60s = previous MAC succeeded
+                            elif time_diff > 30:  # After 30s = success
                                 logger.info(f"[REDIRECT LEARN] User still watching after {time_diff:.1f}s - MAC {last_mac} success")
                                 update_mac_stats_on_redirect(portalId, channelId, last_mac, True)
                         
@@ -10255,6 +11085,12 @@ def hls_stream(portalId, channelId, filename):
     
     # If file doesn't exist and this is a playlist/segment request, start the stream
     if not file_path and (filename.endswith('.m3u8') or filename.endswith('.ts') or filename.endswith('.m4s')):
+        # If stream already exists but file not found, it's probably an old segment that was deleted
+        # Don't restart the stream, just return 404
+        if stream_exists and not filename.endswith('.m3u8'):
+            logger.debug(f"[HLS] Segment {filename} not found for active stream {stream_key} (probably deleted)")
+            return make_response("Segment not found (already deleted)", 404)
+        
         # OPTIMIERT: DB-basiertes Streaming mit intelligentem MAC-Fallback
         cmd = None
         mac_used = None
@@ -10263,7 +11099,7 @@ def hls_stream(portalId, channelId, filename):
         hls_auto_retry = True  # Always enabled - probiert immer alle MACs durch
         hls_retry_timeout_str = getSettings().get("hls retry timeout", "3")
         hls_retry_timeout = int(hls_retry_timeout_str) if hls_retry_timeout_str and hls_retry_timeout_str != "false" else 3
-        hls_skip_busy = getSettings().get("hls skip busy macs", "false") == "true"
+        hls_skip_busy = getSettings().get("skip busy macs", "false") == "true"
         
         # 1. Versuche Channel aus DB zu laden
         try:
@@ -10282,89 +11118,9 @@ def hls_stream(portalId, channelId, filename):
                 cmd = row['stream_cmd']
                 available_macs_raw = row['available_macs'].split(',')
                 
-                # Parse MACs with scoring data
-                # Format: "MAC:limit:success_count:fail_count:last_success_ts"
+                # Parse MACs with scoring data and sort by score
                 import time
-                available_macs = []
-                mac_limits = {}
-                mac_stats = {}
-                
-                def calculate_mac_score(success_count, fail_count, last_success_ts):
-                    """Calculate MAC reliability score (0-100)"""
-                    current_time = int(time.time())
-                    
-                    # 1. Success Rate (0-50 points)
-                    total = success_count + fail_count
-                    if total > 0:
-                        success_rate = (success_count / total) * 50
-                    else:
-                        success_rate = 25  # Neutral for untested
-                    
-                    # 2. Recency (0-30 points)
-                    if last_success_ts > 0:
-                        age_hours = (current_time - last_success_ts) / 3600
-                        if age_hours < 1:
-                            recency = 30
-                        elif age_hours < 24:
-                            recency = 20
-                        elif age_hours < 168:  # 1 week
-                            recency = 10
-                        else:
-                            recency = 5
-                    else:
-                        recency = 0  # Never successful
-                    
-                    # 3. Reliability Bonus (0-20 points)
-                    if success_count >= 10:
-                        reliability = 20
-                    elif success_count >= 5:
-                        reliability = 10
-                    else:
-                        reliability = 0
-                    
-                    return success_rate + recency + reliability
-                
-                for mac_entry in available_macs_raw:
-                    parts = mac_entry.split('|')
-                    if len(parts) >= 5:  # MAC|limit|success|fail|last_ts
-                        # Format: MAC|limit|success|fail|last_ts
-                        mac = parts[0]
-                        available_macs.append(mac)
-                        mac_limits[mac] = int(parts[1])
-                        success_count = int(parts[2])
-                        fail_count = int(parts[3])
-                        last_ts = int(parts[4])
-                        score = calculate_mac_score(success_count, fail_count, last_ts)
-                        mac_stats[mac] = {
-                            'success': success_count,
-                            'fail': fail_count,
-                            'last_ts': last_ts,
-                            'score': score
-                        }
-                    elif len(parts) == 2:
-                        # Format: MAC:limit (old format)
-                        mac = parts[0]
-                        available_macs.append(mac)
-                        mac_limits[mac] = int(parts[1])
-                        mac_stats[mac] = {
-                            'success': 0,
-                            'fail': 0,
-                            'last_ts': 0,
-                            'score': 25
-                        }
-                    else:
-                        # Format: MAC (very old)
-                        available_macs.append(mac_entry)
-                        mac_limits[mac_entry] = 1
-                        mac_stats[mac_entry] = {
-                            'success': 0,
-                            'fail': 0,
-                            'last_ts': 0,
-                            'score': 25
-                        }
-                
-                # Sort MACs by score only (reliability beats capacity) - ALWAYS
-                available_macs.sort(key=lambda m: mac_stats.get(m, {}).get('score', 25), reverse=True)
+                available_macs, mac_limits, mac_stats = parse_and_sort_macs(','.join(available_macs_raw))
                 
                 logger.info(f"[HLS] Channel {channelId} found in DB with {len(available_macs)} MAC(s) (sorted by score):")
                 for m in available_macs:
@@ -10374,7 +11130,8 @@ def hls_stream(portalId, channelId, filename):
                 if hls_auto_retry:
                     logger.info(f"[HLS RETRY] Auto retry enabled, will test all {len(available_macs)} MACs")
                     
-                    busy_macs = []  # Sammle busy MACs als Fallback
+                    busy_macs = []  # Sammle busy MACs als Fallback (max 10)
+                    MAX_BUSY_MACS = 10  # Limit to prevent unbounded growth
                     
                     # Probiere alle MACs durch
                     for try_mac in available_macs:
@@ -10391,13 +11148,21 @@ def hls_stream(portalId, channelId, filename):
                             is_busy = False
                             if hls_skip_busy:
                                 profile = stb.getProfile(url, try_mac, token, proxy)
-                                watchdog = profile.get('watchdog_timeout', 999999)
-                                if watchdog < 60:
-                                    logger.warning(f"[HLS RETRY] MAC {try_mac} is busy (watchdog: {watchdog}s), saving as fallback")
-                                    busy_macs.append(try_mac)
+                                # Validate watchdog_timeout field exists
+                                if 'watchdog_timeout' not in profile:
+                                    logger.warning(f"[HLS RETRY] MAC {try_mac} - watchdog_timeout missing, treating as busy")
+                                    if len(busy_macs) < MAX_BUSY_MACS:
+                                        busy_macs.append(try_mac)
                                     is_busy = True
                                 else:
-                                    logger.info(f"[HLS RETRY] MAC {try_mac} looks available (watchdog: {watchdog}s)")
+                                    watchdog = profile['watchdog_timeout']
+                                    if watchdog < 60:
+                                        logger.warning(f"[HLS RETRY] MAC {try_mac} is busy (watchdog: {watchdog}s), saving as fallback")
+                                        if len(busy_macs) < MAX_BUSY_MACS:
+                                            busy_macs.append(try_mac)
+                                        is_busy = True
+                                    else:
+                                        logger.info(f"[HLS RETRY] MAC {try_mac} looks available (watchdog: {watchdog}s)")
                             else:
                                 stb.getProfile(url, try_mac, token, proxy)
                             
@@ -10717,7 +11482,11 @@ def hls_stream(portalId, channelId, filename):
                                 token = stb.getToken(url, try_mac, proxy)
                                 if token:
                                     profile = stb.getProfile(url, try_mac, token, proxy)
-                                    watchdog = profile.get('watchdog_timeout', 999999)
+                                    # Validate watchdog_timeout field exists
+                                    if 'watchdog_timeout' not in profile:
+                                        logger.debug(f"HLS: MAC {try_mac} - watchdog_timeout missing, skipping")
+                                        continue
+                                    watchdog = profile['watchdog_timeout']
                                     if watchdog >= 60:
                                         mac_used = try_mac
                                         logger.info(f"HLS: Using non-busy MAC {mac_used} (watchdog: {watchdog}s)")
@@ -10860,12 +11629,6 @@ def hls_stream(portalId, channelId, filename):
 def dashboard():
     return render_template("dashboard.html")
 
-@app.route("/vavoo_page")
-@authorise
-def vavoo_page():
-    """Vavoo IPTV Proxy page - embedded via iframe."""
-    return render_template("vavoo.html")
-
 @app.route("/streaming")
 @authorise
 def streaming():
@@ -10910,11 +11673,16 @@ def dashboard_stats():
         "status": "✅ Active" if stb.CLOUDSCRAPER_AVAILABLE else "❌ Not Available"
     }
     
+    # Get occupied stats thread-safe
+    with occupied_lock:
+        occupied_streams_count = len(occupied)
+        occupied_portals_count = len(occupied.keys())
+    
     memory_info = {
         "xmltv_file_mb": xmltv_file_mb,  # File size, not RAM
         "xmltv_in_ram": False,  # XMLTV no longer cached in RAM
-        "occupied_streams": len(occupied),
-        "occupied_portals": len(occupied.keys()),
+        "occupied_streams": occupied_streams_count,
+        "occupied_portals": occupied_portals_count,
         "hls_active_streams": len(hls_manager.streams) if hls_manager else 0,
     }
     
@@ -11074,6 +11842,7 @@ def lineup():
     return jsonify(cached_lineup)
 
 @app.route("/refresh_lineup", methods=["POST"])
+@limiter.limit("3 per minute")
 @authorise
 def refresh_lineup_endpoint():
     try:
@@ -11253,6 +12022,7 @@ def cache_vacuum():
         return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/api/logs/recent", methods=["GET"])
+@limiter.limit("100 per minute")  # Higher limit for log polling
 @authorise
 def get_recent_logs():
     """Get recent log entries for live log display."""
@@ -11311,6 +12081,26 @@ def get_recent_logs():
     except Exception as e:
         logger.error(f"Error reading recent logs: {e}")
         return jsonify([])
+
+
+@app.route("/api/logs/clear", methods=["POST"])
+@authorise
+def clear_logs():
+    """Clear the log file."""
+    try:
+        logFilePath = "/app/logs/MacReplayXC.log"
+        
+        # Truncate log file (keep file but clear content)
+        with open(logFilePath, 'w') as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Log file cleared by user\n")
+        
+        logger.info("Log file cleared by user via web UI")
+        return jsonify({"success": True, "message": "Log file cleared"})
+        
+    except Exception as e:
+        logger.error(f"Error clearing log file: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
 
 def start_refresh():
     threading.Thread(target=refresh_lineup, daemon=True).start()
@@ -11495,6 +12285,10 @@ if __name__ == "__main__":
     hls_manager.start_monitoring()
     logger.info(f"HLS Stream Manager initialized (max_streams={max_streams}, timeout={inactive_timeout}s)")
     
+    # Start periodic cleanup of recent_redirects dictionary
+    logger.info("Starting periodic memory cleanup for recent_redirects (every 30 minutes)")
+    cleanup_recent_redirects()
+    
     # Channel-Cache läuft unbegrenzt - nur manueller Refresh über Dashboard
     # Kein automatischer Cleanup - maximale Performance
     logger.info("Channel cache runs indefinitely - manual refresh only via Dashboard")
@@ -11504,8 +12298,16 @@ if __name__ == "__main__":
     schedule_log_cleanup()
     
     # Start automatic cleanup of occupied streams dictionary (memory leak prevention)
-    logger.info("Starting automatic cleanup of occupied streams (every 5 minutes)")
+    logger.info("Starting automatic cleanup of occupied streams (every 3 minutes)")
     cleanup_occupied_streams()
+    
+    # Start automatic cleanup of recent_redirects dictionary (memory leak prevention)
+    logger.info("Starting automatic cleanup of recent_redirects (every 30 minutes)")
+    cleanup_recent_redirects()
+    
+    # Start automatic token refresh for active streams (prevents token expiration)
+    logger.info("Starting automatic token refresh for active streams (every 50 minutes)")
+    refresh_tokens_for_active_streams()
     
     # Waitress Performance Configuration
     # Optimized for high-performance streaming and concurrent requests
@@ -11526,5 +12328,4 @@ if __name__ == "__main__":
         cleanup_interval=30,           # Cleanup idle connections every 30s
         asyncore_use_poll=True,        # Use poll() instead of select() (better performance)
         _quiet=True
-    ) 
-
+    )

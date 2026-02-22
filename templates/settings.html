@@ -38,9 +38,17 @@
                 <div class="text-muted">Configure streaming behavior and HLS options</div>
             </div>
             
-            <div class="row row-cards mb-4">
+            <!-- Show All Options Toggle -->
+            <div class="mb-3">
+                <label class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="showAllOptions">
+                    <span class="form-check-label">Show all options (including irrelevant ones)</span>
+                </label>
+            </div>
+            
+            <div class="row row-cards mb-4" id="streamingOptionsRow">
                 <!-- Output Format -->
-                <div class="col-lg-4">
+                <div class="col-lg-6" id="outputFormatCard">
                     <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">Output Format</h3>
@@ -57,17 +65,23 @@
                             
                             <div class="mb-0">
                                 <label class="form-label">Stream Method</label>
-                                <select class="form-select" name="stream method">
+                                <select class="form-select" name="stream method" id="streamMethod">
                                     <option value="ffmpeg" {{ 'selected' if settings['stream method'] == 'ffmpeg' }}>FFmpeg</option>
+                                    <option value="proxy" {{ 'selected' if settings['stream method'] == 'proxy' }}>Proxy</option>
                                     <option value="redirect" {{ 'selected' if settings['stream method'] == 'redirect' }}>Direct Redirect</option>
                                 </select>
+                                <div class="form-text">
+                                    <strong>FFmpeg:</strong> Remuxing, error correction, HLS generation (high CPU, most compatible)<br>
+                                    <strong>Proxy:</strong> Direct pass-through without FFmpeg (low CPU, tracks connections, no format conversion)<br>
+                                    <strong>Direct Redirect:</strong> Client connects directly to portal (no CPU, no connection tracking)
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- HLS Settings -->
-                <div class="col-lg-4" id="hlsSettings">
+                <div class="col-lg-6" id="hlsSettings">
                     <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">HLS Options</h3>
@@ -121,7 +135,7 @@
                             
                             <div class="mb-0">
                                 <label class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" name="hls skip busy macs" value="true" {{ 'checked' if settings.get('hls skip busy macs', 'false') == 'true' }}>
+                                    <input class="form-check-input" type="checkbox" name="skip busy macs" value="true" {{ 'checked' if settings.get('skip busy macs', 'false') == 'true' }}>
                                     <span class="form-check-label">Skip busy MACs</span>
                                 </label>
                                 <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
@@ -131,7 +145,7 @@
                 </div>
                 
                 <!-- MPEG-TS / FFmpeg Direct Settings -->
-                <div class="col-lg-4" id="mpegtsSettings">
+                <div class="col-lg-6" id="mpegtsSettings">
                     <div class="card h-100">
                         <div class="card-header">
                             <h3 class="card-title">FFmpeg Direct Options</h3>
@@ -165,63 +179,234 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Proxy Settings -->
+                <div class="col-lg-6" id="proxySettings">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h3 class="card-title">Proxy Mode Options</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Buffer Size</label>
+                                <select class="form-select" name="proxy buffer size">
+                                    <option value="8" {{ 'selected' if settings.get('proxy buffer size', '1024') == '8' }}>8 KB (Minimal)</option>
+                                    <option value="64" {{ 'selected' if settings.get('proxy buffer size', '1024') == '64' }}>64 KB (Low)</option>
+                                    <option value="256" {{ 'selected' if settings.get('proxy buffer size', '1024') == '256' }}>256 KB (Medium)</option>
+                                    <option value="1024" {{ 'selected' if settings.get('proxy buffer size', '1024') == '1024' }}>1 MB (Recommended)</option>
+                                    <option value="2048" {{ 'selected' if settings.get('proxy buffer size', '1024') == '2048' }}>2 MB (High)</option>
+                                    <option value="5120" {{ 'selected' if settings.get('proxy buffer size', '1024') == '5120' }}>5 MB (Very High)</option>
+                                    <option value="8192" {{ 'selected' if settings.get('proxy buffer size', '1024') == '8192' }}>8 MB (Ultra High)</option>
+                                    <option value="10240" {{ 'selected' if settings.get('proxy buffer size', '1024') == '10240' }}>10 MB (Maximum)</option>
+                                </select>
+                                <small class="form-hint">Chunk size for streaming (larger = better for video)</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Connect Timeout</label>
+                                <input type="number" class="form-control" name="proxy connect timeout" value="{{ settings.get('proxy connect timeout', '5') }}" min="1" max="30">
+                                <small class="form-hint">Seconds to wait for connection</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Read Timeout</label>
+                                <input type="number" class="form-control" name="proxy read timeout" value="{{ settings.get('proxy read timeout', '30') }}" min="5" max="300">
+                                <small class="form-hint">Seconds to wait for data (0 = infinite)</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="skip busy macs" value="true" {{ 'checked' if settings.get('skip busy macs', 'false') == 'true' }}>
+                                    <span class="form-check-label">Skip busy MACs</span>
+                                </label>
+                                <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
+                            </div>
+                            
+                            <div class="alert alert-info mb-0" role="alert">
+                                <strong>ℹ️ Proxy Mode:</strong> Direct pass-through without FFmpeg. Low CPU, tracks connections, no format conversion.
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <script>
-            // Toggle HLS vs MPEG-TS settings based on output format
-            function toggleOutputFormatSettings() {
-                const outputFormat = document.getElementById('outputFormat').value;
+            // Toggle settings based on stream method
+            function toggleStreamMethodSettings() {
+                const streamMethod = document.getElementById('streamMethod').value;
+                const showAll = document.getElementById('showAllOptions').checked;
+                const outputFormatCard = document.getElementById('outputFormatCard');
+                const outputFormatSelect = document.getElementById('outputFormat');
                 const hlsSettings = document.getElementById('hlsSettings');
                 const mpegtsSettings = document.getElementById('mpegtsSettings');
+                const proxySettings = document.getElementById('proxySettings');
                 
-                if (outputFormat === 'hls') {
-                    // Show both, but gray out MPEG-TS
-                    hlsSettings.style.display = 'block';
-                    mpegtsSettings.style.display = 'block';
+                // Reset all to visible and enabled first
+                [outputFormatCard, hlsSettings, mpegtsSettings, proxySettings].forEach(el => {
+                    if (el) {
+                        el.style.display = 'block';
+                        el.querySelectorAll('input, select').forEach(input => {
+                            input.disabled = false;
+                            input.readOnly = false;
+                            input.style.pointerEvents = 'auto';
+                        });
+                        el.style.opacity = '1';
+                    }
+                });
+                
+                // Adjust column widths based on visible cards
+                let visibleCards = [];
+                
+                if (streamMethod === 'proxy') {
+                    // Proxy mode: Only show Output Format (disabled) and Proxy settings
+                    visibleCards = [outputFormatCard, proxySettings];
                     
-                    // Enable HLS inputs (remove readonly and disabled)
-                    hlsSettings.querySelectorAll('input, select').forEach(el => {
-                        el.disabled = false;
-                        el.readOnly = false;
-                        el.style.pointerEvents = 'auto';
-                    });
-                    hlsSettings.style.opacity = '1';
+                    // Disable output format
+                    outputFormatSelect.disabled = true;
+                    outputFormatSelect.style.pointerEvents = 'none';
+                    outputFormatSelect.parentElement.style.opacity = '0.5';
                     
-                    // Gray out MPEG-TS inputs (readonly but keep values)
-                    mpegtsSettings.querySelectorAll('input, select').forEach(el => {
-                        el.readOnly = true;
-                        el.style.pointerEvents = 'none';
-                        // Don't disable - keep values for form submission
-                    });
-                    mpegtsSettings.style.opacity = '0.5';
+                    if (!showAll) {
+                        // Hide HLS and FFmpeg settings
+                        hlsSettings.style.display = 'none';
+                        mpegtsSettings.style.display = 'none';
+                    } else {
+                        // Show but disable HLS and FFmpeg settings
+                        visibleCards.push(hlsSettings, mpegtsSettings);
+                        hlsSettings.querySelectorAll('input, select').forEach(el => {
+                            el.disabled = true;
+                            el.style.pointerEvents = 'none';
+                        });
+                        hlsSettings.style.opacity = '0.5';
+                        
+                        mpegtsSettings.querySelectorAll('input, select').forEach(el => {
+                            el.disabled = true;
+                            el.style.pointerEvents = 'none';
+                        });
+                        mpegtsSettings.style.opacity = '0.5';
+                    }
+                    
+                } else if (streamMethod === 'redirect') {
+                    // Redirect mode: Only show Output Format (disabled)
+                    visibleCards = [outputFormatCard];
+                    
+                    // Disable output format
+                    outputFormatSelect.disabled = true;
+                    outputFormatSelect.style.pointerEvents = 'none';
+                    outputFormatSelect.parentElement.style.opacity = '0.5';
+                    
+                    if (!showAll) {
+                        // Hide all three settings cards
+                        hlsSettings.style.display = 'none';
+                        mpegtsSettings.style.display = 'none';
+                        proxySettings.style.display = 'none';
+                    } else {
+                        // Show but disable all three settings cards
+                        visibleCards.push(hlsSettings, mpegtsSettings, proxySettings);
+                        [hlsSettings, mpegtsSettings, proxySettings].forEach(card => {
+                            card.querySelectorAll('input, select').forEach(el => {
+                                el.disabled = true;
+                                el.style.pointerEvents = 'none';
+                            });
+                            card.style.opacity = '0.5';
+                        });
+                    }
+                    
                 } else {
-                    // Show both, but gray out HLS
-                    hlsSettings.style.display = 'block';
-                    mpegtsSettings.style.display = 'block';
+                    // FFmpeg mode: Show Output Format, HLS/FFmpeg based on format, hide Proxy
+                    const outputFormat = outputFormatSelect.value;
                     
-                    // Enable MPEG-TS inputs (remove readonly and disabled)
-                    mpegtsSettings.querySelectorAll('input, select').forEach(el => {
-                        el.disabled = false;
-                        el.readOnly = false;
-                        el.style.pointerEvents = 'auto';
-                    });
-                    mpegtsSettings.style.opacity = '1';
+                    outputFormatSelect.disabled = false;
+                    outputFormatSelect.style.pointerEvents = 'auto';
+                    outputFormatSelect.parentElement.style.opacity = '1';
                     
-                    // Gray out HLS inputs (readonly but keep values)
-                    hlsSettings.querySelectorAll('input, select').forEach(el => {
-                        el.readOnly = true;
-                        el.style.pointerEvents = 'none';
-                        // Don't disable - keep values for form submission
-                    });
-                    hlsSettings.style.opacity = '0.5';
+                    if (outputFormat === 'hls') {
+                        // HLS format: Show Output Format and HLS settings
+                        visibleCards = [outputFormatCard, hlsSettings];
+                        
+                        if (!showAll) {
+                            // Hide FFmpeg and Proxy
+                            mpegtsSettings.style.display = 'none';
+                            proxySettings.style.display = 'none';
+                        } else {
+                            // Show but disable FFmpeg and Proxy
+                            visibleCards.push(mpegtsSettings, proxySettings);
+                            mpegtsSettings.querySelectorAll('input, select').forEach(el => {
+                                el.disabled = true;
+                                el.style.pointerEvents = 'none';
+                            });
+                            mpegtsSettings.style.opacity = '0.5';
+                            
+                            proxySettings.querySelectorAll('input, select').forEach(el => {
+                                el.disabled = true;
+                                el.style.pointerEvents = 'none';
+                            });
+                            proxySettings.style.opacity = '0.5';
+                        }
+                    } else {
+                        // MPEG-TS format: Show Output Format and FFmpeg settings
+                        visibleCards = [outputFormatCard, mpegtsSettings];
+                        
+                        if (!showAll) {
+                            // Hide HLS and Proxy
+                            hlsSettings.style.display = 'none';
+                            proxySettings.style.display = 'none';
+                        } else {
+                            // Show but disable HLS and Proxy
+                            visibleCards.push(hlsSettings, proxySettings);
+                            hlsSettings.querySelectorAll('input, select').forEach(el => {
+                                el.disabled = true;
+                                el.style.pointerEvents = 'none';
+                            });
+                            hlsSettings.style.opacity = '0.5';
+                            
+                            proxySettings.querySelectorAll('input, select').forEach(el => {
+                                el.disabled = true;
+                                el.style.pointerEvents = 'none';
+                            });
+                            proxySettings.style.opacity = '0.5';
+                        }
+                    }
                 }
+                
+                // Adjust column widths based on number of visible cards
+                const visibleCount = visibleCards.filter(card => card.style.display !== 'none').length;
+                let colClass = 'col-lg-6'; // Default 2 columns
+                
+                if (visibleCount === 1) {
+                    colClass = 'col-lg-12'; // Full width
+                } else if (visibleCount === 2) {
+                    colClass = 'col-lg-6'; // Half width
+                } else if (visibleCount === 3) {
+                    colClass = 'col-lg-4'; // Third width
+                } else {
+                    colClass = 'col-lg-3'; // Quarter width (4 cards)
+                }
+                
+                // Apply column classes
+                [outputFormatCard, hlsSettings, mpegtsSettings, proxySettings].forEach(card => {
+                    if (card) {
+                        // Remove all col-lg-* classes
+                        card.className = card.className.replace(/col-lg-\d+/g, '');
+                        // Add new class
+                        card.className += ' ' + colClass;
+                    }
+                });
             }
             
             // Run on page load
-            document.addEventListener('DOMContentLoaded', toggleOutputFormatSettings);
+            document.addEventListener('DOMContentLoaded', function() {
+                toggleStreamMethodSettings();
+            });
+            
+            // Run when stream method changes
+            document.getElementById('streamMethod').addEventListener('change', toggleStreamMethodSettings);
             
             // Run when output format changes
-            document.getElementById('outputFormat').addEventListener('change', toggleOutputFormatSettings);
+            document.getElementById('outputFormat').addEventListener('change', toggleStreamMethodSettings);
+            
+            // Run when show all options changes
+            document.getElementById('showAllOptions').addEventListener('change', toggleStreamMethodSettings);
             </script>
             
             <div class="row row-cards mb-4">

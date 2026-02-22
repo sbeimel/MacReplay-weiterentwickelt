@@ -975,7 +975,7 @@ let liveLogSocket = null;
 let autoScroll = true;
 let logBuffer = [];
 const maxLogLines = 500;
-let refreshInterval = 2000; // Default 2 seconds
+let refreshInterval = 5000; // Default 5 seconds (reduced load)
 let refreshTimer = null;
 let countdownTimer = null;
 let countdownSeconds = 0;
@@ -1172,15 +1172,35 @@ function addLogEntry(logEntry) {
 }
 
 function clearLog() {
-    logBuffer = [];
-    logCache.clear();
-    document.getElementById('liveLogContainer').innerHTML = '<div class="p-3"><div class="text-muted"><i class="ti ti-trash me-2"></i>Log cleared</div></div>';
-    
-    // Force refresh after clear
-    setTimeout(() => {
-        isFirstLoad = true;
-        pollLogs();
-    }, 500);
+    // Call backend to clear log file
+    fetch('/api/logs/clear', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear frontend buffer
+            logBuffer = [];
+            logCache.clear();
+            document.getElementById('liveLogContainer').innerHTML = '<div class="p-3"><div class="text-muted"><i class="ti ti-trash me-2"></i>Log cleared</div></div>';
+            
+            // Refresh after a moment
+            setTimeout(() => {
+                isFirstLoad = true;
+                pollLogs();
+            }, 500);
+        } else {
+            console.error('Failed to clear log:', data.message);
+            alert('Failed to clear log: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error clearing log:', error);
+        alert('Error clearing log: ' + error);
+    });
 }
 
 function toggleAutoScroll() {

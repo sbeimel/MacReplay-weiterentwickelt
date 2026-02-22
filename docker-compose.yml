@@ -3,11 +3,10 @@
 services:
   macreplayxc:
     build: .
-    image: macreplayxc:3.0.0
+    image: macreplayxc:4.2.0
     container_name: MacReplayXC
     ports:
       - "8001:8001"
-      - "4323:4323"  # Vavoo port
     dns:
       - 1.1.1.1
       - 1.0.0.1

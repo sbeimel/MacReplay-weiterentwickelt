@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for data persistence
-RUN mkdir -p /app/data /app/logs /app/data/vavoo_playlists
+RUN mkdir -p /app/data /app/logs
 
 # Copy Python dependencies file
 COPY requirements.txt .
@@ -40,9 +40,6 @@ COPY stb.py .
 COPY utils.py .
 COPY templates/ templates/
 COPY static/ static/
-
-# Copy Vavoo files
-COPY vavoo/ vavoo/
 
 # Copy startup script
 COPY start.sh .
@@ -71,15 +68,14 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=2
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Expose the application ports
+# Expose the application port
 EXPOSE 8001
-EXPOSE 4323
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/ || exit 1
 
-# Run both applications via startup script
+# Run application via startup script
 # Option 1: Use bash script (fixed line endings)
 # CMD ["./start.sh"]
 # Option 2: Use Python entrypoint (no line ending issues, more reliable)

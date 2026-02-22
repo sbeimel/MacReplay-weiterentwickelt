@@ -14,13 +14,13 @@
 <div class="page-body">
     <div class="container-fluid" style="max-width: 1400px;">
         <div class="card mb-3">
-            <div class="card-header"><h3 class="card-title"><i class="ti ti-star me-2"></i>Übersicht v3.0.0</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-star me-2"></i>Übersicht v4.0.0</h3></div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-3 text-center"><div class="h1 text-primary mb-1">10</div><div class="text-muted">Neue Features</div></div>
+                    <div class="col-md-3 text-center"><div class="h1 text-primary mb-1">15+</div><div class="text-muted">Neue Features</div></div>
                     <div class="col-md-3 text-center"><div class="h1 text-success mb-1">30x</div><div class="text-muted">Schnelleres Streaming</div></div>
                     <div class="col-md-3 text-center"><div class="h1 text-info mb-1">Python 3.13</div><div class="text-muted">+15% Performance</div></div>
-                    <div class="col-md-3 text-center"><div class="h1 text-warning mb-1">v3.1.0</div><div class="text-muted">DB-Optimierung</div></div>
+                    <div class="col-md-3 text-center"><div class="h1 text-warning mb-1">v4.0.0</div><div class="text-muted">Intelligentes Scoring</div></div>
                 </div>
             </div>
         </div>
@@ -123,8 +123,17 @@
                                 <td><strong>Stream Method</strong></td>
                                 <td>Wie Streams weitergeleitet werden</td>
                                 <td>
-                                    <strong>ffmpeg:</strong> Re-encode (kompatibel)<br>
-                                    <strong>redirect:</strong> Direkt (schneller)
+                                    <strong>ffmpeg:</strong> Remuxing mit FFmpeg (hohe CPU, Fehlerkorrektur, HLS-Generierung)<br>
+                                    <strong>proxy:</strong> Direktes Durchleiten ohne FFmpeg (niedrige CPU, Connection Tracking, MAC Retry)<br>
+                                    <strong>redirect:</strong> Client verbindet direkt zum Portal (keine CPU, kein Tracking)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Output Format</strong></td>
+                                <td>Stream-Format für Client</td>
+                                <td>
+                                    <strong>mpegts:</strong> MPEG-TS (Standard, kompatibel)<br>
+                                    <strong>hls:</strong> HLS Segmente (nur mit FFmpeg, für Web-Player)
                                 </td>
                             </tr>
                             <tr>
@@ -135,7 +144,7 @@
                             <tr>
                                 <td><strong>FFmpeg Timeout</strong></td>
                                 <td>Timeout in Sekunden</td>
-                                <td>Standard: 10s</td>
+                                <td>Standard: 6s</td>
                             </tr>
                             <tr>
                                 <td><strong>Test Streams</strong></td>
@@ -143,8 +152,23 @@
                                 <td>true = sicherer<br>false = schneller</td>
                             </tr>
                             <tr>
+                                <td><strong>Skip Busy MACs</strong></td>
+                                <td>MACs mit kürzlicher Aktivität überspringen</td>
+                                <td>true = weniger Konflikte<br>false = alle MACs nutzen</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Proxy Buffer Size</strong></td>
+                                <td>Buffer-Größe für Proxy Mode</td>
+                                <td>1 MB (Standard), 2 MB, 4 MB, 8 MB, 10 MB</td>
+                            </tr>
+                            <tr>
                                 <td><strong>MAC Retry</strong></td>
                                 <td>Automatisches Durchprobieren aller MACs</td>
+                                <td><span class="badge bg-success">Immer aktiv</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>MAC Scoring</strong></td>
+                                <td>Intelligente MAC-Bewertung (0-110+ Punkte)</td>
                                 <td><span class="badge bg-success">Immer aktiv</span></td>
                             </tr>
                         </tbody>
@@ -244,9 +268,190 @@
 
         <!-- New Features -->
         <div class="card mb-3">
-            <div class="card-header"><h3 class="card-title"><i class="ti ti-sparkles me-2"></i>Neue Features v3.0.0</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-sparkles me-2"></i>Neue Features v4.0.0</h3></div>
             <div class="card-body">
                 
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">NEW</span>Intelligentes MAC Scoring System</h5>
+                    <p><strong>Selbstlernendes System bewertet jede MAC mit 0-110+ Punkten:</strong></p>
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-chart-line icon text-success mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Success Rate (0-45)</h6>
+                                    <small class="text-muted">Mit Failure Rate Acceleration:<br>
+                                    <strong>Bonus:</strong> <5% Fehler (+0 bis +5)<br>
+                                    <strong>Penalty:</strong> >15% Fehler (-0 bis -14)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-clock icon text-info mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Recency (0-40)</h6>
+                                    <small class="text-muted">"Funktioniert jetzt" wichtiger:<br>
+                                    <1h: 40 | <24h: 30 | <1w: 15</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-award icon text-warning mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Reliability (0-20)</h6>
+                                    <small class="text-muted">Bewährte MACs:<br>
+                                    ≥10 Erfolge: 20 | ≥5: 10</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-success mb-3">
+                        <h6 class="alert-heading"><i class="ti ti-sparkles me-2"></i>Highlights</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <ul class="mb-0">
+                                    <li><strong>Perfekte MACs:</strong> Score >100 möglich!</li>
+                                    <li><strong>Soft Start:</strong> Neue MACs starten bei 15 (nicht 0)</li>
+                                    <li><strong>Immer aktiv:</strong> Unabhängig von Settings</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <ul class="mb-0">
+                                    <li><strong>WebUI Anzeige:</strong> Farb-kodierte Badges</li>
+                                    <li><strong>Auto-Sortierung:</strong> Beste MACs zuerst</li>
+                                    <li><strong>Selbstlernend:</strong> Keine Konfiguration nötig</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Score-Bereich</th>
+                                    <th>Bewertung</th>
+                                    <th>Beispiel</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="table-success">
+                                    <td><strong>105-110</strong></td>
+                                    <td>🌟 Perfekt</td>
+                                    <td>100 Erfolge, 0 Fehler, vor 1h</td>
+                                </tr>
+                                <tr class="table-info">
+                                    <td><strong>95-105</strong></td>
+                                    <td>✅ Sehr gut</td>
+                                    <td>98 Erfolge, 2 Fehler, vor 1h</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>85-95</strong></td>
+                                    <td>👍 Gut</td>
+                                    <td>90 Erfolge, 10 Fehler, vor 1h</td>
+                                </tr>
+                                <tr class="table-warning">
+                                    <td><strong>75-85</strong></td>
+                                    <td>⚠️ Mäßig</td>
+                                    <td>80 Erfolge, 20 Fehler, vor 1h</td>
+                                </tr>
+                                <tr class="table-danger">
+                                    <td><strong><75</strong></td>
+                                    <td>❌ Schlecht</td>
+                                    <td>50 Erfolge, 50 Fehler</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-info mt-2 mb-0">
+                        <strong>Anzeige:</strong> Portals → Edit Portal → Current MACs → Spalte "Score"<br>
+                        <strong>Dokumentation:</strong> <code>docs/MAC_SCORING_SYSTEM.md</code>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">NEW</span>Proxy Mode - Direktes Streaming</h5>
+                    <p><strong>Streams ohne FFmpeg durchleiten - minimale CPU, volle Features:</strong></p>
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-cpu icon text-success mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Minimale CPU</h6>
+                                    <small class="text-muted">Kein FFmpeg Processing</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-refresh icon text-info mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">MAC Retry</h6>
+                                    <small class="text-muted">HTTP Status Check</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-activity icon text-warning mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Connection Tracking</h6>
+                                    <small class="text-muted">Playback Limits</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <i class="ti ti-settings icon text-primary mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Konfigurierbar</h6>
+                                    <small class="text-muted">Buffer Size, Timeouts</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-success mb-0">
+                        <strong>Einstellung:</strong> Settings → Stream Method → Proxy<br>
+                        <strong>Empfohlen für:</strong> Stabile MPEG-TS Streams, CPU-Sparen, 1-5 Clients pro Channel<br>
+                        <strong>Dokumentation:</strong> <code>docs/STREAM_METHODS.md</code>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h5><span class="badge bg-primary me-2">NEW</span>Dynamic Settings UI</h5>
+                    <p><strong>Intelligente Anzeige relevanter Einstellungen:</strong></p>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="border border-success rounded p-2">
+                                <strong class="text-success">✅ Automatisch:</strong><br>
+                                <small>Nur relevante Settings für gewählte Stream Method werden angezeigt</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border border-info rounded p-2">
+                                <strong class="text-info">📋 Show All:</strong><br>
+                                <small>Checkbox zeigt alle Options (irrelevante ausgegraut)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-2 mb-0">
+                        <strong>Beispiel:</strong> Bei Proxy Mode werden nur Output Format (disabled) + Proxy Settings angezeigt
+                    </div>
+                </div>
+
+                <hr>
+
                 <div class="mb-4">
                     <h5><span class="badge bg-primary me-2">1</span>Advanced Channel Cache System</h5>
                     <p><strong>4 Cache-Modi für optimale Performance:</strong></p>

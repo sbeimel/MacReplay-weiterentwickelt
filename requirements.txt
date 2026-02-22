@@ -1,14 +1,15 @@
 # ============================================================================
 # MacReplayXC - Production Requirements
 # Python 3.9+ Compatible
-# Last Updated: 2026-02-20
-# Version: 4.0.0
+# Last Updated: 2026-02-21
+# Version: 4.2.0
 # ============================================================================
 
 # ============================================================================
 # CORE WEB FRAMEWORK
 # ============================================================================
 Flask==3.1.2                    # Web framework (latest stable)
+Flask-Limiter==3.8.0            # Rate limiting (NEW in v4.2.0)
 Werkzeug==3.1.5                 # WSGI utility library (latest stable)
 waitress==3.0.2                 # Production WSGI server (latest stable)
 Jinja2>=3.1.6                   # Template engine (Flask dependency)
