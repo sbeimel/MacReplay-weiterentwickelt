@@ -7125,10 +7125,7 @@ def refresh_xmltv():
             macs = list(portals[portal]["macs"].keys())
             proxy = portals[portal]["proxy"]
 
-            epg_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s), {len(portal_db_channels)} enabled channels"
-
-            # Fetch channels and EPG - try MACs until all enabled channels have EPG
-            all_channels_map = {}  # channelId -> channel data
+            # Fetch EPG only (channels already in database) - try MACs until all enabled channels have EPG
             merged_epg = {}  # channelId -> [programmes]
             
             # Get list of enabled channel IDs that need EPG
@@ -7145,19 +7142,10 @@ def refresh_xmltv():
                     
                     stb.getProfile(url, mac, token, proxy)
                     
-                    epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac}"
-                    mac_channels = stb.getAllChannels(url, mac, token, proxy)
-                    
+                    # OPTIMIZATION: Skip getAllChannels - we already have channels in database
+                    # Only fetch EPG data
                     epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac}"
                     mac_epg = stb.getEpg(url, mac, token, 24, proxy)
-                    
-                    # Merge channels (only add new ones)
-                    if mac_channels:
-                        for ch in mac_channels:
-                            ch_id = str(ch.get("id"))
-                            if ch_id not in all_channels_map:
-                                all_channels_map[ch_id] = ch
-                        logger.info(f"MAC {mac}: Got {len(mac_channels)} channels (total: {len(all_channels_map)})")
                     
                     # Merge EPG (only add missing channels or better data)
                     if mac_epg:
@@ -7184,13 +7172,13 @@ def refresh_xmltv():
                         logger.info(f"Successfully got EPG for all enabled channels from {mac_index} MAC(s)")
                         break
                     
-                    # If we have channels but still missing EPG, try next MAC
-                    if all_channels_map and enabled_with_epg < len(enabled_channel_ids):
+                    # If still missing EPG, try next MAC
+                    if enabled_with_epg < len(enabled_channel_ids):
                         logger.info(f"Still missing EPG for {len(enabled_channel_ids) - enabled_with_epg} channels, trying next MAC")
                         continue
                         
                 except Exception as e:
-                    logger.error(f"Error fetching data for MAC {mac}: {e}")
+                    logger.error(f"Error fetching EPG for MAC {mac}: {e}")
                     epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} failed, trying next"
                     continue
             
@@ -7201,25 +7189,12 @@ def refresh_xmltv():
             else:
                 logger.info(f"Portal {portal_name}: EPG complete - all {enabled_with_epg} enabled channels have EPG")
             
-            logger.info(f"Portal {portal_name}: Total {len(all_channels_map)} channels, EPG for {len(merged_epg)} channels")
+            logger.info(f"Portal {portal_name}: EPG for {len(merged_epg)} channels")
             epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(portal_db_channels)} enabled channels..."
 
-            if all_channels_map:
-                    # Get genres for this portal
-                    genres_dict = {}
-                    try:
-                        for mac in macs:
-                            token = stb.getToken(url, mac, proxy)
-                            if token:
-                                genres = stb.getGenres(url, mac, token, proxy)
-                                if genres:
-                                    for genre in genres:
-                                        genre_id = str(genre.get("id"))
-                                        genre_name = str(genre.get("title", "Unknown"))
-                                        genres_dict[genre_id] = genre_name
-                                    break
-                    except Exception as e:
-                        logger.error(f"Error fetching genres: {e}")
+            if merged_epg:
+                    # OPTIMIZATION: Skip genre fetching - genres already in database
+                    # No need to fetch genres again, we have them in db_channel_data
                     
                     # IMPROVEMENT #4: Only include channels that are in database (enabled)
                     processed_channels = 0

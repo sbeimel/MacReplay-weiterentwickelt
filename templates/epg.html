@@ -901,6 +901,14 @@
         epgProgressInterval = setInterval(pollEPGProgress, 1000);
         pollEPGProgress(); // Call immediately
     }
+    
+    // Cleanup interval when page unloads (but progress continues on server)
+    window.addEventListener('beforeunload', function() {
+        if (epgProgressInterval) {
+            clearInterval(epgProgressInterval);
+            epgProgressInterval = null;
+        }
+    });
 
     function pollEPGProgress() {
         fetch('/epg/refresh/progress', { credentials: 'same-origin' })
