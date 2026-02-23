@@ -478,14 +478,21 @@ let streamsRefreshInterval;
 
 function refreshStreams() {
     fetch('/streaming')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             displayStreams(data);
         })
         .catch(error => {
             console.error('Error fetching streams:', error);
             document.getElementById('streamsContainer').innerHTML = 
-                '<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading stream data</div>';
+                '<div class="alert alert-danger"><i class="ti ti-alert-circle me-2"></i>Error loading stream data: ' + error.message + '</div>';
+            // Set stream count to 0 on error
+            document.getElementById('activeStreamsCount').textContent = '0';
         });
 }
 
@@ -905,7 +912,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function loadDashboardStats() {
     fetch('/dashboard/stats')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             // Update total channels
             document.getElementById('totalChannelsCount').textContent = data.total_channels || '0';
@@ -939,20 +951,37 @@ function loadDashboardStats() {
         })
         .catch(error => {
             console.error('Error loading dashboard stats:', error);
+            // Set error state for UI elements
+            document.getElementById('totalChannelsCount').textContent = 'Error';
+            document.getElementById('lastUpdatedShort').textContent = 'Error';
+            document.getElementById('serverUptime').textContent = 'Error';
+            document.getElementById('cloudscraperStatus').innerHTML = '<span class="badge bg-danger">Error</span>';
         });
     
     // Load database statistics
     fetch('/cache/stats')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success && data.stats) {
                 const stats = data.stats;
                 document.getElementById('cacheMode').textContent = stats.mode || 'db-direct';
                 document.getElementById('cachedChannels').textContent = stats.cached_channels || '0';
+            } else {
+                // Handle unsuccessful response
+                document.getElementById('cacheMode').textContent = 'Error';
+                document.getElementById('cachedChannels').textContent = 'Error';
             }
         })
         .catch(error => {
             console.error('Error loading database stats:', error);
+            // Set error state for UI elements
+            document.getElementById('cacheMode').textContent = 'Error';
+            document.getElementById('cachedChannels').textContent = 'Error';
         });
 }
 

@@ -7218,6 +7218,42 @@ def refresh_xmltv():
                 logger.info(f"Portal {portal_name}: EPG complete - all {enabled_with_epg} enabled channels have EPG")
             
             logger.info(f"Portal {portal_name}: EPG for {len(merged_epg)} channels")
+            
+            # UPDATE DATABASE: Set custom_epg_id for channels with EPG data
+            # This is needed for EPG statistics to work correctly
+            if merged_epg:
+                try:
+                    conn_update = get_db_connection()
+                    cursor_update = conn_update.cursor()
+                    
+                    # Update custom_epg_id for channels that have EPG
+                    for channelId in merged_epg.keys():
+                        if channelId in portal_db_channels:
+                            # Use existing custom_epg_id or channel number as EPG ID
+                            db_data = portal_db_channels[channelId]
+                            epg_id = db_data['custom_epg_id'] or db_data['number'] or "0"
+                            
+                            cursor_update.execute('''
+                                UPDATE channels 
+                                SET custom_epg_id = ? 
+                                WHERE portal = ? AND channel_id = ?
+                            ''', (epg_id, portal, channelId))
+                    
+                    # Clear custom_epg_id for channels that DON'T have EPG (for accurate statistics)
+                    channels_without_epg = set(portal_db_channels.keys()) - set(merged_epg.keys())
+                    for channelId in channels_without_epg:
+                        cursor_update.execute('''
+                            UPDATE channels 
+                            SET custom_epg_id = NULL 
+                            WHERE portal = ? AND channel_id = ?
+                        ''', (portal, channelId))
+                    
+                    conn_update.commit()
+                    conn_update.close()
+                    logger.debug(f"Updated custom_epg_id for {len(merged_epg)} channels (cleared {len(channels_without_epg)} without EPG)")
+                except Exception as e:
+                    logger.error(f"Error updating custom_epg_id in database: {e}")
+            
             epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(portal_db_channels)} enabled channels..."
 
             if merged_epg:
@@ -7336,18 +7372,9 @@ def refresh_xmltv():
                                                 logger.debug(f"Used fallback EPG for {channelName}")
                                 
                                 if not fallback_used:
-                                    # Create dummy EPG
+                                    # No EPG available - skip dummy EPG (channel will have no programmes)
                                     epg_stats["dummy_epg_count"] += 1
-                                    start_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-                                    stop_time = start_time + timedelta(hours=24)
-                                    start = start_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                    stop = stop_time.strftime("%Y%m%d%H%M%S") + " +0000"
-                                    programmeEle = ET.SubElement(
-                                        channels_xml, "programme", start=start, stop=stop, channel=epgId
-                                    )
-                                    ET.SubElement(programmeEle, "title").text = channelName
-                                    ET.SubElement(programmeEle, "desc").text = channelName
-                                    programme_count += 1
+                                    # Don't create dummy EPG - just count it for statistics
                             else:
                                 # Portal EPG available
                                 epg_stats["portal_epg_count"] += 1
@@ -7425,7 +7452,7 @@ def refresh_xmltv():
     logger.info(f"  Total channels: {epg_stats['total_channels']}")
     logger.info(f"  Portal EPG: {epg_stats['portal_epg_count']} channels")
     logger.info(f"  Fallback EPG: {epg_stats['fallback_epg_count']} channels")
-    logger.info(f"  Dummy EPG: {epg_stats['dummy_epg_count']} channels")
+    logger.info(f"  No EPG: {epg_stats['dummy_epg_count']} channels (skipped)")
 
     epg_refresh_progress["current_step"] = "Generating XMLTV file..."
     # Generate XML string without minidom (much more memory efficient)
@@ -11834,7 +11861,8 @@ def dashboard_stats():
     
     # Get occupied stats thread-safe
     with occupied_lock:
-        occupied_streams_count = len(occupied)
+        # Count total streams across all portals
+        occupied_streams_count = sum(len(streams) for streams in occupied.values()) if occupied else 0
         occupied_portals_count = len(occupied.keys())
     
     memory_info = {
