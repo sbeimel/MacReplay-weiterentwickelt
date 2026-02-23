@@ -334,9 +334,9 @@ def getToken(url, mac, proxy=None):
                         logger.info(f"Successfully got token for MAC {mac} using endpoint: {full_url}")
                         return token
             elif response.status_code == 403:
-                logger.debug(f"403 Forbidden on endpoint {endpoint} - trying MAG254/MAG420 headers and cookies")
+                logger.debug(f"403 Forbidden on endpoint {endpoint} - trying MAG254/MAG420 headers and POST method")
                 
-                # Try with MAG254 headers
+                # Try with MAG254 headers (GET)
                 headers_mag254 = headers.copy()
                 headers_mag254["User-Agent"] = "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2712 Safari/533.3"
                 headers_mag254["X-User-Agent"] = "Model: MAG254; Link: WiFi"
@@ -357,7 +357,7 @@ def getToken(url, mac, proxy=None):
                                 logger.info(f"Successfully got token for MAC {mac} using endpoint: {full_url} (MAG254 fallback)")
                                 return token
                             
-                    # Start MAG 420 Fallback
+                    # Try MAG420 headers (GET)
                     if response.status_code == 403:
                          headers_mag420 = headers.copy()
                          headers_mag420["User-Agent"] = "Mozilla/5.0 (Linux; Android 7.0; MAG420) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36"
@@ -376,6 +376,24 @@ def getToken(url, mac, proxy=None):
                                 token = data["js"]["token"]
                                 if token:
                                     logger.info(f"Successfully got token for MAC {mac} using endpoint: {full_url} (MAG420 fallback)")
+                                    return token
+                    
+                    # Try POST method as last resort
+                    if response.status_code == 403:
+                        logger.debug(f"Trying POST method for endpoint {endpoint}")
+                        response = session.post(
+                            full_url,
+                            cookies=cookies,
+                            headers=headers,
+                            proxies=request_proxies,
+                            timeout=20,
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            if "js" in data and "token" in data["js"]:
+                                token = data["js"]["token"]
+                                if token:
+                                    logger.info(f"Successfully got token for MAC {mac} using endpoint: {full_url} (POST method)")
                                     return token
 
                 except:
