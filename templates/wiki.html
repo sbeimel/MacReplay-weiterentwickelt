@@ -176,6 +176,9 @@
                 </div>
 
                 <h5 class="mb-3">📅 EPG (Electronic Program Guide)</h5>
+                <div class="alert alert-info mb-3">
+                    <strong>EPG Auto-Refresh mit persistentem Zeitstempel!</strong> Der Zeitpunkt des letzten EPG-Refresh wird gespeichert. Nach Server-Neustarts wird nur die verbleibende Zeit bis zum nächsten Refresh gewartet.
+                </div>
                 <div class="table-responsive mb-4">
                     <table class="table table-sm table-bordered">
                         <thead>
@@ -197,15 +200,47 @@
                             <tr>
                                 <td><strong>EPG Refresh Interval Days</strong></td>
                                 <td>Wie oft EPG aktualisieren</td>
-                                <td>Standard: 1 Tag</td>
+                                <td>Standard: 1 Tag<br><span class="badge bg-info">Persistent über Neustarts</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>EPG Fallback Enabled</strong></td>
+                                <td>Fallback-EPG für Channels ohne Portal-EPG</td>
+                                <td><span class="badge bg-success">Empfohlen: true</span></td>
                             </tr>
                             <tr>
                                 <td><strong>EPG Fallback Countries</strong></td>
                                 <td>Fallback-EPG Länder (Komma-getrennt)</td>
-                                <td>Beispiel: DE,AT,CH</td>
+                                <td>Beispiel: de,at,ch</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div class="alert alert-warning mb-4">
+                    <h5><i class="ti ti-info-circle me-2"></i>EPG Coverage verstehen</h5>
+                    <p class="mb-2"><strong>Wenn EPG incomplete angezeigt wird:</strong></p>
+                    <ul class="mb-2">
+                        <li><strong>Alle MACs geprüft:</strong> Das Portal liefert einfach kein EPG für diese Channels</li>
+                        <li><strong>Lösung 1:</strong> Fallback-EPG aktivieren (empfohlen für DE/AT/CH Channels)</li>
+                        <li><strong>Lösung 2:</strong> Akzeptieren - Channels funktionieren trotzdem, nur ohne EPG</li>
+                    </ul>
+                    <p class="mb-2"><strong>Variant Deduplication (automatisch):</strong></p>
+                    <ul class="mb-0">
+                        <li>Channels mit ähnlichen Namen teilen sich EPG: <code>RTL HD</code> und <code>RTL SD</code> → gleicher EPG</li>
+                        <li><strong>Erkannte Varianten:</strong> HD, HD+, FHD, QHD, UHD, 4K, 8K, RAW, HEVC, ULTRA, SD</li>
+                        <li><strong>Unicode-Varianten:</strong> ᵘˡᵗʳᵃ, ʰᵉᵛᶜ, ᴴᴰ, ᶠʰᵈ, ʳᵃʷ, ᵁᴴᴰ, ᴴᴱⱽᶜ, 4ᴷ, 4ᵏ</li>
+                        <li>Beispiel: <code>Sat.1</code>, <code>Sat.1 HD</code>, <code>Sat.1 FHD</code>, <code>Sat.1 ᴴᴰ</code> → alle nutzen EPG von <code>Sat.1</code></li>
+                    </ul>
+                </div>
+
+                <div class="alert alert-success mb-4">
+                    <h5><i class="ti ti-check me-2"></i>EPG Optimierungen (v4.2.0)</h5>
+                    <ul class="mb-0">
+                        <li><strong>Kein Dummy-EPG mehr:</strong> Nur echte EPG-Daten in XMLTV (kleinere Datei)</li>
+                        <li><strong>Intelligente MAC-Sortierung:</strong> MAC mit meisten Channels wird zuerst verwendet</li>
+                        <li><strong>Persistent Timestamp:</strong> Auto-Refresh überlebt Server-Neustarts</li>
+                        <li><strong>Statistiken in DB:</strong> EPG-Status wird in Datenbank gespeichert</li>
+                    </ul>
                 </div>
 
                 <h5 class="mb-3">🎬 VOD & Series</h5>

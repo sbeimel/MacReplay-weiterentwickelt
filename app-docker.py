@@ -646,10 +646,26 @@ def start_epg_auto_refresh_scheduler():
         refresh_days = int(settings.get("epg refresh interval days", "1"))
         refresh_seconds = refresh_days * 86400  # Convert days to seconds
         
-        logger.info(f"EPG auto-refresh enabled - will refresh every {refresh_days} day(s)")
+        # Check when last refresh was
+        last_refresh = float(settings.get("epg last refresh timestamp", "0"))
+        current_time = time.time()
         
-        # Schedule first refresh
-        threading.Timer(refresh_seconds, epg_auto_refresh_task).start()
+        if last_refresh > 0:
+            time_since_last = current_time - last_refresh
+            time_until_next = refresh_seconds - time_since_last
+            
+            if time_until_next <= 0:
+                # Overdue - schedule immediately (with 60s delay to let server finish starting)
+                logger.info(f"EPG auto-refresh: Last refresh was {time_since_last/3600:.1f} hours ago - scheduling immediate refresh")
+                threading.Timer(60, epg_auto_refresh_task).start()
+            else:
+                # Schedule for remaining time
+                logger.info(f"EPG auto-refresh enabled - next refresh in {time_until_next/3600:.1f} hours (interval: {refresh_days} day(s))")
+                threading.Timer(time_until_next, epg_auto_refresh_task).start()
+        else:
+            # Never refreshed - schedule for full interval
+            logger.info(f"EPG auto-refresh enabled - first refresh in {refresh_days} day(s)")
+            threading.Timer(refresh_seconds, epg_auto_refresh_task).start()
         
     except Exception as e:
         logger.error(f"Error starting EPG auto-refresh scheduler: {e}")
@@ -689,6 +705,10 @@ def epg_auto_refresh_task():
                 "portals_total": len(enabled_portals),
                 "started_at": time.time()
             }
+            
+            # Save timestamp BEFORE starting refresh
+            settings["epg last refresh timestamp"] = str(int(time.time()))
+            saveSettings(settings)
             
             threading.Thread(target=refresh_xmltv_with_progress, daemon=True).start()
             logger.info("EPG auto-refresh: Refresh started successfully")
@@ -1079,6 +1099,7 @@ defaultSettings = {
     "epg fallback countries": "",
     "epg auto refresh": "manual",
     "epg refresh interval days": "1",
+    "epg last refresh timestamp": "0",  # Unix timestamp of last EPG refresh
     "xc api enabled": "false",
     "xc vod proxy": "true",
     "public playlist access": "true",
@@ -7280,7 +7301,8 @@ def refresh_xmltv():
                             epgId = db_channel_data['custom_epg_id'] or channelNumber
                             
                             # IMPROVEMENT #5: Variant deduplication - normalize channel name
-                            base_name = re.sub(r'\s*(HD|FHD|UHD|4K|SD)\s*$', '', channelName, flags=re.IGNORECASE).strip()
+                            # Remove quality indicators and special unicode characters
+                            base_name = re.sub(r'\s*(HD\+?|FHD|QHD|UHD|4K|8K|RAW|HEVC|ULTRA|SD|ᵘˡᵗʳᵃ|ʰᵉᵛᶜ|ᴴᴰ|ᶠʰᵈ|ʳᵃʷ|ᵁᴴᴰ|ᴴᴱⱽᶜ|4ᴷ|4ᵏ)\s*$', '', channelName, flags=re.IGNORECASE).strip()
                             
                             # Check if this is a variant of an existing channel
                             is_variant = False
@@ -8009,6 +8031,11 @@ def epg_refresh():
             "portals_total": len(enabled_portals),
             "started_at": time.time()
         }
+        
+        # Save timestamp for manual refresh too
+        settings = getSettings()
+        settings["epg last refresh timestamp"] = str(int(time.time()))
+        saveSettings(settings)
         
         threading.Thread(target=refresh_xmltv_with_progress, daemon=True).start()
         return flask.jsonify({"success": True, "message": "EPG refresh started"})
