@@ -26,58 +26,6 @@ This is a **major stability and security release** with critical bug fixes that 
 
 ---
 
-## 🧹 CODE CLEANUP (NEW - 2026-02-21)
-
-### Legacy Code Removal
-**Issue**: Two parallel MAC selection systems existed:
-1. DB-based scoring (`calculate_mac_score()`) - ACTIVE in production
-2. Stalker API-based scoring (`getMacAvailabilityScore()`) - UNUSED legacy code
-
-**Fix**:
-- Removed unused `getMacAvailabilityScore()` function (0-100 scoring)
-- Removed unused `selectBestMac()` function (never called)
-- Removed 8 unused `*WithSmartMac()` helper functions
-- Total: ~350 lines of dead code removed
-
-**Impact**:
-- Clearer codebase (only one scoring system)
-- Better maintainability
-- No breaking changes (only unused code removed)
-
-### Experimental Multi-API MAC Busy Check
-**Purpose**: Collect data to compare watchdog estimation with modern APIs
-
-**Implementation**:
-- Added experimental logging in PROXY RETRY mode
-- Collects data from Ministra Modern API (`/portal_api/users/info`)
-- Collects data from XC/XUI API (`/player_api.php?action=get_user_info`)
-- Compares modern API data with watchdog_timeout estimation
-- Clearly marked as EXPERIMENTAL with header blocks
-
-**Important**:
-- ✅ Logging only - no decision changes
-- ✅ Decision logic still based on `watchdog_timeout < 60` (unchanged)
-- ✅ Errors are caught (try/except) - no impact on streaming
-- ✅ Data collection for future optimization
-
-**Example Log**:
-```
-[PROXY RETRY] MAC 00:1A:79:XX:XX looks available (watchdog: 87s)
-[EXPERIMENTAL] 🔍 Ministra API data for MAC 00:1A:79:XX:XX:
-[EXPERIMENTAL]   ├─ Online: 1
-[EXPERIMENTAL]   ├─ Current Stream: Channel 123
-[EXPERIMENTAL]   ├─ Active Sessions: 2
-[EXPERIMENTAL]   └─ Max Sessions: 3
-[EXPERIMENTAL] ⚠️ Ministra shows BUSY (online=1, stream=Channel 123) vs watchdog=87s
-```
-
-**Files Changed**: `stb.py`, `app-docker.py`
-- Lines removed: ~400 (10 functions)
-- Lines added: ~50 (experimental logging)
-- Net: ~350 lines less code
-
----
-
 ## 🔴 CRITICAL FIXES
 
 ### 1. Consecutive Failure Tracking (NEW - 2026-02-21)

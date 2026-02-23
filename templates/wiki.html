@@ -599,86 +599,83 @@
                 <hr>
 
                 <div class="mb-4">
-                    <h5><span class="badge bg-primary me-2">6</span>Vavoo IPTV Proxy Integration</h5>
-                    <p><strong>Vavoo als integrierter IPTV Proxy für zusätzliche Streams:</strong></p>
+                    <h5><span class="badge bg-primary me-2">6</span>Skip Busy MACs & Intelligente MAC-Auswahl</h5>
+                    <p><strong>Automatisches Überspringen beschäftigter MACs und intelligente Fallback-Logik:</strong></p>
                     
                     <div class="row g-3 mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="card text-center">
                                 <div class="card-body">
-                                    <i class="ti ti-world icon text-primary mb-2" style="font-size: 2em;"></i>
-                                    <h6 class="mb-1">Multi-Region</h6>
-                                    <small class="text-muted">DE, FR, IT, ES, GB, NL, PL, PT, RO, TR, AL, BG, CR</small>
+                                    <i class="ti ti-clock icon text-warning mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Watchdog Check</h6>
+                                    <small class="text-muted">MACs mit watchdog < 60s werden übersprungen</small>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="card text-center">
                                 <div class="card-body">
-                                    <i class="ti ti-device-tv icon text-success mb-2" style="font-size: 2em;"></i>
-                                    <h6 class="mb-1">Resolution Scan</h6>
-                                    <small class="text-muted">FFmpeg-basierte Qualitätserkennung</small>
+                                    <i class="ti ti-refresh icon text-info mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">Alle MACs probieren</h6>
+                                    <small class="text-muted">System probiert automatisch alle MACs durch</small>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="card text-center">
                                 <div class="card-body">
-                                    <i class="ti ti-network icon text-info mb-2" style="font-size: 2em;"></i>
-                                    <h6 class="mb-1">Streaming Modes</h6>
-                                    <small class="text-muted">Proxy (Internet) oder Direct (LAN)</small>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-center">
-                                <div class="card-body">
-                                    <i class="ti ti-filter icon text-warning mb-2" style="font-size: 2em;"></i>
-                                    <h6 class="mb-1">Channel Filter</h6>
-                                    <small class="text-muted">Keyword-basierte Filterung</small>
+                                    <i class="ti ti-database icon text-success mb-2" style="font-size: 2em;"></i>
+                                    <h6 class="mb-1">DB Fallback</h6>
+                                    <small class="text-muted">Wenn Channel nicht in DB: getAllChannels</small>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div class="alert alert-info mb-3">
-                        <h6 class="alert-heading"><i class="ti ti-info-circle me-2"></i>Quick Start</h6>
+                        <h6 class="alert-heading"><i class="ti ti-info-circle me-2"></i>Wie es funktioniert</h6>
                         <div class="row">
                             <div class="col-md-6">
-                                <p class="mb-2"><strong>1. Zugriff:</strong></p>
+                                <p class="mb-2"><strong>1. Skip Busy MACs (Optional):</strong></p>
                                 <ul class="mb-3">
-                                    <li>Navigation → Vavoo Tab</li>
-                                    <li>Oder direkt: <code>/vavoo_page</code></li>
-                                    <li>Login: Gleiche Credentials wie MacReplayXC</li>
+                                    <li>Prüft watchdog_timeout jeder MAC</li>
+                                    <li>< 60 Sekunden = MAC ist beschäftigt</li>
+                                    <li>Überspringt beschäftigte MACs automatisch</li>
+                                    <li>Reduziert Konflikte bei Multi-Client-Nutzung</li>
                                 </ul>
                                 
-                                <p class="mb-2"><strong>2. Playlists:</strong></p>
+                                <p class="mb-2"><strong>2. MAC Retry (Immer aktiv):</strong></p>
                                 <ul class="mb-0">
-                                    <li>Einzeln: <code>http://host:4323/playlist/DE.m3u</code></li>
-                                    <li>Kombiniert: <code>http://host:4323/playlist/DE_FR_IT.m3u</code></li>
+                                    <li>Probiert alle MACs durch (sortiert nach Score)</li>
+                                    <li>Stoppt bei erster erfolgreicher MAC</li>
+                                    <li>Aktualisiert Score nach jedem Versuch</li>
+                                    <li>Lernt welche MACs zuverlässig sind</li>
                                 </ul>
                             </div>
                             <div class="col-md-6">
-                                <p class="mb-2"><strong>3. Konfiguration:</strong></p>
+                                <p class="mb-2"><strong>3. DB-First Strategie:</strong></p>
                                 <ul class="mb-3">
-                                    <li><code>HOST</code> ENV: Deine öffentliche URL</li>
-                                    <li>Port 4323 freigeben (docker-compose.yml)</li>
-                                    <li>Automatischer Start via <code>start.sh</code></li>
+                                    <li>Schaut zuerst in channels.db</li>
+                                    <li>Weiß welche MAC welchen Channel hat</li>
+                                    <li>Keine unnötigen API-Calls</li>
+                                    <li>Bis zu 30x schneller!</li>
                                 </ul>
                                 
-                                <p class="mb-2"><strong>4. Vorteile:</strong></p>
+                                <p class="mb-2"><strong>4. Fallback via getAllChannels:</strong></p>
                                 <ul class="mb-0">
-                                    <li>Single Container (alles in einem)</li>
-                                    <li>Tabler Dark Theme (passt perfekt)</li>
-                                    <li>Shared Environment (HOST-Variable)</li>
+                                    <li>Wenn Channel nicht in DB gefunden</li>
+                                    <li>Lädt alle Channels von aktueller MAC</li>
+                                    <li>Speichert in DB für nächstes Mal</li>
+                                    <li>Einmal langsam, dann immer schnell</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
                     
                     <div class="alert alert-success mb-0">
-                        <strong><i class="ti ti-check me-2"></i>Dokumentation:</strong> 
-                        Detaillierte Setup-Anleitung in <code>docs/vavoo/QUICKSTART.md</code>
+                        <strong>Einstellung:</strong> Settings → Skip Busy MACs (true/false)<br>
+                        <strong>Empfehlung:</strong> true bei Multi-Client-Nutzung, false für maximale MAC-Auswahl<br>
+                        <strong>Dokumentation:</strong> <code>docs/CHANNEL_LOADING_LOGIC.md</code>
                     </div>
                 </div>
 
@@ -785,21 +782,21 @@
                 </div>
                 <div class="row mt-3">
                     <div class="col-md-6">
-                        <h5>🚀 Vavoo Optimal:</h5>
+                        <h5>🚀 Proxy Mode (Empfohlen):</h5>
                         <ul>
-                            <li>RES Scan: <strong>false</strong> (nur bei Problemen)</li>
-                            <li>Stream Mode: <strong>Proxy</strong> (für Internet)</li>
-                            <li>Filter: <strong>false</strong> (alle Channels)</li>
-                            <li>Rebuild on Start: <strong>true</strong></li>
+                            <li>Stream Method: <strong>proxy</strong></li>
+                            <li>Output Format: <strong>mpegts</strong></li>
+                            <li>Skip Busy MACs: <strong>true</strong></li>
+                            <li>Test Streams: <strong>false</strong> (schneller)</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
-                        <h5>⚡ Vavoo Sport-Only:</h5>
+                        <h5>⚡ FFmpeg Mode (Fehlerkorrektur):</h5>
                         <ul>
-                            <li>Filter: <strong>true</strong></li>
-                            <li>Keywords: <code>bundesliga:Bundesliga</code></li>
-                            <li>Keywords: <code>sky sport:Sport</code></li>
-                            <li>Keywords: <code>dazn:DAZN</code></li>
+                            <li>Stream Method: <strong>ffmpeg</strong></li>
+                            <li>Output Format: <strong>mpegts</strong> oder <strong>hls</strong></li>
+                            <li>Test Streams: <strong>true</strong></li>
+                            <li>Für instabile Streams</li>
                         </ul>
                     </div>
                 </div>

@@ -611,10 +611,31 @@ def getAllChannels(url, mac, token, proxy=None):
             timeout=30,
         )
         logger.debug(f"Channels request status: {response.status_code}")
-        channels = response.json()["js"]["data"]
-        if channels:
-            logger.info(f"Got {len(channels)} channels for MAC {mac}")
-            return channels
+        
+        # Robust JSON parsing - handle different response formats
+        try:
+            json_data = response.json()
+            
+            # Try standard format: {"js": {"data": [...]}}
+            if isinstance(json_data, dict) and "js" in json_data:
+                channels = json_data["js"].get("data", [])
+            # Try direct data format: {"data": [...]}
+            elif isinstance(json_data, dict) and "data" in json_data:
+                channels = json_data["data"]
+            # Try direct list format: [...]
+            elif isinstance(json_data, list):
+                channels = json_data
+            else:
+                logger.debug(f"Unexpected JSON format: {type(json_data)}")
+                channels = []
+            
+            if channels and isinstance(channels, list):
+                logger.info(f"Got {len(channels)} channels for MAC {mac}")
+                return channels
+        except (KeyError, TypeError, ValueError) as parse_error:
+            logger.debug(f"JSON parsing error: {parse_error}")
+            raise  # Re-raise to trigger POST fallback
+            
     except Exception as e:
         logger.debug(f"GET request failed: {e}, trying POST")
     
@@ -632,10 +653,29 @@ def getAllChannels(url, mac, token, proxy=None):
             timeout=30,
         )
         logger.debug(f"Channels request status: {response.status_code}")
-        channels = response.json()["js"]["data"]
-        if channels:
-            logger.info(f"Got {len(channels)} channels for MAC {mac} via POST")
-            return channels
+        
+        # Robust JSON parsing - handle different response formats
+        try:
+            json_data = response.json()
+            # Try standard format: {"js": {"data": [...]}}
+            if isinstance(json_data, dict) and "js" in json_data:
+                channels = json_data["js"].get("data", [])
+            # Try direct data format: {"data": [...]}
+            elif isinstance(json_data, dict) and "data" in json_data:
+                channels = json_data["data"]
+            # Try direct list format: [...]
+            elif isinstance(json_data, list):
+                channels = json_data
+            else:
+                logger.debug(f"Unexpected JSON format in POST: {type(json_data)}")
+                channels = []
+            
+            if channels and isinstance(channels, list):
+                logger.info(f"Got {len(channels)} channels for MAC {mac} via POST")
+                return channels
+        except (KeyError, TypeError, ValueError) as parse_error:
+            logger.debug(f"JSON parsing error in POST: {parse_error}")
+            raise
     except requests.Timeout:
         logger.error(f"Timeout getting channels for MAC {mac}")
     except requests.RequestException as e:
