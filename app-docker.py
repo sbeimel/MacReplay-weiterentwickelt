@@ -7242,38 +7242,49 @@ def refresh_xmltv():
             
             # UPDATE DATABASE: Set custom_epg_id for channels with EPG data
             # This is needed for EPG statistics to work correctly
-            if merged_epg:
-                try:
-                    conn_update = get_db_connection()
-                    cursor_update = conn_update.cursor()
-                    
+            try:
+                conn_update = get_db_connection()
+                cursor_update = conn_update.cursor()
+                
+                if merged_epg:
                     # Update custom_epg_id for channels that have EPG
                     for channelId in merged_epg.keys():
                         if channelId in portal_db_channels:
-                            # Use existing custom_epg_id or channel number as EPG ID
+                            # Calculate EPG ID the same way as in XMLTV generation
                             db_data = portal_db_channels[channelId]
-                            epg_id = db_data['custom_epg_id'] or db_data['number'] or "0"
+                            channelNumber = db_data['number'] or "0"
+                            epg_id = db_data['custom_epg_id'] or channelNumber
                             
-                            cursor_update.execute('''
-                                UPDATE channels 
-                                SET custom_epg_id = ? 
-                                WHERE portal = ? AND channel_id = ?
-                            ''', (epg_id, portal, channelId))
-                    
-                    # Clear custom_epg_id for channels that DON'T have EPG (for accurate statistics)
-                    channels_without_epg = set(portal_db_channels.keys()) - set(merged_epg.keys())
-                    for channelId in channels_without_epg:
-                        cursor_update.execute('''
-                            UPDATE channels 
-                            SET custom_epg_id = NULL 
-                            WHERE portal = ? AND channel_id = ?
-                        ''', (portal, channelId))
-                    
-                    conn_update.commit()
-                    conn_update.close()
-                    logger.debug(f"Updated custom_epg_id for {len(merged_epg)} channels (cleared {len(channels_without_epg)} without EPG)")
-                except Exception as e:
-                    logger.error(f"Error updating custom_epg_id in database: {e}")
+                            # Only update if epg_id is not empty
+                            if epg_id and epg_id != "0":
+                                cursor_update.execute('''
+                                    UPDATE channels 
+                                    SET custom_epg_id = ? 
+                                    WHERE portal = ? AND channel_id = ?
+                                ''', (epg_id, portal, channelId))
+                            else:
+                                # Use channel_id as fallback EPG ID
+                                cursor_update.execute('''
+                                    UPDATE channels 
+                                    SET custom_epg_id = ? 
+                                    WHERE portal = ? AND channel_id = ?
+                                ''', (channelId, portal, channelId))
+                
+                # Clear custom_epg_id for channels that DON'T have EPG (for accurate statistics)
+                # This runs even if merged_epg is empty (portal has no EPG at all)
+                channels_without_epg = set(portal_db_channels.keys()) - set(merged_epg.keys())
+                for channelId in channels_without_epg:
+                    cursor_update.execute('''
+                        UPDATE channels 
+                        SET custom_epg_id = NULL 
+                        WHERE portal = ? AND channel_id = ?
+                    ''', (portal, channelId))
+                
+                conn_update.commit()
+                conn_update.close()
+                logger.debug(f"Updated custom_epg_id for {len(merged_epg)} channels (cleared {len(channels_without_epg)} without EPG)")
+            except Exception as e:
+                logger.error(f"Error updating custom_epg_id in database: {e}")
             
             epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(portal_db_channels)} enabled channels..."
 
