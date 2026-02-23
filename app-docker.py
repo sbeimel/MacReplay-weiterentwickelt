@@ -7380,11 +7380,11 @@ def refresh_xmltv():
                                         if desc:
                                             ET.SubElement(programmeEle, "desc").text = desc
                                         
-                                        # IMPROVEMENT #6: Portal EPG enrichment - add category, director, actors
-                                        # Add category (genre)
-                                        genre_id = str(channel.get("tv_genre_id", ""))
-                                        if genre_id and genre_id in genres_dict:
-                                            ET.SubElement(programmeEle, "category").text = genres_dict[genre_id]
+                                        # IMPROVEMENT #6: Portal EPG enrichment - add category
+                                        # Genre is already in db_channel_data
+                                        genre = db_channel_data.get('genre', '')
+                                        if genre:
+                                            ET.SubElement(programmeEle, "category").text = genre
                                         
                                         # Add director if available
                                         director = p.get("director", "")

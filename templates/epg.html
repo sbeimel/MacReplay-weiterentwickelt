@@ -404,6 +404,15 @@
         loadEPGSettings();
         checkEPGProgress(); // Check if refresh is already running
     });
+    
+    // Check EPG progress periodically even when not on page
+    // This ensures progress bar reappears when returning to page
+    setInterval(function() {
+        // Only check if we're on the EPG page and not already polling
+        if (document.getElementById('epgRefreshProgress') && !epgProgressInterval) {
+            checkEPGProgress();
+        }
+    }, 5000); // Check every 5 seconds
 
     function loadEPGSettings() {
         fetch('/epg/settings', { credentials: 'same-origin' })
