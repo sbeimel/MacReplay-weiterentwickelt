@@ -1,4 +1,4 @@
-# Legacy Functions History - Wann wurden sie entworfen?
+xxNEWE# Legacy Functions History - Wann wurden sie entworfen?
 
 ## Übersicht
 Analyse wann `checkMacStatus()`, `selectBestMac()`, `getMacAvailabilityScore()` und `*WithSmartMac()` Funktionen entworfen/implementiert wurden.
