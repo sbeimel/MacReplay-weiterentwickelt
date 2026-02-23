@@ -7268,8 +7268,7 @@ def refresh_xmltv():
                                 if logo:
                                     ET.SubElement(channelEle, "icon", src=logo)
 
-                            # Get channel data from portal API
-                            channel = all_channels_map.get(channelId, {})
+                            # Get EPG data for this channel (channel metadata is already in db_channel_data)
                             channel_epg = merged_epg.get(channelId, [])
                             
                             # Skip adding programmes if this is a variant (EPG already added for base channel)
@@ -7415,7 +7414,6 @@ def refresh_xmltv():
                     epg_refresh_progress["current_step"] = f"{portal_name}: Completed - {programme_count} total programmes"
                     epg_refresh_progress["portals_done"] = portal_index
                     del merged_epg
-                    del all_channels_map
                     gc.collect()
             else:
                 logger.error(f"Error making XMLTV for {portal_name}, skipping")
