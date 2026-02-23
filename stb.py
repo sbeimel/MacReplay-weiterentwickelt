@@ -653,7 +653,15 @@ def getAllChannels(url, mac, token, proxy=None):
             
             # Try standard format: {"js": {"data": [...]}}
             if isinstance(json_data, dict) and "js" in json_data:
-                channels = json_data["js"].get("data", [])
+                js_data = json_data["js"]
+                # Check if js_data is a dict or list
+                if isinstance(js_data, dict):
+                    channels = js_data.get("data", [])
+                elif isinstance(js_data, list):
+                    channels = js_data
+                else:
+                    logger.debug(f"Unexpected 'js' type: {type(js_data)}")
+                    channels = []
             # Try direct data format: {"data": [...]}
             elif isinstance(json_data, dict) and "data" in json_data:
                 channels = json_data["data"]
@@ -699,7 +707,15 @@ def getAllChannels(url, mac, token, proxy=None):
             json_data = response.json()
             # Try standard format: {"js": {"data": [...]}}
             if isinstance(json_data, dict) and "js" in json_data:
-                channels = json_data["js"].get("data", [])
+                js_data = json_data["js"]
+                # Check if js_data is a dict or list
+                if isinstance(js_data, dict):
+                    channels = js_data.get("data", [])
+                elif isinstance(js_data, list):
+                    channels = js_data
+                else:
+                    logger.debug(f"Unexpected 'js' type in POST: {type(js_data)}")
+                    channels = []
             # Try direct data format: {"data": [...]}
             elif isinstance(json_data, dict) and "data" in json_data:
                 channels = json_data["data"]
