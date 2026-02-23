@@ -7078,7 +7078,7 @@ def refresh_xmltv():
     epg_stats = {
         "portal_epg_count": 0,
         "fallback_epg_count": 0,
-        "dummy_epg_count": 0,
+        "no_epg_count": 0,  # Channels without EPG (skipped, no dummy)
         "total_channels": 0
     }
 
@@ -7395,7 +7395,7 @@ def refresh_xmltv():
                                 
                                 if not fallback_used:
                                     # No EPG available - skip dummy EPG (channel will have no programmes)
-                                    epg_stats["dummy_epg_count"] += 1
+                                    epg_stats["no_epg_count"] += 1
                                     # Don't create dummy EPG - just count it for statistics
                             else:
                                 # Portal EPG available
@@ -7474,7 +7474,7 @@ def refresh_xmltv():
     logger.info(f"  Total channels: {epg_stats['total_channels']}")
     logger.info(f"  Portal EPG: {epg_stats['portal_epg_count']} channels")
     logger.info(f"  Fallback EPG: {epg_stats['fallback_epg_count']} channels")
-    logger.info(f"  No EPG: {epg_stats['dummy_epg_count']} channels (skipped)")
+    logger.info(f"  No EPG: {epg_stats['no_epg_count']} channels (skipped)")
 
     epg_refresh_progress["current_step"] = "Generating XMLTV file..."
     # Generate XML string without minidom (much more memory efficient)
