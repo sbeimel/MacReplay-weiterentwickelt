@@ -633,6 +633,84 @@ last_updated = 0
 hls_manager = None
 
 
+def start_epg_auto_refresh_scheduler():
+    """Start EPG auto-refresh scheduler if enabled in settings."""
+    try:
+        settings = getSettings()
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        if auto_refresh == "manual":
+            logger.info("EPG auto-refresh disabled (manual mode)")
+            return
+        
+        refresh_days = int(settings.get("epg refresh interval days", "1"))
+        refresh_seconds = refresh_days * 86400  # Convert days to seconds
+        
+        logger.info(f"EPG auto-refresh enabled - will refresh every {refresh_days} day(s)")
+        
+        # Schedule first refresh
+        threading.Timer(refresh_seconds, epg_auto_refresh_task).start()
+        
+    except Exception as e:
+        logger.error(f"Error starting EPG auto-refresh scheduler: {e}")
+
+
+def epg_auto_refresh_task():
+    """Background task that runs EPG refresh and reschedules itself."""
+    try:
+        settings = getSettings()
+        auto_refresh = settings.get("epg auto refresh", "manual")
+        
+        # Check if still enabled
+        if auto_refresh == "manual":
+            logger.info("EPG auto-refresh disabled - stopping scheduler")
+            return
+        
+        refresh_days = int(settings.get("epg refresh interval days", "1"))
+        refresh_seconds = refresh_days * 86400
+        
+        logger.info(f"EPG auto-refresh: Starting scheduled refresh (interval: {refresh_days} day(s))")
+        
+        # Run refresh in background thread
+        global epg_refresh_progress
+        if not epg_refresh_progress.get("running", False):
+            _clear_epg_cache()
+            global cached_xmltv
+            cached_xmltv = None
+            
+            portals = getPortals()
+            enabled_portals = [p for p in portals.values() if p.get("enabled") == "true"]
+            
+            epg_refresh_progress = {
+                "running": True,
+                "current_portal": "",
+                "current_step": "Auto-refresh started...",
+                "portals_done": 0,
+                "portals_total": len(enabled_portals),
+                "started_at": time.time()
+            }
+            
+            threading.Thread(target=refresh_xmltv_with_progress, daemon=True).start()
+            logger.info("EPG auto-refresh: Refresh started successfully")
+        else:
+            logger.warning("EPG auto-refresh: Skipping - refresh already in progress")
+        
+        # Schedule next refresh
+        threading.Timer(refresh_seconds, epg_auto_refresh_task).start()
+        logger.info(f"EPG auto-refresh: Next refresh scheduled in {refresh_days} day(s)")
+        
+    except Exception as e:
+        logger.error(f"Error in EPG auto-refresh task: {e}")
+        # Try to reschedule even if error occurred
+        try:
+            settings = getSettings()
+            refresh_days = int(settings.get("epg refresh interval days", "1"))
+            refresh_seconds = refresh_days * 86400
+            threading.Timer(refresh_seconds, epg_auto_refresh_task).start()
+        except:
+            pass
+
+
 def cleanup_occupied_streams():
     """Automatically clean up old/expired streams from occupied dictionary to prevent memory leaks."""
     global occupied
@@ -2064,6 +2142,10 @@ def refresh_channels_cache():
     conn.close()
     logger.info(f"Channel cache refresh complete. Channels with stream data: {cached_count} (total channels processed: {total_channels}, total in DB: {total_in_db})")
     editor_refresh_progress["current_step"] = f"Completed! {cached_count} channels cached from {portal_index} portals"
+    
+    # Regenerate playlist after cache refresh
+    generate_playlist()
+    
     return total_channels
 
 
@@ -4557,6 +4639,10 @@ def portal_save_genre_selection():
         flask.session.pop('new_portal_id', None)
         flask.session.pop('new_portal_name', None)
         
+        # Auto-regenerate playlist after genre selection
+        logger.info("Auto-regenerating playlist after genre selection...")
+        generate_playlist()
+        
         logger.info(f"Saved {enabled_count}/{total_count} channels for portal {portal_name}")
         return flask.jsonify({
             "success": True, 
@@ -4590,6 +4676,9 @@ def portalRemove():
     # Delete portal from config
     del portals[id]
     savePortals(portals)
+    
+    # Regenerate playlist after portal removal
+    generate_playlist()
     
     logger.info("Portal ({}) removed!".format(name))
     flash("Portal ({}) removed!".format(name), "success")
@@ -5592,6 +5681,10 @@ def editorSave():
         conn.commit()
         logger.info("Channel edits saved to database!")
         
+        # Auto-regenerate playlist after editor changes
+        logger.info("Auto-regenerating playlist after editor changes...")
+        generate_playlist()
+        
     except Exception as e:
         conn.rollback()
         logger.error(f"Error saving channel edits: {e}")
@@ -5780,9 +5873,8 @@ def editor_bulk_edit():
         conn.commit()
         conn.close()
         
-        # Force M3U playlist regeneration (XMLTV is controlled by EPG Auto Refresh setting)
-        global cached_xmltv, last_playlist_host
-        last_playlist_host = None
+        # Regenerate playlist after bulk edit
+        generate_playlist()
         
         logger.info(f"Bulk edit applied: {updated_count} channels updated")
         
@@ -5833,9 +5925,8 @@ def editor_bulk_edit_undo():
         
         conn.commit()
         
-        # Force M3U playlist regeneration
-        global cached_xmltv, last_playlist_host
-        last_playlist_host = None
+        # Regenerate playlist after undo
+        generate_playlist()
         
         logger.info("Bulk edit undone successfully")
         
@@ -5985,9 +6076,8 @@ def editor_reset_all_customizations():
         
         conn.commit()
         
-        # Force M3U playlist regeneration
-        global cached_xmltv, last_playlist_host
-        last_playlist_host = None
+        # Regenerate playlist after reset
+        generate_playlist()
         
         logger.info("All customizations reset to original values")
         
@@ -6028,6 +6118,10 @@ def editorReset():
         
         conn.commit()
         logger.info("All channel customizations reset!")
+        
+        # Regenerate playlist after reset
+        generate_playlist()
+        
         flash("Playlist reset!", "success")
         
     except Exception as e:
@@ -6132,9 +6226,8 @@ def editor_deactivate_duplicates():
         
         conn.commit()
         
-        # Reset playlist cache to force regeneration
-        global last_playlist_host
-        last_playlist_host = None
+        # Regenerate playlist after deactivating duplicates
+        generate_playlist()
         
         logger.info(f"Deactivated {deactivated_count} duplicate channels")
         
@@ -6410,12 +6503,44 @@ def _playlist():
     external_host, external_scheme = get_external_host_config()
     current_host = external_host or request.host or "0.0.0.0:8001"
     
-    if cached_playlist is None or len(cached_playlist) == 0 or last_playlist_host != current_host:
-        logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
-        last_playlist_host = current_host
-        generate_playlist()
+    # Try to read from file first
+    playlist_file = os.path.join(log_dir, "playlist.m3u")
+    if os.path.exists(playlist_file):
+        # Check if host changed - if so, regenerate
+        if last_playlist_host != current_host:
+            logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
+            last_playlist_host = current_host
+            generate_playlist()
+        
+        # Serve from file
+        try:
+            with open(playlist_file, 'r', encoding='utf-8') as f:
+                return Response(f.read(), mimetype="text/plain")
+        except Exception as e:
+            logger.error(f"Error reading playlist file: {e}")
+            # Fallback to RAM cache
+            if cached_playlist:
+                return Response(cached_playlist, mimetype="text/plain")
+    
+    # File doesn't exist - generate it
+    logger.info("Playlist file not found - generating...")
+    last_playlist_host = current_host
+    generate_playlist()
+    
+    # Try to read the newly generated file
+    if os.path.exists(playlist_file):
+        try:
+            with open(playlist_file, 'r', encoding='utf-8') as f:
+                return Response(f.read(), mimetype="text/plain")
+        except Exception as e:
+            logger.error(f"Error reading newly generated playlist file: {e}")
+    
+    # Final fallback to RAM cache
+    if cached_playlist:
+        return Response(cached_playlist, mimetype="text/plain")
+    else:
+        return Response("#EXTM3U\n", mimetype="text/plain")
 
-    return Response(cached_playlist, mimetype="text/plain")
 
 def _playlist_with_auth(username, password):
     """Generate playlist with embedded Basic Auth credentials in stream URLs."""
@@ -6680,8 +6805,19 @@ def generate_playlist():
     if channels:
         playlist = playlist + "\n".join(channels)
 
+    # Write to file instead of RAM cache
+    playlist_file = os.path.join(log_dir, "playlist.m3u")
+    try:
+        with open(playlist_file, "w", encoding="utf-8") as f:
+            f.write(playlist)
+        logger.info(f"Playlist generated and saved to file ({len(channels)} channels)")
+    except Exception as e:
+        logger.error(f"Error writing playlist file: {e}")
+        # Fallback to RAM cache if file write fails
+        cached_playlist = playlist
+    
+    # Also update RAM cache for backward compatibility
     cached_playlist = playlist
-    logger.info("Playlist generated and cached.")
     
 def normalize_channel_name(name):
     """Normalize channel name for better matching."""
@@ -6894,7 +7030,7 @@ def refresh_xmltv():
     # Docker-optimized cache paths
     cache_dir = "/app/data"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, "MacReplayXCEPG.xml")
+    cache_file = os.path.join(cache_dir, "epg.xml")
 
     day_before_yesterday = datetime.utcnow() - timedelta(days=2)
     day_before_yesterday_str = day_before_yesterday.strftime("%Y%m%d%H%M%S") + " +0000"
@@ -6991,52 +7127,79 @@ def refresh_xmltv():
 
             epg_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s), {len(portal_db_channels)} enabled channels"
 
-            # Fetch channels and EPG from ALL MACs and merge
+            # Fetch channels and EPG - try MACs until all enabled channels have EPG
             all_channels_map = {}  # channelId -> channel data
             merged_epg = {}  # channelId -> [programmes]
             
-            mac_index = 0
-            for mac in macs:
+            # Get list of enabled channel IDs that need EPG
+            enabled_channel_ids = set(portal_db_channels.keys())
+            
+            # Try MACs until we have EPG for all enabled channels (or run out of MACs)
+            for mac_index, mac in enumerate(macs, 1):
                 try:
-                    mac_index += 1
-                    epg_refresh_progress["current_step"] = f"{portal_name}: Authenticating MAC {mac_index}/{len(macs)} ({mac})"
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Trying MAC {mac_index}/{len(macs)} ({mac})"
                     token = stb.getToken(url, mac, proxy)
-                    if token:
-                        stb.getProfile(url, mac, token, proxy)
-                        
-                        epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac_index}/{len(macs)}"
-                        mac_channels = stb.getAllChannels(url, mac, token, proxy)
-                        
-                        epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac_index}/{len(macs)}"
-                        mac_epg = stb.getEpg(url, mac, token, 24, proxy)
-                        
-                        if mac_channels:
-                            for ch in mac_channels:
-                                ch_id = str(ch.get("id"))
-                                if ch_id not in all_channels_map:
-                                    all_channels_map[ch_id] = ch
-                            logger.info(f"MAC {mac}: Got {len(mac_channels)} channels")
-                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - {len(mac_channels)} channels"
-                        
-                        if mac_epg:
-                            for ch_id, programmes in mac_epg.items():
-                                if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
-                                    merged_epg[ch_id] = programmes
-                            logger.info(f"MAC {mac}: Got EPG for {len(mac_epg)} channels")
-                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - EPG for {len(mac_epg)} channels"
-                        else:
-                            logger.warning(f"MAC {mac}: No EPG data returned")
-                            epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - No EPG data"
-                        
-                        if mac_channels:
-                            del mac_channels
-                        if mac_epg:
-                            del mac_epg
+                    if not token:
+                        logger.warning(f"MAC {mac}: Failed to get token, trying next MAC")
+                        continue
+                    
+                    stb.getProfile(url, mac, token, proxy)
+                    
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Fetching channels from MAC {mac}"
+                    mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                    
+                    epg_refresh_progress["current_step"] = f"{portal_name}: Fetching EPG from MAC {mac}"
+                    mac_epg = stb.getEpg(url, mac, token, 24, proxy)
+                    
+                    # Merge channels (only add new ones)
+                    if mac_channels:
+                        for ch in mac_channels:
+                            ch_id = str(ch.get("id"))
+                            if ch_id not in all_channels_map:
+                                all_channels_map[ch_id] = ch
+                        logger.info(f"MAC {mac}: Got {len(mac_channels)} channels (total: {len(all_channels_map)})")
+                    
+                    # Merge EPG (only add missing channels or better data)
+                    if mac_epg:
+                        new_epg_count = 0
+                        for ch_id, programmes in mac_epg.items():
+                            # Only add if we don't have EPG for this channel yet, or if new data is better
+                            if ch_id not in merged_epg or len(programmes) > len(merged_epg.get(ch_id, [])):
+                                merged_epg[ch_id] = programmes
+                                if ch_id in enabled_channel_ids:
+                                    new_epg_count += 1
+                        logger.info(f"MAC {mac}: Got EPG for {len(mac_epg)} channels ({new_epg_count} new for enabled channels)")
+                    else:
+                        logger.warning(f"MAC {mac}: No EPG data returned")
+                    
+                    # Check how many enabled channels have EPG now
+                    enabled_with_epg = sum(1 for ch_id in enabled_channel_ids if ch_id in merged_epg)
+                    coverage_pct = (enabled_with_epg / len(enabled_channel_ids) * 100) if enabled_channel_ids else 0
+                    
+                    logger.info(f"EPG coverage: {enabled_with_epg}/{len(enabled_channel_ids)} enabled channels ({coverage_pct:.1f}%)")
+                    epg_refresh_progress["current_step"] = f"{portal_name}: EPG coverage {coverage_pct:.1f}% ({enabled_with_epg}/{len(enabled_channel_ids)})"
+                    
+                    # If we have EPG for all enabled channels, we're done
+                    if enabled_with_epg == len(enabled_channel_ids):
+                        logger.info(f"Successfully got EPG for all enabled channels from {mac_index} MAC(s)")
+                        break
+                    
+                    # If we have channels but still missing EPG, try next MAC
+                    if all_channels_map and enabled_with_epg < len(enabled_channel_ids):
+                        logger.info(f"Still missing EPG for {len(enabled_channel_ids) - enabled_with_epg} channels, trying next MAC")
+                        continue
                         
                 except Exception as e:
                     logger.error(f"Error fetching data for MAC {mac}: {e}")
-                    epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} - Error: {str(e)[:50]}"
+                    epg_refresh_progress["current_step"] = f"{portal_name}: MAC {mac_index}/{len(macs)} failed, trying next"
                     continue
+            
+            # Final coverage report
+            enabled_with_epg = sum(1 for ch_id in enabled_channel_ids if ch_id in merged_epg)
+            if enabled_with_epg < len(enabled_channel_ids):
+                logger.warning(f"Portal {portal_name}: EPG incomplete - {enabled_with_epg}/{len(enabled_channel_ids)} enabled channels have EPG")
+            else:
+                logger.info(f"Portal {portal_name}: EPG complete - all {enabled_with_epg} enabled channels have EPG")
             
             logger.info(f"Portal {portal_name}: Total {len(all_channels_map)} channels, EPG for {len(merged_epg)} channels")
             epg_refresh_progress["current_step"] = f"{portal_name}: Processing {len(portal_db_channels)} enabled channels..."
@@ -7138,6 +7301,10 @@ def refresh_xmltv():
                                         if fb_data and fb_data.get('programmes'):
                                             for p in fb_data['programmes'][:50]:
                                                 try:
+                                                    # Filter out old programmes (older than 2 days)
+                                                    if p.get('start', '') <= day_before_yesterday_str:
+                                                        continue
+                                                    
                                                     # IMPROVEMENT #1: Raw XML passthrough - copy entire XML element
                                                     xml_elem = p.get('xml_element')
                                                     if xml_elem is not None:
@@ -7338,46 +7505,22 @@ def xmltv():
             return authorise(lambda: _xmltv())()
 
 def _xmltv():
-    """Serve XMLTV from file - only refresh via manual button press."""
+    """Serve XMLTV from file - refresh handled by scheduler or manual button."""
     global last_updated
     logger.info("Guide Requested")
     
-    cache_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    cache_file = os.path.join(log_dir, "epg.xml")
     settings = getSettings()
     
     # Check if file exists
     if os.path.exists(cache_file):
-        # Check auto-refresh setting
-        auto_refresh = settings.get("epg auto refresh", "manual")
-        
-        if auto_refresh == "manual":
-            # Manual mode: Always serve existing file, never auto-refresh
-            logger.debug("EPG auto-refresh disabled - serving existing file")
-            try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    return Response(f.read(), mimetype="text/xml")
-            except Exception as e:
-                logger.error(f"Error reading XMLTV cache file: {e}")
-                return Response("Error reading XMLTV file", status=500, mimetype="text/plain")
-        else:
-            # Auto-refresh enabled: Check if refresh needed based on interval
-            try:
-                refresh_days = int(settings.get("epg refresh interval days", "1"))
-                max_age = refresh_days * 86400  # Convert days to seconds
-                
-                file_age = time.time() - os.path.getmtime(cache_file)
-                if file_age < max_age:
-                    logger.debug(f"EPG file age: {int(file_age/3600)}h (max: {refresh_days} days) - serving from file")
-                    with open(cache_file, 'r', encoding='utf-8') as f:
-                        return Response(f.read(), mimetype="text/xml")
-                else:
-                    logger.info(f"EPG file older than {refresh_days} days - auto-refreshing")
-                    refresh_xmltv()
-                    with open(cache_file, 'r', encoding='utf-8') as f:
-                        return Response(f.read(), mimetype="text/xml")
-            except Exception as e:
-                logger.error(f"Error checking EPG file age: {e}")
-                return Response("Error processing XMLTV", status=500, mimetype="text/plain")
+        # Serve existing file (refresh is handled by scheduler if auto-refresh enabled)
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                return Response(f.read(), mimetype="text/xml")
+        except Exception as e:
+            logger.error(f"Error reading XMLTV cache file: {e}")
+            return Response("Error reading XMLTV file", status=500, mimetype="text/plain")
     else:
         # File doesn't exist
         auto_refresh = settings.get("epg auto refresh", "manual")
@@ -7390,7 +7533,7 @@ def _xmltv():
                 mimetype="text/xml"
             )
         else:
-            # Auto mode: Create file automatically
+            # Auto mode: Create file on first request (scheduler will handle future updates)
             logger.info("XMLTV cache file missing - creating initial file (auto-refresh enabled)")
             refresh_xmltv()
             try:
@@ -9658,7 +9801,7 @@ def xc_xmltv():
     """XC API XMLTV endpoint - serves from file, respects auto-refresh settings."""
     global last_updated
     
-    cache_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    cache_file = os.path.join(log_dir, "epg.xml")
     settings = getSettings()
     
     # Check if file exists
@@ -11675,7 +11818,7 @@ def dashboard_stats():
     import os
     
     # Check XMLTV file size instead of RAM cache
-    xmltv_file = os.path.join(log_dir, "MacReplayXCEPG.xml")
+    xmltv_file = os.path.join(log_dir, "epg.xml")
     xmltv_file_mb = 0
     if os.path.exists(xmltv_file):
         xmltv_file_mb = round(os.path.getsize(xmltv_file) / (1024*1024), 2)
@@ -11792,59 +11935,61 @@ def status():
 
 def refresh_lineup():
     global cached_lineup
-    logger.info("Refreshing Lineup...")
+    logger.info("Refreshing Lineup from database...")
     lineup = []
-    portals = getPortals()
-    for portal in portals:
-        if portals[portal]["enabled"] == "true":
-            enabledChannels = portals[portal].get("enabled channels", [])
-            if len(enabledChannels) != 0:
-                name = portals[portal]["name"]
-                url = portals[portal]["url"]
-                macs = list(portals[portal]["macs"].keys())
-                proxy = portals[portal]["proxy"]
-                customChannelNames = portals[portal].get("custom channel names", {})
-                customChannelNumbers = portals[portal].get("custom channel numbers", {})
-
-                for mac in macs:
-                    try:
-                        token = stb.getToken(url, mac, proxy)
-                        stb.getProfile(url, mac, token, proxy)
-                        allChannels = stb.getAllChannels(url, mac, token, proxy)
-                        break
-                    except:
-                        allChannels = None
-
-                if allChannels:
-                    for channel in allChannels:
-                        channelId = str(channel.get("id"))
-                        if channelId in enabledChannels:
-                            channelName = customChannelNames.get(channelId)
-                            if channelName is None:
-                                channelName = str(channel.get("name"))
-                            channelNumber = customChannelNumbers.get(channelId)
-                            if channelNumber is None:
-                                channelNumber = str(channel.get("number"))
-
-                            lineup.append(
-                                {
-                                    "GuideNumber": channelNumber,
-                                    "GuideName": channelName,
-                                    "URL": "http://"
-                                    + host
-                                    + "/play/"
-                                    + portal
-                                    + "/"
-                                    + channelId,
-                                }
-                            )
-                else:
-                    logger.error("Error making lineup for {}, skipping".format(name))
     
-    lineup.sort(key=lambda x: int(x["GuideNumber"]))
-
+    # Get enabled channels from database (single source of truth)
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT portal, channel_id, name, custom_name, number, custom_number
+            FROM channels 
+            WHERE enabled = 1
+            ORDER BY portal, CAST(COALESCE(custom_number, number, '0') AS INTEGER)
+        ''')
+        db_channels = cursor.fetchall()
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+    
+    # Get portal info
+    portals = getPortals()
+    
+    # Get external host configuration
+    external_host, external_scheme = get_external_host_config()
+    host = external_host or request.host or "0.0.0.0:8001"
+    
+    for channel in db_channels:
+        portal_id = channel['portal']
+        channel_id = str(channel['channel_id'])
+        
+        # Check if portal is enabled
+        if portal_id not in portals or portals[portal_id].get("enabled") != "true":
+            continue
+        
+        # Use custom values if available, otherwise use original values
+        channel_name = channel['custom_name'] if channel['custom_name'] else (channel['name'] or "Unknown Channel")
+        channel_number = channel['custom_number'] if channel['custom_number'] else (channel['number'] or "0")
+        
+        lineup.append({
+            "GuideNumber": str(channel_number),
+            "GuideName": channel_name,
+            "URL": f"{external_scheme or 'http'}://{host}/play/{portal_id}/{channel_id}"
+        })
+    
+    # Sort by channel number
+    try:
+        lineup.sort(key=lambda x: int(x["GuideNumber"]))
+    except:
+        lineup.sort(key=lambda x: x["GuideNumber"])
+    
     cached_lineup = lineup
-    logger.info("Lineup Refreshed.")
+    logger.info(f"Lineup refreshed from database - {len(lineup)} channels")
     
 @app.route("/lineup.json", methods=["GET"])
 @app.route("/lineup.post", methods=["POST"])
@@ -12323,6 +12468,9 @@ if __name__ == "__main__":
     # Start automatic token refresh for active streams (prevents token expiration)
     logger.info("Starting automatic token refresh for active streams (every 50 minutes)")
     refresh_tokens_for_active_streams()
+    
+    # Start automatic EPG refresh scheduler (if enabled)
+    start_epg_auto_refresh_scheduler()
     
     # Waitress Performance Configuration
     # Optimized for high-performance streaming and concurrent requests
