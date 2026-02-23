@@ -1058,6 +1058,7 @@ defaultSettings = {
     "hls auto retry": "false",
     "hls retry timeout": "6",
     "ffmpeg timeout": "5",
+    "ffprobe params": "-analyzeduration 500000 -probesize 100000",  # Custom ffprobe parameters (Balance preset)
     "test streams": "true",
     "try all macs": "true",
     "try all macs on db miss": "true",
@@ -7124,6 +7125,33 @@ def refresh_xmltv():
             url = portals[portal]["url"]
             macs = list(portals[portal]["macs"].keys())
             proxy = portals[portal]["proxy"]
+
+            # OPTIMIZATION: Sort MACs by how many enabled channels they cover
+            # MAC that appears in most channels' available_macs should be tried first
+            try:
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor()
+                
+                mac_coverage = {}
+                for mac in macs:
+                    # Count how many enabled channels have this MAC in their available_macs
+                    cursor_temp.execute('''
+                        SELECT COUNT(*) FROM channels 
+                        WHERE portal = ? AND enabled = 1 
+                        AND available_macs LIKE ?
+                    ''', (portal, f'%{mac}%'))
+                    count = cursor_temp.fetchone()[0]
+                    mac_coverage[mac] = count
+                
+                conn_temp.close()
+                
+                # Sort MACs by coverage (descending - more channels = better for EPG)
+                if mac_coverage:
+                    macs = sorted(macs, key=lambda m: mac_coverage.get(m, 0), reverse=True)
+                    logger.info(f"Sorted MACs by channel coverage: {[(m, mac_coverage.get(m, 0)) for m in macs[:3]]}")
+            except Exception as e:
+                logger.warning(f"Could not sort MACs by coverage: {e}")
+                # Continue with original MAC order
 
             # Fetch EPG only (channels already in database) - try MACs until all enabled channels have EPG
             merged_epg = {}  # channelId -> [programmes]
