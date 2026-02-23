@@ -397,22 +397,60 @@
     let currentPortalId = null;
 
     let epgProgressInterval = null;
+    let backgroundCheckInterval = null;
+    let backgroundCheckCount = 0;
 
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('xmltvUrl').value = window.location.origin + '/xmltv';
         loadPortals();
         loadEPGSettings();
-        checkEPGProgress(); // Check if refresh is already running
+        checkEPGProgress(); // Check immediately on load
+        
+        // Start background checking - stops automatically if nothing is running
+        startBackgroundCheck();
     });
     
-    // Check EPG progress periodically even when not on page
-    // This ensures progress bar reappears when returning to page
-    setInterval(function() {
-        // Only check if we're on the EPG page and not already polling
-        if (document.getElementById('epgRefreshProgress') && !epgProgressInterval) {
-            checkEPGProgress();
+    function startBackgroundCheck() {
+        // Stop any existing interval
+        if (backgroundCheckInterval) {
+            clearInterval(backgroundCheckInterval);
         }
-    }, 5000); // Check every 5 seconds
+        
+        backgroundCheckCount = 0;
+        backgroundCheckInterval = setInterval(function() {
+            // Only check if we're on the EPG page and not already polling
+            if (document.getElementById('epgRefreshProgress') && !epgProgressInterval) {
+                fetch('/epg/refresh/progress', { credentials: 'same-origin' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.running) {
+                            // EPG is running - start the main polling
+                            startEPGProgressPolling();
+                            backgroundCheckCount = 0; // Reset counter
+                        } else {
+                            // Nothing running - increment counter
+                            backgroundCheckCount++;
+                            
+                            // Stop background checking after 5 failed checks (10 seconds of nothing)
+                            if (backgroundCheckCount >= 5) {
+                                console.log('No EPG refresh detected, stopping background check');
+                                clearInterval(backgroundCheckInterval);
+                                backgroundCheckInterval = null;
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Background EPG check error:', err);
+                        backgroundCheckCount++;
+                        if (backgroundCheckCount >= 5) {
+                            clearInterval(backgroundCheckInterval);
+                            backgroundCheckInterval = null;
+                        }
+                    });
+            }
+        }, 2000); // Check every 2 seconds
+    }
+
 
     function loadEPGSettings() {
         fetch('/epg/settings', { credentials: 'same-origin' })
@@ -866,6 +904,7 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
+                    startBackgroundCheck(); // Restart background checking
                     startEPGProgressPolling();
                 } else {
                     showAlert(data.error || 'Failed to start EPG refresh', 'Error', 'danger');
