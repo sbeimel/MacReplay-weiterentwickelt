@@ -572,6 +572,41 @@ def getExpires(url, mac, token, proxy=None):
         logger.error(f"Error getting expiry for MAC {mac}: {e}")
 
 
+def _normalize_channel_data(channels):
+    """Normalize and fix malformed channel data from portals.
+    
+    Handles various edge cases:
+    - Nested lists: [[{...}], [{...}]] -> [{...}, {...}]
+    - Mixed types: [{...}, "string", None, [...]] -> [{...}]
+    - Missing required fields: adds defaults
+    """
+    if not channels:
+        return []
+    
+    normalized = []
+    for item in channels:
+        # Case 1: Item is already a valid dict
+        if isinstance(item, dict):
+            # Ensure required fields exist
+            if "id" in item:
+                normalized.append(item)
+            else:
+                logger.debug(f"Skipping channel dict without 'id': {list(item.keys())[:5]}")
+        
+        # Case 2: Item is a nested list - flatten it
+        elif isinstance(item, list):
+            logger.debug(f"Found nested list in channels, flattening...")
+            for nested_item in item:
+                if isinstance(nested_item, dict) and "id" in nested_item:
+                    normalized.append(nested_item)
+        
+        # Case 3: Invalid type (string, number, None, etc.)
+        else:
+            logger.debug(f"Skipping invalid channel item type: {type(item)}")
+    
+    return normalized
+
+
 def getAllChannels(url, mac, token, proxy=None):
     """Get all channels with support for GET and POST methods."""
     # Parse proxy configuration for all proxy types
@@ -630,8 +665,13 @@ def getAllChannels(url, mac, token, proxy=None):
                 channels = []
             
             if channels and isinstance(channels, list):
-                logger.info(f"Got {len(channels)} channels for MAC {mac}")
-                return channels
+                # Normalize and fix malformed channel data
+                channels = _normalize_channel_data(channels)
+                if channels:
+                    logger.info(f"Got {len(channels)} valid channels for MAC {mac}")
+                    return channels
+                else:
+                    logger.warning(f"All channel data was invalid for MAC {mac}")
         except (KeyError, TypeError, ValueError) as parse_error:
             logger.debug(f"JSON parsing error: {parse_error}")
             raise  # Re-raise to trigger POST fallback
@@ -671,8 +711,13 @@ def getAllChannels(url, mac, token, proxy=None):
                 channels = []
             
             if channels and isinstance(channels, list):
-                logger.info(f"Got {len(channels)} channels for MAC {mac} via POST")
-                return channels
+                # Normalize and fix malformed channel data
+                channels = _normalize_channel_data(channels)
+                if channels:
+                    logger.info(f"Got {len(channels)} valid channels for MAC {mac} via POST")
+                    return channels
+                else:
+                    logger.warning(f"All channel data was invalid for MAC {mac} via POST")
         except (KeyError, TypeError, ValueError) as parse_error:
             logger.debug(f"JSON parsing error in POST: {parse_error}")
             raise

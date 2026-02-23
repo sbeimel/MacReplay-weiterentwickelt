@@ -1891,7 +1891,7 @@ def refresh_channels_cache():
             macs = list(portal["macs"].keys())
             proxy = portal["proxy"]
             
-            # Get selected genres for this portal from database (single source of truth)
+            # Get selected genres for this portal from database (primary source)
             selected_genres = []
             try:
                 cursor.execute('SELECT genre FROM portal_genres WHERE portal = ?', (portal_id,))
@@ -1899,7 +1899,24 @@ def refresh_channels_cache():
                 if selected_genres:
                     logger.info(f"Loaded {len(selected_genres)} genres from database for portal {portal_name}")
                 else:
-                    logger.info(f"No genres selected in database for portal {portal_name}")
+                    logger.info(f"No genres in database for portal {portal_name}")
+                    
+                    # Fallback: Check JSON config for migration/backup
+                    json_genres = portal.get("selected genres", [])
+                    if json_genres:
+                        logger.info(f"Found {len(json_genres)} genres in JSON config - migrating to database")
+                        selected_genres = json_genres
+                        
+                        # Sync to database
+                        try:
+                            for genre in selected_genres:
+                                cursor.execute('INSERT INTO portal_genres (portal, genre) VALUES (?, ?)', (portal_id, genre))
+                            conn.commit()
+                            logger.info(f"Migrated {len(selected_genres)} genres from JSON to database")
+                        except Exception as sync_error:
+                            logger.error(f"Error syncing genres to database: {sync_error}")
+                    else:
+                        logger.info(f"No genre filter - will cache ALL channels")
             except Exception as e:
                 logger.error(f"Error loading genres from database: {e}")
                 selected_genres = []
@@ -1912,8 +1929,6 @@ def refresh_channels_cache():
             logger.info(f"Fetching channels for portal: {portal_name} from {len(macs)} MACs")
             if selected_genres:
                 logger.info(f"Selected genres ({len(selected_genres)}): {selected_genres}")
-            else:
-                logger.info(f"No genre filter - will cache ALL channels")
             editor_refresh_progress["current_step"] = f"{portal_name}: Found {len(macs)} MAC(s)"
             
             # Fetch from ALL MACs and merge
