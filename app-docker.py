@@ -427,6 +427,31 @@ def get_external_host_config():
     return None, None
 
 
+def get_external_host_public_config():
+    """
+    Get public/external host configuration from environment variables.
+    Used for generating external playlists accessible from the internet.
+    
+    Returns:
+        tuple: (external_host, external_scheme) or (None, None)
+    """
+    # Check if HOST_EXTERNAL contains a full URL
+    host_env = os.getenv("HOST_EXTERNAL")
+    if host_env and ("http://" in host_env or "https://" in host_env):
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(host_env)
+            if parsed.hostname:
+                host_with_port = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+                scheme = parsed.scheme or "http"
+                return host_with_port, scheme
+        except Exception:
+            pass
+    
+    # Fallback to None
+    return None, None
+
+
 def extract_auth_credentials(request):
     """
     Extract authentication credentials from HTTP request.
@@ -6564,6 +6589,74 @@ def _playlist():
         return Response("#EXTM3U\n", mimetype="text/plain")
 
 
+@app.route("/playlist_external.m3u", methods=["GET"])
+def playlist_external():
+    """External M3U playlist with public URLs (uses HOST_EXTERNAL)."""
+    settings = getSettings()
+    public_access = settings.get("public playlist access", "true") == "true"
+    
+    if public_access:
+        # Public access enabled - no authentication required
+        return _playlist_external()
+    else:
+        # Public access disabled - check for authentication
+        
+        # First check if user is logged in via session
+        if flask.session.get("authenticated"):
+            return _playlist_external()
+        
+        # If no session, try Basic Auth
+        auth = request.authorization
+        if auth and auth.username and auth.password:
+            # Validate Basic Auth credentials
+            system_username = settings.get("username", "admin")
+            system_password = settings.get("password", "12345")
+            
+            if auth.username == system_username and auth.password == system_password:
+                return _playlist_external()
+            else:
+                return Response("Invalid credentials", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
+        else:
+            # No Basic Auth provided - use existing session-based auth
+            return authorise(lambda: _playlist_external())()
+
+
+def _playlist_external():
+    """Internal function to serve external playlist."""
+    logger.info("External Playlist Requested")
+    
+    # Check if HOST_EXTERNAL is configured
+    external_host_public, external_scheme_public = get_external_host_public_config()
+    if not external_host_public:
+        logger.warning("HOST_EXTERNAL not configured - returning regular playlist")
+        return _playlist()
+    
+    # Try to read from file
+    playlist_file_external = os.path.join(log_dir, "playlist_external.m3u")
+    if os.path.exists(playlist_file_external):
+        try:
+            with open(playlist_file_external, 'r', encoding='utf-8') as f:
+                return Response(f.read(), mimetype="text/plain")
+        except Exception as e:
+            logger.error(f"Error reading external playlist file: {e}")
+    
+    # File doesn't exist - generate it
+    logger.info("External playlist file not found - generating...")
+    generate_playlist()
+    
+    # Try to read the newly generated file
+    if os.path.exists(playlist_file_external):
+        try:
+            with open(playlist_file_external, 'r', encoding='utf-8') as f:
+                return Response(f.read(), mimetype="text/plain")
+        except Exception as e:
+            logger.error(f"Error reading newly generated external playlist file: {e}")
+    
+    # Fallback to regular playlist
+    logger.warning("External playlist not available - falling back to regular playlist")
+    return _playlist()
+
+
 def _playlist_with_auth(username, password):
     """Generate playlist with embedded Basic Auth credentials in stream URLs."""
     logger.info("Playlist with Basic Auth Requested")
@@ -6730,7 +6823,12 @@ def generate_playlist():
     external_host, external_scheme = get_external_host_config()
     playlist_host = external_host or request.host or "0.0.0.0:8001"
     
+    # Check if we should also generate an external playlist
+    external_host_public, external_scheme_public = get_external_host_public_config()
+    generate_external = external_host_public is not None
+    
     channels = []
+    channels_external = [] if generate_external else None
     
     # Get enabled channels from database
     conn = None
@@ -6798,10 +6896,28 @@ def generate_playlist():
         m3u_entry += "http://" + playlist_host + "/play/" + portal_id + "/" + channel_id
         
         channels.append(m3u_entry)
+        
+        # Generate external playlist entry if HOST_EXTERNAL is set
+        if generate_external:
+            m3u_entry_ext = "#EXTINF:-1"
+            m3u_entry_ext += ' tvg-id="' + escape_quotes(epg_id) + '"'
+            
+            if getSettings().get("use channel numbers", "true") == "true" and channel_number:
+                m3u_entry_ext += ' tvg-chno="' + escape_quotes(channel_number) + '"'
+            
+            if getSettings().get("use channel genres", "true") == "true" and group_title:
+                m3u_entry_ext += ' group-title="' + escape_quotes(group_title) + '"'
+            
+            m3u_entry_ext += ',' + str(channel_name) + "\n"
+            m3u_entry_ext += "http://" + external_host_public + "/play/" + portal_id + "/" + channel_id
+            
+            channels_external.append(m3u_entry_ext)
 
     # Sort channels based on settings
     if getSettings().get("sort playlist by channel name", "true") == "true":
         channels.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
+        if generate_external:
+            channels_external.sort(key=lambda k: k.split(",")[1].split("\n")[0] if "," in k else "")
     if getSettings().get("use channel numbers", "true") == "true":
         if getSettings().get("sort playlist by channel number", "false") == "true":
             def get_channel_number(k):
@@ -6812,6 +6928,8 @@ def generate_playlist():
                 except (ValueError, IndexError):
                     return 999999
             channels.sort(key=get_channel_number)
+            if generate_external:
+                channels_external.sort(key=get_channel_number)
     if getSettings().get("use channel genres", "true") == "true":
         if getSettings().get("sort playlist by channel genre", "false") == "true":
             def get_genre(k):
@@ -6822,6 +6940,8 @@ def generate_playlist():
                 except IndexError:
                     return "zzz"
             channels.sort(key=get_genre)
+            if generate_external:
+                channels_external.sort(key=get_genre)
 
     playlist = "#EXTM3U \n"
     if channels:
@@ -6837,6 +6957,20 @@ def generate_playlist():
         logger.error(f"Error writing playlist file: {e}")
         # Fallback to RAM cache if file write fails
         cached_playlist = playlist
+    
+    # Generate external playlist if HOST_EXTERNAL is set
+    if generate_external:
+        playlist_external = "#EXTM3U \n"
+        if channels_external:
+            playlist_external = playlist_external + "\n".join(channels_external)
+        
+        playlist_file_external = os.path.join(log_dir, "playlist_external.m3u")
+        try:
+            with open(playlist_file_external, "w", encoding="utf-8") as f:
+                f.write(playlist_external)
+            logger.info(f"External playlist generated and saved to file ({len(channels_external)} channels)")
+        except Exception as e:
+            logger.error(f"Error writing external playlist file: {e}")
     
     # Also update RAM cache for backward compatibility
     cached_playlist = playlist

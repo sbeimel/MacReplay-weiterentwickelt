@@ -838,6 +838,123 @@
             </div>
         </div>
 
+        <!-- Dual Playlist System -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-list me-2"></i>Dual Playlist System (Intern + Extern)</h3></div>
+            <div class="card-body">
+                <div class="alert alert-success mb-3">
+                    <h5 class="alert-heading"><i class="ti ti-sparkles me-2"></i>Neu in v4.2.0</h5>
+                    <p class="mb-0">Automatische Generierung von zwei Playlists für interne und externe Clients - perfekt für Setups ohne Hairpin NAT!</p>
+                </div>
+
+                <h5 class="mb-3">🌐 Problem: Hairpin NAT</h5>
+                <p>Wenn dein Router kein Hairpin NAT unterstützt, können interne Clients nicht über die externe Domain auf den Server zugreifen:</p>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <div class="border border-danger rounded p-2">
+                            <strong class="text-danger">❌ Funktioniert nicht:</strong><br>
+                            <small>Interner Client → <code>ricotv.gopip.de:61095</code> → Router kann nicht zurück ins LAN routen</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border border-success rounded p-2">
+                            <strong class="text-success">✅ Funktioniert:</strong><br>
+                            <small>Interner Client → <code>10.0.0.168:61095</code> → Direkter Zugriff im LAN</small>
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="mb-3">⚙️ Konfiguration (docker-compose.yml)</h5>
+                <pre class="bg-dark text-light p-3 rounded"><code>environment:
+  # Optional: Interne URL (wenn leer, wird request.host verwendet)
+  # - HOST=http://10.0.0.168:61095
+  
+  # Externe URL für externe Clients (erforderlich für externe Playlist)
+  - HOST_EXTERNAL=http://ricotv.gopip.de:61095
+  
+  - CONFIG=/app/data/MacReplayXC.json</code></pre>
+
+                <h5 class="mb-3">📋 Zwei Playlists</h5>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 30%;">Playlist</th>
+                                <th style="width: 35%;">URL</th>
+                                <th style="width: 35%;">Verwendung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Interne Playlist</strong></td>
+                                <td><code>/playlist.m3u</code><br><code>/get.php</code></td>
+                                <td>Für interne Clients (LAN)<br>Nutzt <code>HOST</code> oder <code>request.host</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Externe Playlist</strong></td>
+                                <td><code>/playlist_external.m3u</code></td>
+                                <td>Für externe Clients (Internet)<br>Nutzt <code>HOST_EXTERNAL</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">🔄 Automatische Generierung</h5>
+                <div class="alert alert-info mb-3">
+                    <strong>Wenn "M3U sichern" aktiviert ist:</strong>
+                    <ul class="mb-0">
+                        <li>Beide Playlists werden automatisch generiert und gespeichert</li>
+                        <li>Dashboard-Button "Update Playlist" aktualisiert beide Playlists</li>
+                        <li>Playlists werden bei Host-Änderung automatisch neu generiert</li>
+                    </ul>
+                </div>
+
+                <h5 class="mb-3">📱 Verwendungsbeispiele</h5>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <strong>Interne Clients (LAN)</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-2"><strong>Playlist-URL:</strong></p>
+                                <code class="d-block mb-2">http://10.0.0.168:61095/playlist.m3u</code>
+                                <p class="mb-2"><strong>XC API:</strong></p>
+                                <code class="d-block mb-2">http://10.0.0.168:61095/get.php?username=...&password=...&type=m3u_plus&output=ts</code>
+                                <p class="mb-2"><strong>Stream-URLs in Playlist:</strong></p>
+                                <code class="d-block">http://10.0.0.168:61095/play/...</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <strong>Externe Clients (Internet)</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-2"><strong>Playlist-URL:</strong></p>
+                                <code class="d-block mb-2">http://ricotv.gopip.de:61095/playlist_external.m3u</code>
+                                <p class="mb-2"><strong>XC API:</strong></p>
+                                <code class="d-block mb-2">http://ricotv.gopip.de:61095/get.php?username=...&password=...&type=m3u_plus&output=ts</code>
+                                <p class="mb-2"><strong>Stream-URLs in Playlist:</strong></p>
+                                <code class="d-block">http://ricotv.gopip.de:61095/play/...</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="mb-3">💡 Tipps</h5>
+                <div class="alert alert-warning mb-0">
+                    <ul class="mb-0">
+                        <li><strong>HOST leer lassen:</strong> Wenn <code>HOST</code> nicht gesetzt ist, wird automatisch <code>request.host</code> verwendet (dynamisch)</li>
+                        <li><strong>Nur HOST_EXTERNAL setzen:</strong> Interne Clients bekommen automatisch die richtige URL, externe nutzen <code>/playlist_external.m3u</code></li>
+                        <li><strong>M3U sichern aktivieren:</strong> Für beste Performance und Konsistenz</li>
+                        <li><strong>Dashboard-Button:</strong> Funktioniert immer, auch mit "M3U sichern" aktiviert</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 {% endblock %}

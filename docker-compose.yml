@@ -15,7 +15,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
-      - HOST=0.0.0.0:8001  # Change to your public URL if needed (e.g., http://your-domain.com:port)
+      # - HOST=http://10.0.0.168:61095  # Optional: Internal/local URL (if empty, uses request.host dynamically)
+      - HOST_EXTERNAL=http://ricotv.gopip.de:61095  # External/public URL for external clients
       - CONFIG=/app/data/MacReplayXC.json
       # Python 3.13 Performance Optimizations
       - PYTHONOPTIMIZE=2
