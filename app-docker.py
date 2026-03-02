@@ -4745,7 +4745,12 @@ def generate_portal_m3u(portal_id):
     
     # Use external host configuration
     external_host, external_scheme = get_external_host_config()
-    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    # Use request.host only if we're in a request context
+    try:
+        playlist_host = external_host or request.host or "0.0.0.0:8001"
+    except RuntimeError:
+        # Not in request context
+        playlist_host = external_host or "0.0.0.0:8001"
     
     channels = []
     
@@ -4870,7 +4875,12 @@ def generate_portal_m3u_with_auth(portal_id, username=None, password=None):
     
     # Use external host configuration
     external_host, external_scheme = get_external_host_config()
-    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    # Use request.host only if we're in a request context
+    try:
+        playlist_host = external_host or request.host or "0.0.0.0:8001"
+    except RuntimeError:
+        # Not in request context
+        playlist_host = external_host or "0.0.0.0:8001"
     
     channels = []
     
@@ -6548,13 +6558,18 @@ def _playlist():
     
     # Use external host configuration
     external_host, external_scheme = get_external_host_config()
-    current_host = external_host or request.host or "0.0.0.0:8001"
+    # Use request.host only if we're in a request context
+    try:
+        current_host = external_host or request.host or "0.0.0.0:8001"
+    except RuntimeError:
+        # Not in request context (e.g., called from generate_playlist)
+        current_host = external_host or "0.0.0.0:8001"
     
     # Try to read from file first
     playlist_file = os.path.join(log_dir, "playlist.m3u")
     if os.path.exists(playlist_file):
         # Check if host changed - if so, regenerate
-        if last_playlist_host != current_host:
+        if last_playlist_host and last_playlist_host != current_host:
             logger.info(f"Regenerating playlist due to host change: {last_playlist_host} -> {current_host}")
             last_playlist_host = current_host
             generate_playlist()
@@ -6821,7 +6836,12 @@ def generate_playlist():
 
     # Use external host configuration
     external_host, external_scheme = get_external_host_config()
-    playlist_host = external_host or request.host or "0.0.0.0:8001"
+    # Use request.host only if we're in a request context
+    try:
+        playlist_host = external_host or request.host or "0.0.0.0:8001"
+    except RuntimeError:
+        # Not in request context (e.g., called from dashboard button)
+        playlist_host = external_host or "0.0.0.0:8001"
     
     # Check if we should also generate an external playlist
     external_host_public, external_scheme_public = get_external_host_public_config()
