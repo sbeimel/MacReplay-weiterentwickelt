@@ -237,8 +237,7 @@
                                 </button>
                             </div>
                             <div class="col-6">
-                                {% if settings.get('public playlist access', 'true') == 'true' %}
-                                <!-- Triple Button: Download M3U + Copy Legacy URL + Copy XC URL -->
+                                <!-- Triple Button: Download M3U + Copy Legacy URL + Copy XC URL (always visible) -->
                                 <div class="btn-group w-100" role="group">
                                     <button class="btn btn-outline-info"
                                         onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')"
@@ -254,13 +253,6 @@
                                         <i class="ti ti-api"></i>
                                     </button>
                                 </div>
-                                {% else %}
-                                <!-- Single Button: Download M3U only -->
-                                <button class="btn btn-outline-info w-100"
-                                    onclick="downloadPortalM3U('{{ portal_id }}', '{{ portal.name }}')">
-                                    <i class="ti ti-download me-1"></i>Download M3U
-                                </button>
-                                {% endif %}
                             </div>
                         </div>
 
