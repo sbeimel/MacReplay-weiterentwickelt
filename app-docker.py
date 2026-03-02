@@ -8173,9 +8173,16 @@ def generate_xc_m3u_with_portal_filter(user, portal_id_filter=None):
     db_channels = cursor.fetchall()
     conn.close()
     
-    # Use the same host as the request came from (handles reverse proxy correctly)
-    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-    host = request.headers.get('X-Forwarded-Host', request.host)
+    # Use external host configuration (same as main playlist)
+    external_host, external_scheme = get_external_host_config()
+    if external_host:
+        # Use configured external host
+        scheme = external_scheme or "http"
+        host = external_host
+    else:
+        # Fallback to request headers (handles reverse proxy correctly)
+        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+        host = request.headers.get('X-Forwarded-Host', request.host)
     
     # Create a copy to avoid RuntimeError if dictionary changes during iteration
     for portal_id, portal in list(portals.items()):
