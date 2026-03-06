@@ -1,5 +1,5 @@
 Error loading logs: HTTP 429: TOO MANY REQUESTS
-erstma# Handshake Comparison Part 4 - API Endpoints & Workflow
+erstmaError loading stream data: HTTP error! status: 429# Handshake Comparison Part 4 - API Endpoints & Workflow
 
 ## 📡 API Endpoints - Alle Projekte verwenden die gleichen!
 

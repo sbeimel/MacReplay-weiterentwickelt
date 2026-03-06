@@ -610,7 +610,7 @@ def is_localhost():
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=[],  # No default limits - only specific endpoints
     storage_uri="memory://",
     strategy="fixed-window"
 )
@@ -618,7 +618,7 @@ limiter = Limiter(
 # Exempt localhost from rate limiting using decorator
 limiter.request_filter(is_localhost)
 
-logger.info("Rate limiting enabled: 200/day, 50/hour (default), localhost exempt")
+logger.info("Rate limiting enabled for specific endpoints only (login, refresh operations), localhost exempt")
 
 # ============================================
 # Vavoo Integration (Separate Container)
@@ -3027,7 +3027,6 @@ def vods_settings_save():
 
 
 @app.route("/vods/refresh", methods=["POST"])
-@limiter.limit("3 per minute")
 @authorise
 def vods_refresh():
     """Start VOD cache refresh in background - tests ALL MACs and merges categories."""
@@ -5755,7 +5754,6 @@ def editorSave():
 
 
 @app.route("/editor/bulk-edit", methods=["POST"])
-@limiter.limit("10 per minute")
 @authorise
 def editor_bulk_edit():
     """Apply bulk search & replace to channel names and genres."""
@@ -6197,7 +6195,6 @@ def editorReset():
 
 
 @app.route("/editor/refresh", methods=["POST"])
-@limiter.limit("3 per minute")
 @authorise
 def editor_refresh():
     """Manually trigger a refresh of the channel cache."""
@@ -8170,7 +8167,6 @@ def epg_save_mapping():
 
 
 @app.route("/epg/refresh", methods=["POST"])
-@limiter.limit("3 per minute")
 @authorise
 def epg_refresh():
     """Force refresh EPG cache."""
@@ -12230,7 +12226,6 @@ def lineup():
     return jsonify(cached_lineup)
 
 @app.route("/refresh_lineup", methods=["POST"])
-@limiter.limit("3 per minute")
 @authorise
 def refresh_lineup_endpoint():
     try:
@@ -12410,7 +12405,6 @@ def cache_vacuum():
         return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/api/logs/recent", methods=["GET"])
-@limiter.limit("100 per minute")  # Higher limit for log polling
 @authorise
 def get_recent_logs():
     """Get recent log entries for live log display."""
