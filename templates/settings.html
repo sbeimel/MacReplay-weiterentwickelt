@@ -76,6 +76,23 @@
                                     <strong>Direct Redirect:</strong> Client connects directly to portal (no CPU, no connection tracking)
                                 </div>
                             </div>
+                            
+                            <hr class="my-3">
+                            
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="token cache enabled" value="true" id="tokenCacheEnabled" {{ 'checked' if settings.get('token cache enabled', 'true') == 'true' }}>
+                                    <span class="form-check-label">Token Cache</span>
+                                </label>
+                                <small class="form-hint">Stalker-Tokens pro MAC cachen — schnellerer Stream-Start beim Channel-Wechsel. Wenn deaktiviert: Bei jedem Sender wird neuer Token geholt.</small>
+                            </div>
+                            
+                            <div class="mb-0" id="tokenCacheTtlRow">
+                                <label class="form-label">Token Cache TTL (Sekunden)</label>
+                                <input type="number" class="form-control" name="token cache ttl"
+                                    value="{{ settings.get('token cache ttl', '270') }}" min="30" max="600">
+                                <small class="form-hint">Wie lange ein Token gecacht wird (Standard: 270s)</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -171,21 +188,6 @@
                                     <span class="form-check-label">Skip busy MACs</span>
                                 </label>
                                 <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" name="token cache enabled" value="true" id="tokenCacheEnabled" {{ 'checked' if settings.get('token cache enabled', 'true') == 'true' }}>
-                                    <span class="form-check-label">Token Cache <span class="badge bg-green ms-1">NEU</span></span>
-                                </label>
-                                <small class="form-hint">Stalker-Tokens pro MAC cachen — schnellerer Stream-Start beim Channel-Wechsel (wie Macstrom). Wenn deaktiviert: Bei jedem Sender wird neuer Token geholt.</small>
-                            </div>
-                            
-                            <div class="mb-3" id="tokenCacheTtlRow">
-                                <label class="form-label">Token Cache TTL (Sekunden)</label>
-                                <input type="number" class="form-control" name="token cache ttl"
-                                    value="{{ settings.get('token cache ttl', '270') }}" min="30" max="600">
-                                <small class="form-hint">Wie lange ein Token gecacht wird (Standard: 270s = watchdog_timeout × 0.9). Cache wird automatisch bereinigt bei Speicherlimit (500 Einträge) oder abgelaufenen Tokens.</small>
                             </div>
                             
                             <div class="alert alert-info mb-0" role="alert">
