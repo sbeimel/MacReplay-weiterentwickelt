@@ -598,6 +598,8 @@ app.wsgi_app = ProxyFix(
 )
 logger.info("ProxyFix middleware enabled for reverse proxy support")
 
+# In-memory cache for Macstrom hits (avoid re-fetching 10k entries per page)
+_macstrom_hits_cache = {"hits": [], "url": None, "ts": 0}
 # Rate Limiting (NEW in v4.2.0)
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -656,6 +658,111 @@ last_playlist_host = None
 cached_xmltv = None  # Deprecated - XMLTV now served from file for memory efficiency
 last_updated = 0
 hls_manager = None
+
+# ============================================================================
+# Token Cache - caches Stalker tokens per (portal_url, mac) to avoid
+# repeated handshakes. TTL = token_cache_ttl setting (default 270s).
+# Inspired by Macstrom's TokenCache implementation.
+# ============================================================================
+class TokenCache:
+    """Thread-safe in-memory token cache keyed by (portal_url, mac)."""
+    MAX_ENTRIES = 500  # Prevent unbounded memory growth
+
+    def __init__(self):
+        self._cache = {}  # (url, mac) -> {"token": str, "expires_at": float}
+        self._lock = threading.Lock()
+
+    def get(self, url, mac):
+        """Return cached token if still valid, else None."""
+        key = (url, mac)
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry and time.time() < entry["expires_at"]:
+                return entry["token"]
+            elif entry:
+                del self._cache[key]
+        return None
+
+    def set(self, url, mac, token, ttl_seconds=270):
+        """Cache a token with TTL. Evicts expired entries if cache is full."""
+        key = (url, mac)
+        with self._lock:
+            # Evict expired entries if at capacity
+            if len(self._cache) >= self.MAX_ENTRIES:
+                now = time.time()
+                expired = [k for k, v in self._cache.items() if now >= v["expires_at"]]
+                for k in expired:
+                    del self._cache[k]
+                # If still full after eviction, remove oldest entry
+                if len(self._cache) >= self.MAX_ENTRIES:
+                    oldest = min(self._cache.items(), key=lambda x: x[1]["expires_at"])
+                    del self._cache[oldest[0]]
+            self._cache[key] = {
+                "token": token,
+                "expires_at": time.time() + ttl_seconds
+            }
+
+    def invalidate(self, url, mac):
+        """Remove a token from cache (e.g. on stream failure)."""
+        key = (url, mac)
+        with self._lock:
+            self._cache.pop(key, None)
+
+    def clear(self):
+        """Clear all cached tokens."""
+        with self._lock:
+            self._cache.clear()
+
+    def cleanup_expired(self):
+        """Remove all expired entries. Called periodically."""
+        with self._lock:
+            now = time.time()
+            expired = [k for k, v in self._cache.items() if now >= v["expires_at"]]
+            for k in expired:
+                del self._cache[k]
+            return len(expired)
+
+    def stats(self):
+        """Return cache statistics."""
+        with self._lock:
+            now = time.time()
+            valid = sum(1 for e in self._cache.values() if now < e["expires_at"])
+            return {"total": len(self._cache), "valid": valid, "expired": len(self._cache) - valid}
+
+token_cache = TokenCache()
+
+
+def get_token_cached(url, mac, proxy=None):
+    """
+    Get token with caching. If enabled in settings, returns cached token if available.
+    Falls back to fresh handshake on cache miss, when disabled, or if cached token fails.
+    """
+    settings = getSettings()
+    cache_enabled = settings.get("token cache enabled", "true") == "true"
+
+    if cache_enabled:
+        cached = token_cache.get(url, mac)
+        if cached:
+            logger.debug(f"[TOKEN CACHE] Hit for MAC {mac}")
+            return cached
+
+    # Fresh handshake
+    token = stb.getToken(url, mac, proxy)
+    if token and cache_enabled:
+        ttl = int(settings.get("token cache ttl", "270"))
+        token_cache.set(url, mac, token, ttl)
+        logger.debug(f"[TOKEN CACHE] Stored token for MAC {mac} (TTL: {ttl}s)")
+    elif not token and cache_enabled:
+        # Token failed - remove any stale cached entry
+        token_cache.invalidate(url, mac)
+
+    return token
+
+
+def invalidate_token_cache(url, mac):
+    """Invalidate cached token for a MAC (call on stream failure)."""
+    token_cache.invalidate(url, mac)
+    logger.debug(f"[TOKEN CACHE] Invalidated token for MAC {mac}")
 
 
 def start_epg_auto_refresh_scheduler():
@@ -1108,6 +1215,8 @@ defaultSettings = {
     "try all macs": "true",
     "try all macs on db miss": "true",
     "skip busy macs": "true",
+    "token cache enabled": "true",  # Cache tokens per MAC to avoid repeated handshakes
+    "token cache ttl": "270",  # Token cache TTL in seconds (watchdog_timeout * 0.9, default 300*0.9=270)
     "use channel genres": "true",
     "use channel numbers": "true",
     "sort playlist by channel genre": "false",
@@ -1690,6 +1799,11 @@ def loadConfig():
             value = default
         settingsOut[setting] = value
 
+    # Preserve extra keys not in defaultSettings (e.g. macstrom_url, macstrom_api_key)
+    for key, value in settings.items():
+        if key not in settingsOut:
+            settingsOut[key] = value
+
     data["settings"] = settingsOut
 
     portals = data["portals"]
@@ -1976,29 +2090,42 @@ def init_vod_db():
                 pass
 
 
-def refresh_channels_cache_with_progress():
+def refresh_channels_cache_with_progress(portal_ids=None):
     """Wrapper for refresh_channels_cache with progress tracking."""
     global editor_refresh_progress
     try:
-        return refresh_channels_cache()
+        return refresh_channels_cache(portal_ids=portal_ids)
     finally:
         editor_refresh_progress["running"] = False
         editor_refresh_progress["current_step"] = "Completed"
 
-def refresh_channels_cache():
-    """Refresh the channels cache from STB portals - respects genre filtering."""
+def refresh_channels_cache(portal_ids=None):
+    """Refresh the channels cache from STB portals - respects genre filtering.
+    
+    Args:
+        portal_ids: Optional list of portal IDs to refresh. If None, refreshes all portals.
+    """
     global editor_refresh_progress
     
     logger.info("Starting channel cache refresh...")
     editor_refresh_progress["current_step"] = "Clearing old cache data..."
     
-    # Clear cache data from DB (stream_cmd and available_macs)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL')
-    cleared_count = cursor.rowcount
+
+    if portal_ids:
+        # Only clear cache for the specific portals being refreshed
+        cleared_count = 0
+        for pid in portal_ids:
+            cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL WHERE portal = ?', (pid,))
+            cleared_count += cursor.rowcount
+        logger.info(f"Cleared cache data for {len(portal_ids)} specific portal(s) ({cleared_count} rows)")
+    else:
+        # Full refresh — clear all
+        cursor.execute('UPDATE channels SET stream_cmd = NULL, available_macs = NULL')
+        cleared_count = cursor.rowcount
+        logger.info(f"Cleared cache data from {cleared_count} channels")
     conn.commit()
-    logger.info(f"Cleared cache data from {cleared_count} channels")
     
     editor_refresh_progress["current_step"] = "Loading portals..."
     
@@ -2008,6 +2135,10 @@ def refresh_channels_cache():
     portal_index = 0
     
     for portal_id in portals:
+        # Skip portals not in the requested list (if a list was given)
+        if portal_ids is not None and portal_id not in portal_ids:
+            continue
+
         portal = portals[portal_id]
         if portal["enabled"] == "true":
             portal_index += 1
@@ -2428,12 +2559,16 @@ def xc_auth_optional(f):
 
 def moveMac(portalId, mac):
     portals = getPortals()
+    url = portals[portalId].get("url", "")
     macs = portals[portalId]["macs"]
     x = macs[mac]
     del macs[mac]
     macs[mac] = x
     portals[portalId]["macs"] = macs
     savePortals(portals)
+    # Invalidate cached token for this MAC since it failed
+    if url:
+        invalidate_token_cache(url, mac)
 
 @app.route("/data/<path:filename>", methods=["GET"])
 def block_data_access(filename):
@@ -4124,62 +4259,105 @@ def portalUpdate():
             try:
                 logger.info(f"Auto-refreshing channels.db for updated portal: {name}")
                 
-                # Fetch channels from ALL MACs and save to DB
+                # Determine which MACs are new (not in oldmacs)
+                new_macs = set(macsout.keys()) - set(oldmacs.keys())
+                existing_macs = set(macsout.keys()) & set(oldmacs.keys())
+                
+                logger.info(f"New MACs: {len(new_macs)}, Existing MACs: {len(existing_macs)}")
+                
+                macs_to_fetch = list(new_macs)
+                
+                # If retest=true but no new MACs, skip channel fetching entirely
                 all_channels_map = {}
                 all_genres_dict = {}
                 channel_macs_map = {}
-                mac_playback_limits = {}  # Store playback_limit per MAC
-                mac_has_de = {}  # Store DE content detection per MAC
-                
-                # Region detection patterns (case-insensitive)
-                de_patterns = ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY']
-                
-                for mac in macsout.keys():
-                    try:
-                        token = stb.getToken(url, mac, proxy)
-                        if token:
-                            profile = stb.getProfile(url, mac, token, proxy)
-                            # Get playback_limit from profile
-                            if profile:
-                                playback_limit = profile.get("playback_limit", 1)
+                mac_playback_limits = {}
+                mac_has_de = {}
+
+                if retest and not new_macs:
+                    logger.info(f"Re-test with no new MACs - skipping channel fetch (use 'Alle Channels neu laden' to force)")
+                    portals = getPortals()
+                    savePortals(portals)
+                    flash("Portal updated. MACs verified. Use 'Alle Channels neu laden' to refresh channel list.", "info")
+                elif macs_to_fetch:                    # Fetch channels only for new MACs
+                    de_patterns = ['DE', 'GER', 'GERMAN', 'DEUTSCH', 'ALEMANGE', 'DEUTSCHLAND', 'GERMANY']
+                    
+                    for mac in macs_to_fetch:
+                        try:
+                            token = stb.getToken(url, mac, proxy)
+                            if token:
+                                profile = stb.getProfile(url, mac, token, proxy)
+                                playback_limit = profile.get("playback_limit", 1) if profile else 1
                                 mac_playback_limits[mac] = playback_limit
                                 logger.info(f"[PORTAL EDIT] MAC {mac} has playback_limit: {playback_limit}")
+                                
+                                mac_channels = stb.getAllChannels(url, mac, token, proxy)
+                                mac_genres = stb.getGenreNames(url, mac, token, proxy)
+                                
+                                has_de = False
+                                if mac_genres:
+                                    for genre_id, genre_name in mac_genres.items():
+                                        genre_upper = genre_name.upper()
+                                        if any(pattern in genre_upper for pattern in de_patterns):
+                                            has_de = True
+                                            break
+                                mac_has_de[mac] = has_de
+                                logger.info(f"[PORTAL EDIT] MAC {mac} has DE content: {has_de}")
+                                
+                                if mac_channels:
+                                    for channel in mac_channels:
+                                        channel_id = str(channel["id"])
+                                        if channel_id not in all_channels_map:
+                                            all_channels_map[channel_id] = channel
+                                            channel_macs_map[channel_id] = []
+                                        if mac not in channel_macs_map[channel_id]:
+                                            channel_macs_map[channel_id].append(mac)
+                                
+                                if mac_genres:
+                                    all_genres_dict.update(mac_genres)
+                        except Exception as e:
+                            logger.error(f"Error fetching from MAC {mac}: {e}")
+                            mac_has_de[mac] = False
+                    
+                    # Save DE detection results
+                    portals = getPortals()
+                    if "mac_has_de" not in portals[id]:
+                        portals[id]["mac_has_de"] = {}
+                    portals[id]["mac_has_de"].update(mac_has_de)
+                    savePortals(portals)
+                    
+                    # Add new MAC's channels to existing DB entries
+                    if all_channels_map:
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        for channel_id, channel in all_channels_map.items():
+                            stream_cmd = str(channel.get("cmd", ""))
+                            macs_with_limits = []
+                            for mac in channel_macs_map.get(channel_id, []):
+                                limit = mac_playback_limits.get(mac, 1)
+                                macs_with_limits.append(f"{mac}|{limit}|0|0|0")
+                            new_macs_str = ",".join(macs_with_limits)
                             
-                            mac_channels = stb.getAllChannels(url, mac, token, proxy)
-                            mac_genres = stb.getGenreNames(url, mac, token, proxy)
-                            
-                            # Detect DE content in genres
-                            has_de = False
-                            if mac_genres:
-                                for genre_id, genre_name in mac_genres.items():
-                                    genre_upper = genre_name.upper()
-                                    if any(pattern in genre_upper for pattern in de_patterns):
-                                        has_de = True
-                                        break
-                            mac_has_de[mac] = has_de
-                            logger.info(f"[PORTAL EDIT] MAC {mac} has DE content: {has_de}")
-                            
-                            if mac_channels:
-                                for channel in mac_channels:
-                                    channel_id = str(channel["id"])
-                                    if channel_id not in all_channels_map:
-                                        all_channels_map[channel_id] = channel
-                                        channel_macs_map[channel_id] = []
-                                    if mac not in channel_macs_map[channel_id]:
-                                        channel_macs_map[channel_id].append(mac)
-                            
-                            if mac_genres:
-                                all_genres_dict.update(mac_genres)
-                    except Exception as e:
-                        logger.error(f"Error fetching from MAC {mac}: {e}")
-                        mac_has_de[mac] = False
+                            # Check if channel already exists - if so, append new MACs
+                            cursor.execute('SELECT available_macs FROM channels WHERE portal = ? AND channel_id = ?', (id, channel_id))
+                            existing = cursor.fetchone()
+                            if existing and existing['available_macs']:
+                                # Append new MACs to existing
+                                combined = existing['available_macs'] + "," + new_macs_str
+                                cursor.execute('UPDATE channels SET available_macs = ?, stream_cmd = ? WHERE portal = ? AND channel_id = ?',
+                                             (combined, stream_cmd, id, channel_id))
+                            else:
+                                # Channel doesn't exist yet - will be handled by full refresh
+                                pass
+                        
+                        conn.commit()
+                        conn.close()
+                        logger.info(f"Updated {len(all_channels_map)} channels with new MAC data")
+                else:
+                    logger.info(f"No new MACs to fetch channels for")
                 
-                # Save DE detection results to portal config
-                portals[id]["mac_has_de"] = mac_has_de
-                savePortals(portals)
-                logger.info(f"Saved DE detection results for {len(mac_has_de)} MACs")
-                
-                # Update channels.db
+                # Update channels.db — only if all_channels_map was populated
                 if all_channels_map:
                     conn = get_db_connection()
                     cursor = conn.cursor()
@@ -6230,6 +6408,7 @@ def editor_refresh_progress_status():
     """Get channel refresh progress."""
     return flask.jsonify(editor_refresh_progress)
 
+
 @app.route("/editor/deactivate-duplicates", methods=["POST"])
 @authorise
 def editor_deactivate_duplicates():
@@ -6319,6 +6498,255 @@ def settings():
 def wiki():
     """Feature wiki page showing new features and improvements."""
     return render_template("wiki.html")
+
+
+@app.route("/macstrom-import", methods=["GET"])
+@authorise
+def macstrom_import_page():
+    """Macstrom import page."""
+    settings = getSettings()
+    return render_template("macstrom_import.html",
+                           portals=getPortals(),
+                           macstrom_url=settings.get("macstrom_url", ""),
+                           macstrom_api_key=settings.get("macstrom_api_key", ""))
+
+
+@app.route("/macstrom-import/save-connection", methods=["POST"])
+@authorise
+def macstrom_save_connection():
+    """Save Macstrom connection settings."""
+    data = request.json
+    settings = getSettings()
+    settings["macstrom_url"] = data.get("url", "").strip()
+    settings["macstrom_api_key"] = data.get("api_key", "").strip()
+    saveSettings(settings)
+    return flask.jsonify({"success": True})
+
+
+@app.route("/macstrom-import/fetch", methods=["POST"])
+@authorise
+def macstrom_fetch_hits():
+    """Fetch saved hits from Macstrom API with server-side cache and pagination."""
+    import requests as req_lib
+    global _macstrom_hits_cache
+
+    data = request.json
+    url = data.get("url", "").strip().rstrip("/")
+    api_key = data.get("api_key", "").strip()
+    page_size = int(data.get("page_size", 500))
+    page = int(data.get("page", 0))
+    force_refresh = data.get("refresh", False)
+
+    if not url or not api_key:
+        return flask.jsonify({"error": "URL und API Key erforderlich"}), 400
+
+    # Use cache if same URL and not older than 5 minutes, unless forced
+    cache_age = time.time() - _macstrom_hits_cache["ts"]
+    if force_refresh or _macstrom_hits_cache["url"] != url or cache_age > 300:
+        try:
+            resp = req_lib.get(
+                f"{url}/api/hits",
+                headers={"X-Api-Key": api_key},
+                timeout=60
+            )
+            if resp.status_code == 401:
+                return flask.jsonify({"error": "Ungültiger API Key"}), 401
+            if resp.status_code != 200:
+                return flask.jsonify({"error": f"Macstrom antwortete mit Status {resp.status_code}"}), 502
+
+            raw_hits = resp.json()
+            now = int(time.time())
+            normalized = []
+            for h in raw_hits:
+                cats = h.get("categories", {})
+                live = cats.get("live", 0)
+                movies = cats.get("movies", 0)
+                series = cats.get("series", 0)
+                expiry_epoch = h.get("expiry_epoch")
+
+                # portal_url: Macstrom uses "portal" field
+                portal_url = h.get("portal_url") or h.get("portal", "")
+
+                # Detect DE content from portal name or genres
+                genres_str = str(h.get("genres", "")).upper()
+                portal_name_str = str(h.get("portal_name", "")).upper()
+                has_de = any(p in genres_str or p in portal_name_str for p in ["DE", "GER", "GERMAN", "DEUTSCH", "DEUTSCHLAND"])
+
+                days = ((expiry_epoch - now) / 86400) if expiry_epoch else 0
+                is_dead = h.get("validation_state") in ["invalid", "failed", "retest_failed"]
+                if is_dead:
+                    score = 5
+                elif days < 0:
+                    score = 10
+                else:
+                    base = 30 if h.get("validation_state") == "valid" else 20
+                    exp = min(25, (max(0, days) + 1) ** 0.5 / 27 * 25) if expiry_epoch else 0
+                    ch = min(25, ((live + movies + series + 1) ** 0.5) / 71 * 25)
+                    st = 10 if h.get("stream_test_result") == "pass" else (-5 if h.get("stream_test_result") == "fail" else 0)
+                    conn = {0: 0, 1: 2, 2: 5, 3: 7}.get(h.get("playback_limit", 0), 10)
+                    score = max(0, min(100, int(base + exp + ch + st + conn)))
+
+                normalized.append({
+                    "id": h.get("id"),
+                    "portal_name": h.get("portal_name", "Unknown"),
+                    "portal_url": portal_url,
+                    "mac": h.get("mac", ""),
+                    "expiry": h.get("expiry", ""),
+                    "expiry_epoch": expiry_epoch,
+                    "categories_live": live,
+                    "categories_movies": movies,
+                    "categories_series": series,
+                    "playback_limit": h.get("playback_limit"),
+                    "validation_state": h.get("validation_state", "unchecked"),
+                    "stream_test_result": h.get("stream_test_result"),
+                    "proxy": h.get("proxy", ""),
+                    "score": score,
+                })
+
+            _macstrom_hits_cache = {"hits": normalized, "url": url, "ts": time.time()}
+            logger.info(f"Fetched and cached {len(normalized)} hits from Macstrom at {url}")
+
+        except req_lib.exceptions.ConnectionError:
+            return flask.jsonify({"error": f"Verbindung zu {url} fehlgeschlagen"}), 502
+        except req_lib.exceptions.Timeout:
+            return flask.jsonify({"error": "Timeout beim Verbinden mit Macstrom"}), 504
+        except Exception as e:
+            logger.error(f"Error fetching from Macstrom: {e}")
+            return flask.jsonify({"error": str(e)}), 500
+
+    all_hits = _macstrom_hits_cache["hits"]
+    total = len(all_hits)
+    start = page * page_size
+    end = start + page_size
+    page_hits = all_hits[start:end]
+
+    return flask.jsonify({
+        "hits": page_hits,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+        "cached": not force_refresh and _macstrom_hits_cache["url"] == url,
+    })
+
+
+@app.route("/macstrom-import/already-imported", methods=["GET"])
+@authorise
+def macstrom_already_imported():
+    """Return set of MAC addresses already present in MacReplay portals."""
+    portals = getPortals()
+    imported_macs = set()
+    for portal in portals.values():
+        for mac in portal.get("macs", {}).keys():
+            imported_macs.add(mac.upper())
+    return flask.jsonify({"macs": list(imported_macs)})
+
+
+@app.route("/macstrom-import/import", methods=["POST"])
+@authorise
+def macstrom_import_hits():
+    """Import selected hits from Macstrom into MacReplay portals."""
+    data = request.json
+    hits = data.get("hits", [])
+    target_portal_id = data.get("target_portal_id")  # None = create new portals
+    streams_per_mac = int(data.get("streams_per_mac", 1))
+
+    if not hits:
+        return flask.jsonify({"error": "Keine MACs ausgewählt"}), 400
+
+    portals = getPortals()
+    imported = 0
+    skipped = 0
+    portals_created = 0
+    portals_updated = 0
+    details = []
+
+    # Group hits by portal_name + portal_url
+    portal_groups = {}
+    for h in hits:
+        key = (h.get("portal_name", "Unknown"), h.get("portal_url", ""))
+        if key not in portal_groups:
+            portal_groups[key] = []
+        portal_groups[key].append(h)
+
+    for (portal_name, portal_url), group_hits in portal_groups.items():
+        if target_portal_id:
+            # Add to existing portal
+            portal_id = target_portal_id
+            if portal_id not in portals:
+                details.append({"portal_name": portal_name, "mac": "*", "success": False, "message": "Ziel-Portal nicht gefunden"})
+                skipped += len(group_hits)
+                continue
+            portal = portals[portal_id]
+            portal_url_to_use = portal.get("url", portal_url)
+            is_new_portal = False
+        else:
+            # Find existing portal by URL or create new one
+            existing_id = None
+            for pid, p in portals.items():
+                if p.get("url", "").rstrip("/") == portal_url.rstrip("/"):
+                    existing_id = pid
+                    break
+
+            if existing_id:
+                portal_id = existing_id
+                portal = portals[portal_id]
+                portal_url_to_use = portal.get("url", portal_url)
+                is_new_portal = False
+            else:
+                # Create new portal
+                portal_id = uuid.uuid4().hex
+                portal_url_to_use = portal_url
+                portal = {
+                    "enabled": "true",
+                    "name": portal_name,
+                    "url": portal_url,
+                    "macs": {},
+                    "streams per mac": str(streams_per_mac),
+                    "epg offset": "0",
+                    "proxy": "",
+                    "portal prefix": "",
+                }
+                for setting, default in defaultPortal.items():
+                    if setting not in portal:
+                        portal[setting] = default
+                portals[portal_id] = portal
+                portals_created += 1
+                is_new_portal = True
+
+        # Add each MAC directly using Macstrom data (no live handshake needed)
+        for h in group_hits:
+            mac = h.get("mac", "")
+            if not mac:
+                skipped += 1
+                continue
+
+            # Skip if MAC already exists in portal
+            if mac in portals[portal_id].get("macs", {}):
+                details.append({"portal_name": portal_name, "mac": mac, "success": False, "message": "Bereits vorhanden"})
+                skipped += 1
+                continue
+
+            # Use expiry from Macstrom directly
+            expiry = h.get("expiry", "")
+            portals[portal_id]["macs"][mac] = expiry
+            imported += 1
+            if not is_new_portal:
+                portals_updated += 1
+            details.append({"portal_name": portal_name, "mac": mac, "success": True, "message": f"Importiert (Ablauf: {expiry or 'unbekannt'})"})
+
+    # Save portals — channel fetch happens when user selects genres
+    if imported > 0:
+        savePortals(portals)
+        logger.info(f"Macstrom import: {imported} MACs imported, {skipped} skipped, {portals_created} portals created")
+
+    return flask.jsonify({
+        "imported": imported,
+        "skipped": skipped,
+        "portals_created": portals_created,
+        "portals_updated": portals_updated,
+        "details": details[:50]  # Limit details to 50 entries
+    })
 
 
 @app.route("/proxy-test", methods=["GET"])
@@ -10342,8 +10770,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                             logger.debug(f"[PROXY RETRY] MAC {try_mac} is full ({count}/{streamsPerMac}), trying next")
                             continue
                         
-                        # Get token for this MAC
-                        try_token = stb.getToken(url, try_mac, proxy)
+                        # Get token for this MAC (use cache if enabled)
+                        try_token = get_token_cached(url, try_mac, proxy)
                         if not try_token:
                             logger.warning(f"[PROXY RETRY] Failed to get token for MAC {try_mac}, trying next")
                             continue
@@ -10567,8 +10995,8 @@ def stream_channel(portalId, channelId, xc_user=None):
                                 continue
                             logger.debug(f"[DIRECT REDIRECT] MAC {try_mac} available (watchdog: {watchdog_timeout}s)")
                     
-                    # Get token and link for this MAC
-                    token = stb.getToken(url, try_mac, proxy)
+                    # Get token and link for this MAC (use cache if enabled)
+                    token = get_token_cached(url, try_mac, proxy)
                     if not token:
                         logger.warning(f"[DIRECT REDIRECT] Failed to get token for MAC {try_mac}, trying next")
                         continue
@@ -10654,7 +11082,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                     if streamsPerMac == 0 or count < streamsPerMac:
                         logger.info(f"Testing Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                         mac = try_mac
-                        token = stb.getToken(url, mac, proxy)
+                        token = get_token_cached(url, mac, proxy)
                         if token:
                             # Optional: Check portal-side MAC load
                             is_busy = False
@@ -10843,7 +11271,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                         if streamsPerMac == 0 or count < streamsPerMac:
                             logger.info(f"[MAC RETRY FALLBACK] Testing busy MAC {try_mac}")
                             mac = try_mac
-                            token = stb.getToken(url, mac, proxy)
+                            token = get_token_cached(url, mac, proxy)
                             if token:
                                 stb.getProfile(url, mac, token, proxy)
                                 
@@ -10991,7 +11419,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                         if streamsPerMac == 0 or count < streamsPerMac:
                             logger.info(f"[SKIP BUSY FALLBACK] Using busy MAC {try_mac}")
                             mac = try_mac
-                            token = stb.getToken(url, mac, proxy)
+                            token = get_token_cached(url, mac, proxy)
                             if token:
                                 stb.getProfile(url, mac, token, proxy)
                                 mac_found = mac
@@ -11010,7 +11438,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                         logger.info(f"Trying other MAC: Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                         freeMac = True
                         mac = try_mac
-                        token = stb.getToken(url, mac, proxy)
+                        token = get_token_cached(url, mac, proxy)
                         if token:
                             profile = stb.getProfile(url, mac, token, proxy)
                             playback_limit = profile.get('playback_limit', 1) if profile else 1
@@ -11083,7 +11511,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                     logger.info(f"Fallback (missing cache): Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                     freeMac = True
                     mac = try_mac
-                    token = stb.getToken(url, mac, proxy)
+                    token = get_token_cached(url, mac, proxy)
                     if token:
                         profile = stb.getProfile(url, mac, token, proxy)
                         playback_limit = profile.get('playback_limit', 1) if profile else 1
@@ -11145,7 +11573,7 @@ def stream_channel(portalId, channelId, xc_user=None):
                     logger.info(f"Fallback: Trying Portal({portalId}):MAC({try_mac}):Channel({channelId})")
                     freeMac = True
                     mac = try_mac
-                    token = stb.getToken(url, mac, proxy)
+                    token = get_token_cached(url, mac, proxy)
                     if token:
                         stb.getProfile(url, mac, token, proxy)
                         
@@ -11519,8 +11947,8 @@ def hls_stream(portalId, channelId, filename):
                         try:
                             logger.info(f"[HLS RETRY] Testing MAC {try_mac}")
                             
-                            # Get token
-                            token = stb.getToken(url, try_mac, proxy)
+                            # Get token (use cache if enabled)
+                            token = get_token_cached(url, try_mac, proxy)
                             if not token:
                                 logger.warning(f"[HLS RETRY] Failed to get token for MAC {try_mac}")
                                 continue
@@ -11717,7 +12145,7 @@ def hls_stream(portalId, channelId, filename):
                             try:
                                 logger.info(f"[HLS RETRY FALLBACK] Testing busy MAC {try_mac}")
                                 
-                                token = stb.getToken(url, try_mac, proxy)
+                                token = get_token_cached(url, try_mac, proxy)
                                 if not token:
                                     continue
                                 
@@ -11860,7 +12288,7 @@ def hls_stream(portalId, channelId, filename):
                         # Try to find first non-busy MAC
                         for try_mac in available_macs:
                             try:
-                                token = stb.getToken(url, try_mac, proxy)
+                                token = get_token_cached(url, try_mac, proxy)
                                 if token:
                                     profile = stb.getProfile(url, try_mac, token, proxy)
                                     # Validate watchdog_timeout field exists
@@ -11890,7 +12318,7 @@ def hls_stream(portalId, channelId, filename):
                 # Fallback: getAllChannels()
                 logger.warning(f"HLS: Channel {channelId} not in DB, falling back")
                 for try_mac in macs:
-                    token = stb.getToken(url, try_mac, proxy)
+                    token = get_token_cached(url, try_mac, proxy)
                     if token:
                         stb.getProfile(url, try_mac, token, proxy)
                         channels = stb.getAllChannels(url, try_mac, token, proxy)

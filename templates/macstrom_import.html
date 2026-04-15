@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Macstrom Import - MacReplayXC{% endblock %}
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <h2 class="page-title"><i class="ti ti-cloud-download me-2"></i>Macstrom Import</h2>
+                <div class="text-muted mt-1">MACs aus Macstrom importieren und in MacReplay-Portale übernehmen</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+
+        <!-- Connection Settings -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-plug me-2"></i>Macstrom Verbindung</h3></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Macstrom URL</label>
+                        <input type="text" class="form-control" id="macstromUrl"
+                            placeholder="http://192.168.1.100:8642"
+                            value="{{ macstrom_url or '' }}">
+                        <div class="form-hint">URL deiner Macstrom-Instanz</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">API Key</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="macstromApiKey"
+                                placeholder="Macstrom API Key"
+                                value="{{ macstrom_api_key or '' }}">
+                            <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKey()">
+                                <i class="ti ti-eye" id="apiKeyEyeIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-hint">Zu finden in Macstrom → Settings</div>
+                    </div>
+                </div>
+                <div class="row g-3 mt-1">
+                    <div class="col-auto">
+                        <button class="btn btn-primary" onclick="saveAndFetch()">
+                            <i class="ti ti-refresh me-2"></i>Verbinden & Laden
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-outline-secondary" onclick="saveConnection()">
+                            <i class="ti ti-device-floppy me-2"></i>Verbindung speichern
+                        </button>
+                    </div>
+                    <div class="col-auto" id="connectionStatus"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="card mb-3" id="filterCard" style="display:none;">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Filter nach Portal</label>
+                        <select class="form-select" id="filterPortal" onchange="applyFilters()">
+                            <option value="">Alle Portale</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="filterStatus" onchange="applyFilters()">
+                            <option value="">Alle</option>
+                            <option value="valid">✅ Valid</option>
+                            <option value="invalid">❌ Invalid</option>
+                            <option value="unchecked">❓ Unchecked</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Stream Test</label>
+                        <select class="form-select" id="filterStream" onchange="applyFilters()">
+                            <option value="">Alle</option>
+                            <option value="pass">▶ Pass</option>
+                            <option value="fail">✗ Fail</option>
+                            <option value="none">— Nicht getestet</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Min. Live Channels</label>
+                        <input type="number" class="form-control" id="filterMinLive" value="0" min="0" onchange="applyFilters()">
+                    </div>
+                    <div class="col-auto ms-auto">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="selectAll()">Alle wählen</button>
+                        <button class="btn btn-outline-secondary btn-sm ms-1" onclick="selectNone()">Keine</button>
+                        <button class="btn btn-outline-secondary btn-sm ms-1" onclick="selectValid()">Nur Valid</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Table -->
+        <div class="card mb-3" id="resultsCard" style="display:none;">
+            <div class="card-header d-flex align-items-center">
+                <h3 class="card-title me-auto"><i class="ti ti-list me-2"></i>Gefundene MACs</h3>
+                <span class="badge bg-blue me-2" id="totalCount">0 MACs</span>
+                <span class="badge bg-green me-2" id="selectedCount">0 ausgewählt</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-hover card-table table-sm">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"></th>
+                            <th>Portal</th>
+                            <th>MAC</th>
+                            <th style="cursor:pointer;" onclick="sortBy('expiry_epoch')" title="Sortieren">Ablauf <span id="sortIcon_expiry_epoch">↕</span></th>
+                            <th style="cursor:pointer;" onclick="sortBy('categories_live')" title="Sortieren">Live <span id="sortIcon_categories_live">↕</span></th>
+                            <th>Movies</th>
+                            <th>Series</th>
+                            <th>Limit</th>
+                            <th>Stream</th>
+                            <th>Status</th>
+                            <th style="cursor:pointer;" onclick="sortBy('score')" title="Sortieren">Score <span id="sortIcon_score">↕</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="hitsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Import Section -->
+        <div class="card mb-3" id="importCard" style="display:none;">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-download me-2"></i>In MacReplay importieren</h3></div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label">Ziel-Portal in MacReplay</label>
+                        <select class="form-select" id="targetPortal">
+                            <option value="">-- Neues Portal erstellen --</option>
+                            {% for portal_id, portal in portals.items() %}
+                            <option value="{{ portal_id }}">{{ portal.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-hint">MACs zu bestehendem Portal hinzufügen oder neues erstellen</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Streams pro MAC</label>
+                        <input type="number" class="form-control" id="streamsPerMac" value="1" min="1" max="10">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-success btn-lg" onclick="importSelected()">
+                            <i class="ti ti-download me-2"></i>
+                            <span id="importBtnText">Ausgewählte importieren</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="importProgress" class="mt-3" style="display:none;">
+                    <div class="progress mb-2">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="importProgressBar" style="width:0%"></div>
+                    </div>
+                    <div id="importProgressText" class="text-muted small"></div>
+                </div>
+                <div id="importResults" class="mt-3"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+let allHits = [];
+let filteredHits = [];
+let currentPage = 0;
+let selectedHitIds = new Set();
+let importedMacs = new Set();
+let sortField = 'score';
+let sortAsc = false;
+
+function toggleApiKey() {
+    const input = document.getElementById('macstromApiKey');
+    const icon = document.getElementById('apiKeyEyeIcon');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'ti ti-eye-off';
+    } else {
+        input.type = 'password';
+        icon.className = 'ti ti-eye';
+    }
+}
+
+function saveConnection() {
+    const url = document.getElementById('macstromUrl').value.trim();
+    const key = document.getElementById('macstromApiKey').value.trim();
+    fetch('/macstrom-import/save-connection', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url, api_key: key})
+    }).then(r => r.json()).then(data => {
+        if (data.success) showToast('Verbindung gespeichert', 'success');
+        else showToast('Fehler beim Speichern', 'danger');
+    });
+}
+
+function saveAndFetch() {
+    saveConnection();
+    fetchHits();
+}
+
+function fetchHits(forceRefresh) {
+    const url = document.getElementById('macstromUrl').value.trim();
+    const key = document.getElementById('macstromApiKey').value.trim();
+    if (!url || !key) {
+        showToast('Bitte URL und API Key eingeben', 'warning');
+        return;
+    }
+
+    const statusEl = document.getElementById('connectionStatus');
+    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lade von Macstrom...';
+    allHits = [];
+    currentPage = 0;
+
+    // Load all pages sequentially from server cache
+    function loadPage(page) {
+        fetch('/macstrom-import/fetch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, api_key: key, page: page, page_size: 500, refresh: !!forceRefresh && page === 0})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                statusEl.innerHTML = `<span class="badge bg-danger"><i class="ti ti-x me-1"></i>${data.error}</span>`;
+                return;
+            }
+            allHits = allHits.concat(data.hits);
+            const totalPages = data.pages;
+            statusEl.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Lade... ${allHits.length} / ${data.total}`;
+
+            if (page + 1 < totalPages) {
+                loadPage(page + 1);
+            } else {
+                // Load already-imported MACs then render
+                fetch('/macstrom-import/already-imported')
+                    .then(r => r.json())
+                    .then(d => {
+                        importedMacs = new Set((d.macs || []).map(m => m.toUpperCase()));
+                        const cached = data.cached ? ' (Cache)' : '';
+                        statusEl.innerHTML = `<span class="badge bg-success"><i class="ti ti-check me-1"></i>${allHits.length} MACs geladen${cached}</span>`;
+                        populatePortalFilter();
+                        applyFilters();
+                        document.getElementById('filterCard').style.display = '';
+                        document.getElementById('resultsCard').style.display = '';
+                        document.getElementById('importCard').style.display = '';
+                    })
+                    .catch(() => {
+                        const cached = data.cached ? ' (Cache)' : '';
+                        statusEl.innerHTML = `<span class="badge bg-success"><i class="ti ti-check me-1"></i>${allHits.length} MACs geladen${cached}</span>`;
+                        populatePortalFilter();
+                        applyFilters();
+                        document.getElementById('filterCard').style.display = '';
+                        document.getElementById('resultsCard').style.display = '';
+                        document.getElementById('importCard').style.display = '';
+                    });
+            }
+        })
+        .catch(() => {
+            statusEl.innerHTML = `<span class="badge bg-danger"><i class="ti ti-x me-1"></i>Verbindungsfehler</span>`;
+        });
+    }
+
+    loadPage(0);
+}
+
+function populatePortalFilter() {
+    const portals = [...new Set(allHits.map(h => h.portal_name))].sort();
+    const sel = document.getElementById('filterPortal');
+    sel.innerHTML = '<option value="">Alle Portale</option>';
+    portals.forEach(p => {
+        sel.innerHTML += `<option value="${p}">${p}</option>`;
+    });
+}
+
+function sortBy(field) {
+    if (sortField === field) {
+        sortAsc = !sortAsc;
+    } else {
+        sortField = field;
+        sortAsc = field === 'expiry_epoch'; // ascending for expiry (soonest first), desc for score/live
+    }
+    // Update icons
+    ['expiry_epoch', 'categories_live', 'score'].forEach(f => {
+        const el = document.getElementById('sortIcon_' + f);
+        if (el) el.textContent = f === sortField ? (sortAsc ? '↑' : '↓') : '↕';
+    });
+    filteredHits.sort((a, b) => {
+        const av = a[field] ?? (sortAsc ? Infinity : -Infinity);
+        const bv = b[field] ?? (sortAsc ? Infinity : -Infinity);
+        return sortAsc ? av - bv : bv - av;
+    });
+    renderTable();
+}
+
+function applyFilters() {
+    const portal = document.getElementById('filterPortal').value;
+    const status = document.getElementById('filterStatus').value;
+    const stream = document.getElementById('filterStream').value;
+    const minLive = parseInt(document.getElementById('filterMinLive').value) || 0;
+
+    filteredHits = allHits.filter(h => {
+        if (portal && h.portal_name !== portal) return false;
+        if (status && h.validation_state !== status) return false;
+        if (stream === 'pass' && h.stream_test_result !== 'pass') return false;
+        if (stream === 'fail' && h.stream_test_result !== 'fail') return false;
+        if (stream === 'none' && h.stream_test_result != null) return false;
+        if (h.categories_live < minLive) return false;
+        return true;
+    });
+
+    selectedHitIds.clear();
+    // Re-apply current sort
+    if (sortField) {
+        filteredHits.sort((a, b) => {
+            const av = a[sortField] ?? (sortAsc ? Infinity : -Infinity);
+            const bv = b[sortField] ?? (sortAsc ? Infinity : -Infinity);
+            return sortAsc ? av - bv : bv - av;
+        });
+    }
+    renderTable();
+    updateCounts();
+}
+
+function renderTable() {
+    const tbody = document.getElementById('hitsTableBody');
+    tbody.innerHTML = '';
+    const displayLimit = 200;
+    const toShow = filteredHits.slice(0, displayLimit);
+
+    toShow.forEach((h, idx) => {
+        const expiryDays = h.expiry_epoch ? Math.floor((h.expiry_epoch - Date.now()/1000) / 86400) : null;
+        const expiryBadge = expiryDays === null ? '<span class="text-muted">-</span>' :
+            expiryDays < 0 ? `<span class="badge bg-danger">${expiryDays}d</span>` :
+            expiryDays < 30 ? `<span class="badge bg-warning">${expiryDays}d</span>` :
+            `<span class="badge bg-success">${expiryDays}d</span>`;
+
+        const statusBadge = h.validation_state === 'valid' ? '<span class="badge bg-success">✅ Valid</span>' :
+            h.validation_state === 'invalid' ? '<span class="badge bg-danger">❌ Invalid</span>' :
+            '<span class="badge bg-secondary">❓</span>';
+
+        const deBadge = h.has_de ? '🇩🇪' : '';
+        const scoreBadge = h.score >= 70 ? `<span class="badge bg-success">${h.score}</span>` :
+            h.score >= 40 ? `<span class="badge bg-warning">${h.score}</span>` :
+            `<span class="badge bg-danger">${h.score}</span>`;
+        const streamBadge = h.stream_test_result === 'pass' ? '<span class="badge bg-success">▶ OK</span>' :
+            h.stream_test_result === 'fail' ? '<span class="badge bg-danger">✗</span>' :
+            '<span class="text-muted small">—</span>';
+        const checked = selectedHitIds.has(h.id) ? 'checked' : '';
+        const alreadyImported = importedMacs.has((h.mac || '').toUpperCase());
+        const rowClass = alreadyImported ? 'table-secondary text-muted' : '';
+        const importedBadge = alreadyImported ? '<span class="badge bg-secondary ms-1" title="Bereits in MacReplay">✓</span>' : '';
+        const checkboxAttr = alreadyImported ? 'disabled title="Bereits importiert"' : `onchange="toggleHitSelect(this)"`;
+
+        tbody.innerHTML += `
+            <tr class="${rowClass}">
+                <td><input type="checkbox" class="hit-checkbox" data-id="${h.id}" ${checked} ${checkboxAttr}></td>
+                <td><span class="text-truncate d-inline-block" style="max-width:150px;" title="${h.portal_name}">${h.portal_name}</span></td>
+                <td><code class="small">${h.mac}</code>${importedBadge}</td>
+                <td>${expiryBadge}</td>
+                <td>${h.categories_live || 0}</td>
+                <td>${h.categories_movies || 0}</td>
+                <td>${h.categories_series || 0}</td>
+                <td>${h.playback_limit || '-'}</td>
+                <td>${streamBadge}</td>
+                <td>${statusBadge}</td>
+                <td>${scoreBadge}</td>
+            </tr>`;
+    });
+
+    if (filteredHits.length > displayLimit) {
+        tbody.innerHTML += `<tr><td colspan="11" class="text-center text-muted small py-2">
+            Zeige ${displayLimit} von ${filteredHits.length} — nutze Filter um einzugrenzen
+        </td></tr>`;
+    }
+
+    updateCounts();
+}
+
+function toggleHitSelect(cb) {
+    const id = cb.dataset.id;
+    if (cb.checked) selectedHitIds.add(id);
+    else selectedHitIds.delete(id);
+    updateCounts();
+}
+
+function updateCounts() {
+    document.getElementById('totalCount').textContent = `${filteredHits.length} MACs`;
+    document.getElementById('selectedCount').textContent = `${selectedHitIds.size} ausgewählt`;
+}
+
+function toggleSelectAll(cb) {
+    if (cb.checked) selectAll();
+    else selectNone();
+}
+
+function selectAll() {
+    filteredHits.forEach(h => selectedHitIds.add(h.id));
+    document.querySelectorAll('.hit-checkbox').forEach(c => c.checked = true);
+    document.getElementById('selectAllCheckbox').checked = true;
+    updateCounts();
+}
+
+function selectNone() {
+    selectedHitIds.clear();
+    document.querySelectorAll('.hit-checkbox').forEach(c => c.checked = false);
+    document.getElementById('selectAllCheckbox').checked = false;
+    updateCounts();
+}
+
+function selectValid() {
+    filteredHits.forEach(h => {
+        if (h.validation_state === 'valid') selectedHitIds.add(h.id);
+        else selectedHitIds.delete(h.id);
+    });
+    document.querySelectorAll('.hit-checkbox').forEach(c => {
+        const id = c.dataset.id;
+        const h = filteredHits.find(x => String(x.id) === String(id));
+        c.checked = h?.validation_state === 'valid';
+    });
+    updateCounts();
+}
+
+function importSelected() {
+    const selected = filteredHits.filter(h => selectedHitIds.has(h.id) || selectedHitIds.has(String(h.id)));
+
+    if (selected.length === 0) {
+        showToast('Keine MACs ausgewählt', 'warning');
+        return;
+    }
+
+    const targetPortal = document.getElementById('targetPortal').value;
+    const streamsPerMac = parseInt(document.getElementById('streamsPerMac').value) || 1;
+    document.getElementById('importProgress').style.display = '';
+    document.getElementById('importResults').innerHTML = '';
+    document.getElementById('importProgressBar').style.width = '0%';
+    document.getElementById('importProgressText').textContent = `Importiere ${selected.length} MACs...`;
+
+    fetch('/macstrom-import/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            hits: selected,
+            target_portal_id: targetPortal || null,
+            streams_per_mac: streamsPerMac
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('importProgressBar').style.width = '100%';
+        document.getElementById('importProgressBar').classList.remove('progress-bar-animated');
+
+        if (data.error) {
+            document.getElementById('importResults').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        let html = `<div class="alert alert-success">
+            <strong>Import abgeschlossen!</strong><br>
+            ✅ ${data.imported} MACs erfolgreich importiert<br>
+            ${data.skipped > 0 ? `⚠️ ${data.skipped} MACs übersprungen (bereits vorhanden oder fehlgeschlagen)<br>` : ''}
+            ${data.portals_created > 0 ? `🆕 ${data.portals_created} neue Portale erstellt<br>` : ''}
+            ${data.portals_updated > 0 ? `🔄 ${data.portals_updated} Portale aktualisiert` : ''}
+        </div>`;
+
+        if (data.details && data.details.length > 0) {
+            html += '<div class="mt-2"><strong>Details:</strong><ul class="list-unstyled">';
+            data.details.forEach(d => {
+                const icon = d.success ? '✅' : '❌';
+                html += `<li class="small">${icon} ${d.portal_name} — ${d.mac}: ${d.message}</li>`;
+            });
+            html += '</ul></div>';
+        }
+
+        document.getElementById('importResults').innerHTML = html;
+        document.getElementById('importProgressText').textContent = 'Fertig!';
+
+        // Refresh imported MACs set and re-render table to show new markings
+        if (data.imported > 0) {
+            fetch('/macstrom-import/already-imported')
+                .then(r => r.json())
+                .then(d => {
+                    importedMacs = new Set((d.macs || []).map(m => m.toUpperCase()));
+                    renderTable();
+                });
+        }
+    })
+    .catch(err => {
+        document.getElementById('importResults').innerHTML = `<div class="alert alert-danger">Fehler: ${err.message}</div>`;
+    });
+}
+
+// Auto-load wenn URL und API Key bereits gespeichert sind
+document.addEventListener('DOMContentLoaded', () => {
+    const url = document.getElementById('macstromUrl').value.trim();
+    const key = document.getElementById('macstromApiKey').value.trim();
+    if (url && key) {
+        fetchHits(false);
+    }
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -955,6 +955,74 @@
             </div>
         </div>
 
+        <!-- Channel Loading & Re-Test -->
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title"><i class="ti ti-download me-2"></i>Channel-Loading & Re-Test Verhalten</h3></div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <strong>Optimiertes Channel-Loading:</strong> Channels werden nur dann neu vom Portal geladen wenn es wirklich nötig ist — das spart Zeit bei großen Portalen mit 10.000–50.000 Channels.
+                </div>
+
+                <h5 class="mb-3">🔄 Re-Test (Portal bearbeiten → Speichern)</h5>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr><th>Szenario</th><th>Was passiert</th><th>Dauer</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr class="table-success">
+                                <td><strong>Nur bestehende MACs</strong><br><small>Re-Test ohne neue MACs</small></td>
+                                <td>Nur Token + Profil prüfen — Channels werden NICHT neu geladen</td>
+                                <td>~5–30 Sekunden</td>
+                            </tr>
+                            <tr class="table-warning">
+                                <td><strong>Neue MACs hinzugefügt</strong><br><small>Re-Test mit neuen MACs</small></td>
+                                <td>Nur für neue MACs werden Channels geladen — bestehende MACs werden übersprungen</td>
+                                <td>~1–5 Minuten pro neuer MAC</td>
+                            </tr>
+                            <tr class="table-info">
+                                <td><strong>Neues Portal</strong><br><small>Portal hinzufügen</small></td>
+                                <td>Alle MACs werden vollständig geladen</td>
+                                <td>~1–5 Minuten pro MAC</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">📥 Dashboard-Buttons</h5>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white"><strong>Refresh Cache</strong></div>
+                            <div class="card-body">
+                                <p class="mb-1">Aktualisiert stream_cmd und MAC-Listen für bestehende Channels aus der DB.</p>
+                                <small class="text-muted">Schnell — lädt keine neuen Channels vom Portal</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-info">
+                            <div class="card-header bg-info text-white"><strong>Alle Channels neu laden</strong></div>
+                            <div class="card-body">
+                                <p class="mb-1">Lädt ALLE Channels frisch von allen Portalen. Überschreibt bestehende Channel-Daten.</p>
+                                <small class="text-muted">Langsam — nutzen wenn neue Channels im Portal verfügbar sind</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning mb-0">
+                    <strong>Wann "Alle Channels neu laden" verwenden?</strong>
+                    <ul class="mb-0 mt-1">
+                        <li>Das Portal hat neue Channels bekommen</li>
+                        <li>Channels fehlen nach einem Re-Test</li>
+                        <li>Nach einer Genre-Änderung (neue Genres aktiviert)</li>
+                        <li>Nach einem langen Zeitraum ohne Update</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 {% endblock %}

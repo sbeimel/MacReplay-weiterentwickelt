@@ -173,6 +173,21 @@
                                 <small class="form-hint">Skip MACs with high activity (watchdog &lt;60s)</small>
                             </div>
                             
+                            <div class="mb-3">
+                                <label class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="token cache enabled" value="true" id="tokenCacheEnabled" {{ 'checked' if settings.get('token cache enabled', 'true') == 'true' }}>
+                                    <span class="form-check-label">Token Cache <span class="badge bg-green ms-1">NEU</span></span>
+                                </label>
+                                <small class="form-hint">Stalker-Tokens pro MAC cachen — schnellerer Stream-Start beim Channel-Wechsel (wie Macstrom). Wenn deaktiviert: Bei jedem Sender wird neuer Token geholt.</small>
+                            </div>
+                            
+                            <div class="mb-3" id="tokenCacheTtlRow">
+                                <label class="form-label">Token Cache TTL (Sekunden)</label>
+                                <input type="number" class="form-control" name="token cache ttl"
+                                    value="{{ settings.get('token cache ttl', '270') }}" min="30" max="600">
+                                <small class="form-hint">Wie lange ein Token gecacht wird (Standard: 270s = watchdog_timeout × 0.9). Cache wird automatisch bereinigt bei Speicherlimit (500 Einträge) oder abgelaufenen Tokens.</small>
+                            </div>
+                            
                             <div class="alert alert-info mb-0" role="alert">
                                 <strong>ℹ️ Automatic MAC Retry:</strong> System automatically tries all MACs until one works. Stops at first working MAC.
                             </div>
@@ -394,9 +409,24 @@
                 });
             }
             
+            // Toggle Token Cache TTL visibility
+            function toggleTokenCacheTtl() {
+                const tokenCacheEnabled = document.getElementById('tokenCacheEnabled');
+                const tokenCacheTtlRow = document.getElementById('tokenCacheTtlRow');
+                
+                if (tokenCacheEnabled && tokenCacheTtlRow) {
+                    if (tokenCacheEnabled.checked) {
+                        tokenCacheTtlRow.style.display = 'block';
+                    } else {
+                        tokenCacheTtlRow.style.display = 'none';
+                    }
+                }
+            }
+            
             // Run on page load
             document.addEventListener('DOMContentLoaded', function() {
                 toggleStreamMethodSettings();
+                toggleTokenCacheTtl();
             });
             
             // Run when stream method changes
@@ -407,6 +437,12 @@
             
             // Run when show all options changes
             document.getElementById('showAllOptions').addEventListener('change', toggleStreamMethodSettings);
+            
+            // Run when token cache enabled changes
+            const tokenCacheEnabledCheckbox = document.getElementById('tokenCacheEnabled');
+            if (tokenCacheEnabledCheckbox) {
+                tokenCacheEnabledCheckbox.addEventListener('change', toggleTokenCacheTtl);
+            }
             </script>
             
             <div class="row row-cards mb-4">
